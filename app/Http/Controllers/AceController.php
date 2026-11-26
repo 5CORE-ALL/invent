@@ -128,7 +128,62 @@ class AceController extends Controller
         $rules = AutoChatEvent::query()->where('page', $page)->orderByDesc('is_active')->orderByDesc('id')->get();
         $runs = AutoChatEventRun::query()->whereIn('ace_id', $rules->pluck('id'))->orderByDesc('id')->get()->groupBy('ace_id');
 
-        $data = $rules->map(function (AutoChatEvent $r) use ($columns, $ops, $users, $runs, $me) {
+        $data = $rules->map(fn (AutoChatEvent $r) => $this->ruleToArray($r, $columns, $ops, $users, $runs, $me))->values();
+
+        return response()->json([
+            'ok' => true,
+            'me' => $me,
+            'rules' => $data,
+        ]);
+    }
+
+    /**
+     * Every ATE rule of every page, for the ATE tab on /tasks/automated (read-only list; rules are
+     * still created / edited with the + ATE / ATE buttons on their own page).
+     */
+    public function all(): JsonResponse
+    {
+        if ($resp = $this->notReady()) {
+            return $resp;
+        }
+
+        $ops = AceEngine::OPERATORS;
+        $users = User::query()->pluck('name', 'id');
+        $me = (int) auth()->id();
+
+        $rules = AutoChatEvent::query()->orderByDesc('is_active')->orderByDesc('id')->get();
+        $runs = AutoChatEventRun::query()->whereIn('ace_id', $rules->pluck('id'))->orderByDesc('id')->get()->groupBy('ace_id');
+        $staticColumns = [];
+
+        $data = $rules->map(function (AutoChatEvent $r) use ($ops, $users, $runs, $me, &$staticColumns) {
+            if (AcePages::isStatic((string) $r->page) && ! isset($staticColumns[$r->page])) {
+                $staticColumns[$r->page] = collect(AcePages::columns((string) $r->page))->keyBy('key');
+            }
+            $row = $this->ruleToArray($r, $staticColumns[$r->page] ?? collect(), $ops, $users, $runs, $me);
+            $row['page'] = (string) $r->page;
+            $row['page_label'] = (string) ($r->page_label ?: (AcePages::PAGES[$r->page] ?? $r->page));
+
+            return $row;
+        })->values();
+
+        return response()->json([
+            'ok' => true,
+            'me' => $me,
+            'rules' => $data,
+        ]);
+    }
+
+    /**
+     * One rule as the ATE details list shows it.
+     *
+     * @param  \Illuminate\Support\Collection  $columns  column definitions keyed by column key (static pages only)
+     * @param  array<string, string>  $ops
+     * @param  \Illuminate\Support\Collection  $users  user names by id
+     * @param  \Illuminate\Support\Collection  $runs  run history grouped by rule id
+     * @return array<string, mixed>
+     */
+    private function ruleToArray(AutoChatEvent $r, $columns, array $ops, $users, $runs, int $me): array
+    {
             $list = $runs->get($r->id, collect());
             $mine = (int) $r->created_by === $me;
             $conds = AceEngine::conditionsOf($r);
@@ -157,8 +212,9 @@ class AceController extends Controller
             if (count($opt['titles'] ?? []) > 1) {
                 $extras[] = count($opt['titles']).' tasks';
             }
-            if (! empty($opt['assignor_id'])) {
-                $extras[] = 'assignor '.($users[$opt['assignor_id']] ?? $opt['assignor_id']);
+            $assignorIds = ! empty($opt['assignor_ids']) ? (array) $opt['assignor_ids'] : (! empty($opt['assignor_id']) ? [$opt['assignor_id']] : []);
+            if ($assignorIds !== []) {
+                $extras[] = (count($assignorIds) > 1 ? 'assignors ' : 'assignor ').implode(', ', array_map(fn ($id) => (string) ($users[$id] ?? $id), $assignorIds));
             }
             $extras[] = 'ETC '.($opt['etc_minutes'] ?? 10).' min';
             if (! empty($opt['is_corrective_action'])) {
@@ -215,13 +271,6 @@ class AceController extends Controller
                     'task_options' => $opt,
                 ] : null,
             ];
-        })->values();
-
-        return response()->json([
-            'ok' => true,
-            'me' => $me,
-            'rules' => $data,
-        ]);
     }
 
     /**
@@ -318,6 +367,8 @@ class AceController extends Controller
             'task_options.assignee_ids' => 'nullable|array|max:100',
             'task_options.assignee_ids.*' => 'integer|exists:users,id',
             'task_options.assignor_id' => 'nullable|integer|exists:users,id',
+            'task_options.assignor_ids' => 'nullable|array|max:50',
+            'task_options.assignor_ids.*' => 'integer|exists:users,id',
             'task_options.split' => 'nullable|boolean',
             'task_options.etc_minutes' => 'nullable|integer|min:0|max:100000',
             'task_options.is_corrective_action' => 'nullable|boolean',
@@ -336,9 +387,10 @@ class AceController extends Controller
         // Task-manager inputs (assignees, ETC, frequency, links ...) kept as one JSON object.
         $opts = $this->cleanTaskOptions($v['task_options'] ?? []);
         // Like the task manager's own form, only task admins may pick a different assignor.
-        if (! $this->isAdmin() || empty($opts['assignor_id'])) {
-            $opts['assignor_id'] = (int) auth()->id();
+        if (! $this->isAdmin() || empty($opts['assignor_ids'])) {
+            $opts['assignor_ids'] = [(int) auth()->id()];
         }
+        $opts['assignor_id'] = $opts['assignor_ids'][0]; // first one, kept for older readers
         $fixedIds = $opts['assignee_ids'] ?? [];
         if (! empty($fixedIds) && empty($v['assignee_id'])) {
             $v['assignee_id'] = $fixedIds[0];
@@ -439,8 +491,13 @@ class AceController extends Controller
         if ($ids !== []) {
             $out['assignee_ids'] = $ids;
         }
-        if (! empty($raw['assignor_id'])) {
-            $out['assignor_id'] = (int) $raw['assignor_id'];
+        $assignorIds = array_values(array_unique(array_filter(array_map('intval', (array) ($raw['assignor_ids'] ?? [])))));
+        if ($assignorIds === [] && ! empty($raw['assignor_id'])) {
+            $assignorIds = [(int) $raw['assignor_id']];
+        }
+        if ($assignorIds !== []) {
+            $out['assignor_ids'] = $assignorIds;
+            $out['assignor_id'] = $assignorIds[0];
         }
         $out['split'] = ! empty($raw['split']) && count($ids) > 1;
         $out['etc_minutes'] = isset($raw['etc_minutes']) && $raw['etc_minutes'] !== '' ? (int) $raw['etc_minutes'] : 10;

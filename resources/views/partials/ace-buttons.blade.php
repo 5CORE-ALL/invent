@@ -33,7 +33,7 @@
     .ace-cp-item:hover { background: #eef2ff; }
     .ace-cp-links a { font-size: .75rem; font-weight: 600; cursor: pointer; text-decoration: none; }
     .ace-pick { border: 1px solid #dbe3f3; border-radius: 8px; background: #fff; padding: 6px; }
-    #{{ $aceUid }}_alist { max-height: 140px; overflow: auto; }
+    #{{ $aceUid }}_alist, #{{ $aceUid }}_rlist { max-height: 140px; overflow: auto; }
     .ace-pick-item { display: flex; align-items: center; gap: 8px; padding: 3px 6px; margin: 0; font-size: .82rem; cursor: pointer; border-radius: 6px; }
     .ace-pick-item:hover { background: #eef2ff; }
     .ace-trow { display: flex; gap: 6px; margin-bottom: 6px; }
@@ -173,10 +173,21 @@
                         </div>
                     </div>
 
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold mb-1">Assignor(s) <span class="text-danger">*</span></label>
+                        <div class="ace-pick">
+                            <div class="d-flex gap-2 mb-1">
+                                <input type="text" class="form-control form-control-sm" id="{{ $aceUid }}_rsearch" placeholder="Search…" autocomplete="off">
+                                <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" id="{{ $aceUid }}_rall">Select all</button>
+                            </div>
+                            <div id="{{ $aceUid }}_rlist"></div>
+                        </div>
+                        <div class="ace-hint mt-1" id="{{ $aceUid }}_rcount">None selected</div>
+                    </div>
+
                     <div class="row g-2 mb-2">
-                        <div class="col-md-6"><label class="form-label mb-1 small fw-semibold">Assignor <span class="text-danger">*</span></label><select class="form-select form-select-sm" id="{{ $aceUid }}_assignor"></select></div>
-                        <div class="col-md-3"><label class="form-label mb-1 small fw-semibold">ETC (min) <span class="text-danger">*</span></label><input type="number" class="form-control form-control-sm" id="{{ $aceUid }}_etc" min="0" max="100000" value="10"></div>
-                        <div class="col-md-3"><label class="form-label mb-1 small fw-semibold">Corrective Action</label>
+                        <div class="col-md-6"><label class="form-label mb-1 small fw-semibold">ETC (min) <span class="text-danger">*</span></label><input type="number" class="form-control form-control-sm" id="{{ $aceUid }}_etc" min="0" max="100000" value="10"></div>
+                        <div class="col-md-6"><label class="form-label mb-1 small fw-semibold">Corrective Action</label>
                             <label for="{{ $aceUid }}_ca" class="d-flex align-items-center gap-2 mb-0 border rounded px-2 bg-white" style="height:31px;cursor:pointer;">
                                 <input type="checkbox" class="form-check-input m-0" id="{{ $aceUid }}_ca">
                                 <img src="{{ asset('assets/images/task-ca-icon.png') }}" alt="" style="width:20px;height:20px;object-fit:contain;"> <span class="small">CA</span>
@@ -608,6 +619,26 @@
         $('splitWrap').classList.toggle('d-none', n < 2);
         autoName();
     }
+    // ---- assignor multi-picker (several assignors = each gets their own copy of the task) ----
+    function buildAssignors() {
+        // Like the task manager: only task admins can pick other assignors; everyone else is the assignor.
+        var users = meta.users.filter(function (u) { return meta.is_admin || u.id === meta.me; });
+        $('rlist').innerHTML = users.map(function (u) {
+            return '<label class="ace-pick-item" data-name="' + esc(u.name.toLowerCase()) + '"><input type="checkbox" class="form-check-input m-0 ace-r" value="' + u.id + '"' +
+                (u.id === meta.me ? ' checked' : '') + (meta.is_admin ? '' : ' disabled') + '> <span>' + esc(u.name) + '</span></label>';
+        }).join('');
+        $('rsearch').value = '';
+        $('rall').style.display = meta.is_admin ? '' : 'none';
+        $('rsearch').parentNode.style.display = meta.is_admin ? '' : 'none';
+        syncAssignors();
+    }
+    function readAssignors() {
+        return Array.prototype.map.call($('rlist').querySelectorAll('.ace-r:checked'), function (c) { return parseInt(c.value, 10); });
+    }
+    function syncAssignors() {
+        var n = readAssignors().length;
+        $('rcount').textContent = n ? n + ' selected' : 'None selected';
+    }
     function readTFreq() {
         return Array.prototype.map.call($('newModal').querySelectorAll('.ace-tfreq:checked'), function (c) { return c.value; });
     }
@@ -615,10 +646,7 @@
 
     function fillForm() {
         buildAssignees();
-        // Like the task manager: only task admins can pick another assignor; everyone else is the assignor.
-        $('assignor').innerHTML = meta.users.filter(function (u) { return meta.is_admin || u.id === meta.me; }).map(function (u) { return opt(u.id, u.name); }).join('');
-        $('assignor').disabled = !meta.is_admin;
-        if (meta.me) $('assignor').value = String(meta.me);
+        buildAssignors();
         var modes = opt('fixed', 'A specific person');
         if (PAGE === 'users') modes += opt('row_user', 'The person in the row');
         $('amode').innerHTML = modes;
@@ -716,7 +744,9 @@
         var ids = o.assignee_ids && o.assignee_ids.length ? o.assignee_ids : (f.assignee_id ? [f.assignee_id] : []);
         $('alist').querySelectorAll('.ace-a').forEach(function (c) { c.checked = ids.indexOf(parseInt(c.value, 10)) !== -1; });
         (o.split ? $('ss') : $('sj')).checked = true;
-        if (o.assignor_id && Array.prototype.some.call($('assignor').options, function (x) { return x.value === String(o.assignor_id); })) $('assignor').value = String(o.assignor_id);
+        var rids = o.assignor_ids && o.assignor_ids.length ? o.assignor_ids : (o.assignor_id ? [o.assignor_id] : []);
+        if (rids.length && meta.is_admin) $('rlist').querySelectorAll('.ace-r').forEach(function (c) { c.checked = rids.indexOf(parseInt(c.value, 10)) !== -1; });
+        syncAssignors();
         $('etc').value = o.etc_minutes != null ? o.etc_minutes : 10;
         $('ca').checked = !!o.is_corrective_action;
         var tf = o.task_frequency && o.task_frequency.length ? o.task_frequency : ['one_time'];
@@ -765,7 +795,7 @@
         body.assignee_id = assignees[0] || null;
         var opts = {
             titles: readTitles(), assignee_ids: assignees, split: assignees.length > 1 && $('ss').checked,
-            assignor_id: $('assignor').value || null, etc_minutes: parseInt($('etc').value, 10),
+            assignor_ids: readAssignors(), etc_minutes: parseInt($('etc').value, 10),
             is_corrective_action: $('ca').checked, task_frequency: readTFreq()
         };
         if (isNaN(opts.etc_minutes)) opts.etc_minutes = 10;
@@ -782,7 +812,7 @@
         }
         if (!body.task_title) return showErr('Enter the task.');
         if ($('amode').value === 'fixed' && !assignees.length) return showErr('Select at least one assignee.');
-        if (!opts.assignor_id) return showErr('Select the assignor.');
+        if (!opts.assignor_ids.length) return showErr('Select at least one assignor.');
         if (!opts.task_frequency.length) return showErr('Pick at least one task frequency (One Time, Daily, Weekly or Monthly).');
         var btn = $('save'); btn.disabled = true;
         (editing ? post(URLS.base + '/' + editing.id, body, 'PUT') : post(URLS.store, body)).then(function (d) {
@@ -937,6 +967,17 @@
         var all = vis.every(function (l) { return l.querySelector('input').checked; });
         vis.forEach(function (l) { l.querySelector('input').checked = !all; });
         syncAssign();
+    });
+    $('rlist').addEventListener('change', syncAssignors);
+    $('rsearch').addEventListener('input', function () {
+        var q = this.value.trim().toLowerCase();
+        $('rlist').querySelectorAll('.ace-pick-item').forEach(function (l) { l.style.display = !q || l.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none'; });
+    });
+    $('rall').addEventListener('click', function () {
+        var vis = Array.prototype.filter.call($('rlist').querySelectorAll('.ace-pick-item'), function (l) { return l.style.display !== 'none'; });
+        var all = vis.every(function (l) { return l.querySelector('input').checked; });
+        vis.forEach(function (l) { l.querySelector('input').checked = !all; });
+        syncAssignors();
     });
     $('moreBtn').addEventListener('click', function () {
         var hidden = $('more').classList.toggle('d-none');

@@ -8236,6 +8236,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // ATE (Auto Task Event): rules that create one-time tasks from a page column and/or a chat keyword
     Route::get('/ace/meta', [\App\Http\Controllers\AceController::class, 'meta'])->name('ace.meta');
     Route::get('/ace', [\App\Http\Controllers\AceController::class, 'index'])->name('ace.index');
+    Route::get('/ace/all', [\App\Http\Controllers\AceController::class, 'all'])->name('ace.all');
     Route::get('/ace/badge-rules', [\App\Http\Controllers\AceController::class, 'badgeRules'])->name('ace.badge.rules');
     Route::post('/ace/{id}/badge-fire', [\App\Http\Controllers\AceController::class, 'badgeFire'])->whereNumber('id')->name('ace.badge.fire');
     Route::post('/ace/preview', [\App\Http\Controllers\AceController::class, 'preview'])->name('ace.preview');

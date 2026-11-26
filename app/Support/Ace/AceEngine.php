@@ -535,7 +535,16 @@ class AceEngine
         if ($assignees === []) {
             throw new \RuntimeException('No assignee could be resolved for this rule.');
         }
-        $assignor = (! empty($opt['assignor_id']) ? User::query()->find((int) $opt['assignor_id']) : null) ?? $creator ?? $assignees[0];
+        // Several assignors: each one gets their own copy of the task(s) (a task has a single assignor).
+        $assignorIds = ! empty($opt['assignor_ids']) ? (array) $opt['assignor_ids'] : (! empty($opt['assignor_id']) ? [$opt['assignor_id']] : []);
+        $assignors = $assignorIds === []
+            ? []
+            : User::query()->whereIn('id', array_map('intval', $assignorIds))->get()
+                ->sortBy(fn ($u) => array_search((int) $u->id, array_map('intval', $assignorIds), true))->values()->all();
+        if ($assignors === []) {
+            $assignors = [$creator ?? $assignees[0]];
+        }
+        $assignor = $assignors[0];
 
         $r = fn (string $key) => mb_substr(self::render((string) ($opt[$key] ?? ''), $vars), 0, 2048);
         $link1 = mb_substr(self::render((string) ($ace->task_link ?? ''), $vars), 0, 2048);
@@ -604,21 +613,25 @@ class AceEngine
         $joinedEmails = implode(', ', array_map(fn ($u) => $u->email, $assignees));
         $created = [];
 
-        if ($includeOneTime) {
-            foreach ($titles as $title) {
-                if ($split) {
-                    foreach ($assignees as $person) {
-                        $created[] = self::saveTask(array_merge($base, ['title' => $title, 'assign_to' => $person->email, 'split_tasks' => 1]));
+        foreach ($assignors as $assignor) {
+            $base['assignor'] = $assignor->email;
+
+            if ($includeOneTime) {
+                foreach ($titles as $title) {
+                    if ($split) {
+                        foreach ($assignees as $person) {
+                            $created[] = self::saveTask(array_merge($base, ['title' => $title, 'assign_to' => $person->email, 'split_tasks' => 1]));
+                        }
+                    } else {
+                        $created[] = self::saveTask(array_merge($base, ['title' => $title, 'assign_to' => $joinedEmails]));
                     }
-                } else {
-                    $created[] = self::saveTask(array_merge($base, ['title' => $title, 'assign_to' => $joinedEmails]));
                 }
             }
-        }
 
-        if ($recurring !== [] && Schema::hasTable('automate_tasks')) {
-            foreach ($recurring as $freq) {
-                self::scheduleRecurring($freq, $titles, $assignees, $split, $joinedEmails, $assignor->email, $base, $links, $description, $etc ?: 10, $priority, $ace->task_group ?: null);
+            if ($recurring !== [] && Schema::hasTable('automate_tasks')) {
+                foreach ($recurring as $freq) {
+                    self::scheduleRecurring($freq, $titles, $assignees, $split, $joinedEmails, $assignor->email, $base, $links, $description, $etc ?: 10, $priority, $ace->task_group ?: null);
+                }
             }
         }
 
@@ -678,6 +691,7 @@ class AceEngine
         foreach ($titles as $title) {
             foreach ($targets as [$email, $isSplit]) {
                 $exists = DB::table('automate_tasks')->where('title', $title)->where('assign_to', $email)->where('schedule_type', $freq)
+                    ->where('assignor', $assignorEmail)
                     ->when($group, fn ($q) => $q->where('group', $group), fn ($q) => $q->whereNull('group'))->exists();
                 if (! $exists) {
                     DB::table('automate_tasks')->insert($tpl + ['title' => $title, 'assign_to' => $email, 'split_tasks' => $isSplit]);

@@ -1190,6 +1190,9 @@
                             <li class="nav-item">
                                 <a class="nav-link" href="#" data-view="archived"><i class="mdi mdi-archive me-1"></i>Archived Automated <span class="badge bg-secondary" id="archived-count-badge">0</span></a>
                             </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" data-view="ate" title="Auto Task Event rules: tasks that are created automatically when something happens on a page"><i class="mdi mdi-lightning-bolt me-1"></i>ATE <span class="badge bg-secondary" id="ate-count-badge">0</span></a>
+                            </li>
                         </ul>
 
                         <div id="automated-active-pane">
@@ -1197,6 +1200,47 @@
                             <div id="tasks-table"></div>
                         </div>
                         </div> <!-- end automated-active-pane -->
+
+                        <div id="automated-ate-pane" style="display:none;">
+                            <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
+                                <input type="text" id="ate-filter-search" class="form-control form-control-sm" placeholder="Quick search ATE (rule, page, condition, task, group, assignee, owner)" style="max-width: 420px;" autocomplete="off">
+                                <select id="ate-filter-status" class="form-select form-select-sm" style="max-width: 140px;">
+                                    <option value="">All</option>
+                                    <option value="active">Active</option>
+                                    <option value="paused">Paused</option>
+                                </select>
+                                <span class="small text-muted" id="ate-shown-text"></span>
+                                <button type="button" class="btn btn-sm btn-warning ms-auto" id="ate-refresh-btn" title="Reload ATE rules">
+                                    <i class="mdi mdi-refresh"></i>
+                                </button>
+                            </div>
+                            <div class="table-responsive" style="max-height: calc(100vh - 330px); overflow: auto;">
+                                <table class="table table-sm table-hover align-middle mb-0" id="ate-table" style="font-size: 12.5px;">
+                                    <thead style="position: sticky; top: 0; background: #eef2f7; z-index: 1;">
+                                        <tr>
+                                            <th>Status</th>
+                                            <th>ATE rule</th>
+                                            <th>Page</th>
+                                            <th>When</th>
+                                            <th>Checked</th>
+                                            <th>Creates task</th>
+                                            <th>Group</th>
+                                            <th>Assignee</th>
+                                            <th>Priority</th>
+                                            <th>Due</th>
+                                            <th>Task type</th>
+                                            <th class="text-center">Tasks created</th>
+                                            <th>Last run</th>
+                                            <th>Owner</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ate-table-body">
+                                        <tr><td colspan="14" class="text-center text-muted py-4">Open this tab to load the ATE rules.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="small text-muted mt-2"><i class="mdi mdi-information-outline me-1"></i>Rules are created and edited with the "+ ATE" / "ATE" buttons on the page they watch.</div>
+                        </div>
 
                         <div id="automated-archived-pane" style="display:none;">
                             <div class="d-flex align-items-center gap-2 mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
@@ -3039,18 +3083,118 @@
                 var view = $(this).data('view');
                 $('#automated-view-tabs a').removeClass('active');
                 $(this).addClass('active');
-                if (view === 'archived') {
+                if (view === 'ate') {
+                    $('#automated-active-pane').hide();
+                    $('#automated-archived-pane').hide();
+                    $('#automated-filter-bar').hide();
+                    $('#automated-ate-pane').show();
+                    loadAteRules(false);
+                    $('#ate-filter-search').trigger('focus');
+                } else if (view === 'archived') {
+                    $('#automated-ate-pane').hide();
                     $('#automated-active-pane').hide();
                     $('#automated-filter-bar').hide();
                     $('#automated-archived-pane').show();
                     archivedTable.redraw(true);
                 } else {
+                    $('#automated-ate-pane').hide();
                     $('#automated-archived-pane').hide();
                     $('#automated-filter-bar').css('display', '');
                     $('#automated-active-pane').show();
                     table.redraw(true);
                 }
             });
+
+            // ===== ATE (Auto Task Event) rules on the Automated Tasks page =====
+            var ateRules = [];
+            var ateLoaded = false;
+            var ateLoading = false;
+
+            function ateEsc(s) {
+                return $('<div>').text(s == null ? '' : String(s)).html();
+            }
+
+            function ateHaystack(r) {
+                return [r.name, r.page_label, r.condition, r.task_title, r.task_group, r.assignee,
+                    r.owner, r.priority, r.task_frequency, r.frequency, r.task_extras]
+                    .join(' ').toLowerCase();
+            }
+
+            function renderAteRules() {
+                var q = ($('#ate-filter-search').val() || '').toLowerCase().trim();
+                var words = q ? q.split(/\s+/) : [];
+                var status = $('#ate-filter-status').val();
+                var rows = ateRules.filter(function (r) {
+                    if (status === 'active' && !r.is_active) return false;
+                    if (status === 'paused' && r.is_active) return false;
+                    var hay = ateHaystack(r);
+                    return words.every(function (w) { return hay.indexOf(w) !== -1; });
+                });
+
+                var html = '';
+                rows.forEach(function (r) {
+                    var badge = r.is_active
+                        ? '<span class="badge bg-success">Active</span>'
+                        : '<span class="badge bg-secondary">Paused</span>';
+                    var failed = r.failed ? ' <span class="badge bg-danger" title="Failed runs">' + r.failed + ' failed</span>' : '';
+                    var recent = (r.recent || []).map(function (x) {
+                        return (x.at || '') + ' · ' + (x.label || '') + ' · ' + x.status + (x.error ? ' (' + x.error + ')' : '');
+                    }).join('\n');
+                    html += '<tr' + (r.is_active ? '' : ' style="opacity:.65"') + '>' +
+                        '<td>' + badge + '</td>' +
+                        '<td><strong>' + ateEsc(r.name) + '</strong>' + (r.mine ? ' <span class="badge bg-light text-dark border">mine</span>' : '') + '</td>' +
+                        '<td>' + ateEsc(r.page_label) + '</td>' +
+                        '<td style="min-width:220px;">' + ateEsc(r.condition || (r.trigger_type === 'badge' ? 'Badge number' : '—')) + '</td>' +
+                        '<td>' + ateEsc(r.frequency) + '</td>' +
+                        '<td style="min-width:180px;">' + ateEsc(r.task_title) + '</td>' +
+                        '<td>' + ateEsc(r.task_group) + '</td>' +
+                        '<td>' + ateEsc(r.assignee) + '</td>' +
+                        '<td>' + ateEsc(r.priority) + '</td>' +
+                        '<td>' + (r.due_in_days != null ? ateEsc(r.due_in_days) + ' d' : '') + '</td>' +
+                        '<td>' + ateEsc(r.task_frequency) + '</td>' +
+                        '<td class="text-center" title="' + ateEsc(recent) + '"><strong>' + (r.tasks_created || 0) + '</strong>' + failed + '</td>' +
+                        '<td>' + ateEsc(r.last_run_at || '—') + '</td>' +
+                        '<td>' + ateEsc(r.owner) + '</td>' +
+                        '</tr>';
+                });
+                if (!html) {
+                    html = '<tr><td colspan="14" class="text-center text-muted py-4">' +
+                        (ateLoaded ? 'No ATE rules match.' : 'Loading…') + '</td></tr>';
+                }
+                $('#ate-table-body').html(html);
+                $('#ate-shown-text').text(ateLoaded ? (rows.length + ' of ' + ateRules.length + ' rules') : '');
+            }
+
+            function loadAteRules(force) {
+                if (ateLoading || (ateLoaded && !force)) {
+                    renderAteRules();
+                    return;
+                }
+                ateLoading = true;
+                renderAteRules();
+                $.ajax({
+                    url: "{{ route('ace.all') }}",
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function (res) {
+                        ateRules = (res && res.rules) || [];
+                        ateLoaded = true;
+                        $('#ate-count-badge').text(ateRules.length);
+                        renderAteRules();
+                    },
+                    error: function (xhr) {
+                        var msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Could not load ATE rules.';
+                        $('#ate-table-body').html('<tr><td colspan="14" class="text-center text-danger py-4">' + ateEsc(msg) + '</td></tr>');
+                    },
+                    complete: function () { ateLoading = false; }
+                });
+            }
+
+            $('#ate-filter-search').on('input', renderAteRules);
+            $('#ate-filter-status').on('change', renderAteRules);
+            $('#ate-refresh-btn').on('click', function () { loadAteRules(true); });
+            // Load once in the background so the tab's count badge is right straight away.
+            loadAteRules(false);
 
             function restoreAutomatedTasks(ids) {
                 if (!ids || !ids.length) return;
