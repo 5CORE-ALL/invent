@@ -255,6 +255,7 @@
     }
 
     function ensureSpColumnInTable(modal, table) {
+        if (table && table.getAttribute && table.getAttribute('data-skip-sp-col') === '1') return false;
         if (!modal || !table || !isCompetitorTable(table) || tableHasSpColumn(table)) return false;
 
         var headerRow = table.tHead.querySelector('tr');

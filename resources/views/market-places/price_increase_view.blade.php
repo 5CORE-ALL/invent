@@ -12393,6 +12393,30 @@
             return { ratingCell: ratingCell, reviewsCell: reviewsCell };
         }
 
+        /** Our own selling price on a channel (OV L30 breakdown first, then the main grid row). 0 when we do not sell there. */
+        function getLmpSellingPrice(sku, channel) {
+            const ch = String(channel || '').toLowerCase();
+            const aliases = {
+                amazon: ['amazon', 'fba'],
+                ebay: ['ebay', 'ebay1', 'ebayone'],
+                temu: ['temu', 'temu2'],
+                bestbuy: ['bestbuy', 'bestbuyusa'],
+                macy: ['macy', 'macys'],
+                tiktok: ['tiktok', 'tiktok2', 'tiktok 2']
+            };
+            const names = aliases[ch] || [ch];
+            if (Array.isArray(ovl30ModalData)) {
+                const hit = ovl30ModalData.find(function(item) {
+                    return names.indexOf(String(item.marketplace || '').toLowerCase()) !== -1 && parseFloat(item.price) > 0;
+                });
+                if (hit) return parseFloat(hit.price) || 0;
+            }
+            if (ch === 'amazon' || ch === 'ebay' || ch === 'temu') {
+                try { return parseFloat(getLmpOurListing(sku, ch).price) || 0; } catch (e) { return 0; }
+            }
+            return 0;
+        }
+
         function buildLmpFiveCoreRowHtml(our) {
             const price = parseFloat(our.price) || 0;
             if (!(price > 0)) return '';
@@ -12418,6 +12442,7 @@
                 + '<td class="lmp-ch-cell">' + chIcon + '</td>'
                 + '<td class="lmp-img-cell">' + thumb + '</td>'
                 + '<td>' + priceCell + '</td>'
+                + '<td class="text-center fw-bold">$' + price.toFixed(2) + '</td>'
                 + '<td class="text-center">' + rr.ratingCell + '</td>'
                 + '<td class="text-center">' + rr.reviewsCell + '</td>'
                 + '<td><span class="badge bg-primary">Ours</span></td>'
@@ -12600,7 +12625,7 @@
             toolbar += '</div>';
             html += toolbar;
 
-            html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light">'
+            html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm" data-skip-sp-col="1"><thead class="table-light">'
                 + '<tr>'
                 + '<th class="text-center" style="width:36px;" title="Select for bulk delete">'
                 + '<input type="checkbox" class="form-check-input" id="lmp-select-all-cb" title="Select all">'
@@ -12609,6 +12634,7 @@
                 + '<th class="text-center" title="Channel">Ch</th>'
                 + '<th class="text-center" title="Competitor product image">Image</th>'
                 + '<th>Price</th>'
+                + '<th class="text-center" style="width:78px;" title="Our selling price on this channel">Selling Price</th>'
                 + '<th title="Amz competitor star rating (SerpApi / Jungle Scout for Ours)">Rating</th>'
                 + '<th title="Amz review count">Reviews</th>'
                 + '<th>Del</th>'
@@ -12620,6 +12646,7 @@
             let fiveCoreInserted = false;
             const ourPrice = parseFloat(ourListing.price) || 0;
             let lIndex = 0;
+            const sellPriceByChannel = {};
 
             rows.forEach(function(row) {
                 const rankVal = lmpRankValue(row) || row.price;
@@ -12645,6 +12672,9 @@
                     + '<span style="font-weight:600;">$' + row.price.toFixed(2) + '</span>'
                     + linkHtml
                     + '</div>';
+                if (!(row.channel in sellPriceByChannel)) sellPriceByChannel[row.channel] = getLmpSellingPrice(sku, row.channel);
+                const sellVal = sellPriceByChannel[row.channel];
+                const sellCell = sellVal > 0 ? ('$' + sellVal.toFixed(2)) : '<span class="text-muted">-</span>';
                 const rrCells = formatLmpRatingReviewsCells(row.rating, row.reviews);
                 const ratingCell = rrCells.ratingCell;
                 const reviewsCell = rrCells.reviewsCell;
@@ -12711,6 +12741,7 @@
                     + '<td class="lmp-ch-cell">' + lmpChannelIconHtml(row.channel) + '</td>'
                     + '<td class="lmp-img-cell">' + thumb + '</td>'
                     + '<td>' + priceCell + '</td>'
+                    + '<td class="text-center fw-bold">' + sellCell + '</td>'
                     + '<td>' + ratingCell + '</td>'
                     + '<td>' + reviewsCell + '</td>'
                     + '<td>' + deliveryCell + '</td>'
