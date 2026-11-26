@@ -200,6 +200,88 @@
             width: 100%;
             max-width: 100%;
         }
+
+        /* ===== Gen Z look: soft gradients, big rounded cards, glowing dots ===== */
+        .ml-genz { --ml-violet: #7c3aed; --ml-pink: #ff3d81; --ml-blue: #3b82f6; --ml-ink: #1e1b4b; }
+        .ml-genz .card {
+            border: 0; border-radius: 24px; overflow: hidden;
+            background: linear-gradient(180deg, #ffffff 0%, #faf8ff 100%);
+            box-shadow: 0 18px 50px -20px rgba(124, 58, 237, .35), 0 2px 10px rgba(30, 27, 75, .05);
+        }
+        .ml-genz .ml-hero { padding: 18px 20px 6px; }
+        .ml-stat {
+            position: relative; display: inline-flex; align-items: center; gap: 14px;
+            padding: 14px 20px 14px 22px; border-radius: 20px; color: #fff; cursor: default;
+            box-shadow: 0 14px 30px -14px var(--ml-glow, rgba(124, 58, 237, .6));
+            transition: transform .18s ease, box-shadow .18s ease;
+            background: var(--ml-bg);
+        }
+        .ml-stat:hover { transform: translateY(-3px) rotate(-.4deg); }
+        .ml-stat--a { --ml-bg: linear-gradient(135deg, #ff3d81 0%, #ff8a3d 100%); --ml-glow: rgba(255, 61, 129, .65); }
+        .ml-stat--b { --ml-bg: linear-gradient(135deg, #7c3aed 0%, #3b82f6 100%); --ml-glow: rgba(124, 58, 237, .65); }
+        .ml-stat.is-active { outline: 3px solid rgba(30, 27, 75, .85); outline-offset: 3px; }
+        .ml-stat-text { display: flex; flex-direction: column; line-height: 1.05; }
+        .ml-stat-label { font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; opacity: .9; }
+        .ml-stat-num { font-size: 2.1rem; font-weight: 800; letter-spacing: -.02em; }
+        .ml-dot {
+            width: 14px; height: 14px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; flex: none;
+            background: #fff; box-shadow: 0 0 0 0 rgba(255, 255, 255, .7); animation: ml-pulse 1.8s infinite;
+        }
+        .ml-dot:hover { transform: scale(1.35); }
+        .ml-dot-cell {
+            display: inline-block; width: 10px; height: 10px; margin-left: 7px; border-radius: 50%; cursor: pointer;
+            vertical-align: middle; background: var(--dot, #7c3aed);
+            box-shadow: 0 0 0 0 var(--dot, #7c3aed); animation: ml-pulse-cell 2.2s infinite;
+            transition: transform .15s ease;
+        }
+        .ml-dot-cell:hover { transform: scale(1.5); }
+        @keyframes ml-pulse { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.75); } 70% { box-shadow: 0 0 0 11px rgba(255,255,255,0); } 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); } }
+        @keyframes ml-pulse-cell { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--dot, #7c3aed) 55%, transparent); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+        .ml-genz #ml-refresh-all-btn {
+            border: 0; border-radius: 999px; padding: 9px 18px; font-weight: 700; color: #fff;
+            background: linear-gradient(135deg, #7c3aed, #ff3d81); box-shadow: 0 10px 22px -10px rgba(124, 58, 237, .8);
+            transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .ml-genz #ml-refresh-all-btn:hover { transform: translateY(-2px); box-shadow: 0 14px 26px -10px rgba(255, 61, 129, .8); }
+        .ml-genz #ml-refresh-all-details { color: var(--ml-violet); font-weight: 700; text-decoration: none; }
+        .ml-genz .ml-search-wrap { padding: 12px 20px 14px; background: transparent !important; border: 0 !important; }
+        .ml-genz #missing-listing-search {
+            border-radius: 999px; border: 2px solid #ede9fe; padding: 9px 18px; font-size: .9rem; background: #fff;
+            box-shadow: 0 6px 18px -12px rgba(124, 58, 237, .6); transition: border-color .15s ease, box-shadow .15s ease;
+        }
+        .ml-genz #missing-listing-search:focus { border-color: var(--ml-violet); box-shadow: 0 0 0 4px rgba(124, 58, 237, .15); outline: 0; }
+        .ml-genz #missing-listing-table { padding: 0 14px 14px; }
+        .ml-genz .tabulator { border: 0; background: transparent; border-radius: 18px; font-size: 13px; }
+        .ml-genz .tabulator .tabulator-header {
+            border: 0; border-radius: 16px; background: linear-gradient(135deg, #ede9fe 0%, #fce7f3 100%); color: var(--ml-ink);
+        }
+        .ml-genz .tabulator .tabulator-header .tabulator-col { background: transparent; border-right: 0; }
+        .ml-genz .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+        }
+        .ml-genz .tabulator .tabulator-header .tabulator-col.tabulator-col-group { background: rgba(255, 255, 255, .45); }
+        .ml-genz .tabulator .tabulator-tableholder { background: transparent; }
+        .ml-genz .tabulator .tabulator-row { background: #fff; border: 0; border-bottom: 1px solid #f1ecff; transition: background-color .12s ease; }
+        .ml-genz .tabulator .tabulator-row.tabulator-row-even { background: #fbfaff; }
+        .ml-genz .tabulator .tabulator-row:hover { background: #f3edff; }
+        .ml-genz .tabulator .tabulator-row .tabulator-cell { border-right: 0; }
+        .ml-genz .tabulator .tabulator-footer { border: 0; background: transparent; }
+        .ml-genz .tabulator .tabulator-footer .tabulator-page { border-radius: 999px; border: 0; background: #f3f0ff; margin: 0 2px; }
+        .ml-genz .tabulator .tabulator-footer .tabulator-page.active { background: linear-gradient(135deg, #7c3aed, #ff3d81); color: #fff; }
+        .ml-genz .tabulator .tabulator-footer .tabulator-calcs-holder { background: transparent; border: 0; }
+        .ml-genz .ml-mode-select, .ml-genz .variation-single-select { border-radius: 999px; }
+        .ml-genz .ml-source-api, .ml-genz .ml-source-csv, .ml-genz .ml-source-sheet {
+            display: inline-block; padding: 2px 12px; border-radius: 999px; font-size: 11px; letter-spacing: .04em;
+        }
+        .ml-genz .ml-source-api { background: #dcfce7; color: #15803d; }
+        .ml-genz .ml-source-csv { background: #dbeafe; color: #1d4ed8; }
+        .ml-genz .ml-source-sheet { background: #f1f5f9; color: #64748b; }
+        .ml-genz .ml-csv-upload-btn, .ml-genz .ml-master-listing-btn { border-radius: 999px; font-weight: 700; }
+        .ml-genz .ml-channel-logo, .ml-genz .ml-channel-logo-placeholder { border-radius: 10px; }
+        .ml-genz #missing-listing-table .ml-head-count { color: var(--ml-violet); }
+        #mlMetricChartModal .modal-content { border: 0; box-shadow: 0 30px 80px -20px rgba(124, 58, 237, .5); }
+        #mlMetricChartModal .modal-header { background: linear-gradient(135deg, #7c3aed 0%, #ff3d81 100%) !important; }
+        #mlMetricChartModal #mlChartRefPanel { border-radius: 0 16px 16px 0; background: #faf8ff; }
     </style>
 @endsection
 
@@ -211,17 +293,24 @@
 
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080;"></div>
 
-    <div class="row">
+    <div class="row ml-genz">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat ml-mode-badge" id="stat-missing-listing" data-metric="missing_l" title="Missing L = 0: every REQ SKU not listed, including the ones with 0 inventory. Same count as the Missing L = 0 badge on each listing page." style="background-color:#a71d2a !important;">
-                        Missing L = 0: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
-                        <i class="fas fa-circle ml-overall-chart-dot ms-1" title="View overall history" style="cursor:pointer;color:#fff;font-size:10px;vertical-align:middle;"></i>
-                    </span>
-                    <span class="badge bg-danger badge-ml-stat ml-mode-badge is-active" id="stat-missing-listing-inv" data-metric="missing_l_inv" title="Missing L > 0: REQ SKUs not listed that have inventory (INV above 0). Same count as the sidebar and the Missing L > 0 badge on each listing page." style="background-color:#a71d2a !important;">
-                        Missing L > 0: <span id="total-missing-listing-inv">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingLInv(true)) }}</span>
-                    </span>
+            <div class="card-body ml-hero">
+                <div class="d-flex align-items-center flex-wrap gap-3">
+                    <div class="ml-stat ml-stat--a ml-mode-badge" id="stat-missing-listing" data-metric="missing_l" title="Missing L = 0: every REQ SKU not listed, including the ones with 0 inventory. Same count as the Missing L = 0 badge on each listing page.">
+                        <span class="ml-stat-text">
+                            <span class="ml-stat-label">Missing L = 0</span>
+                            <span class="ml-stat-num" id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
+                        </span>
+                        <button type="button" class="ml-dot ml-overall-chart-dot" data-metric="missing_l" title="Show graph" aria-label="Show Missing L = 0 graph"></button>
+                    </div>
+                    <div class="ml-stat ml-stat--b ml-mode-badge is-active" id="stat-missing-listing-inv" data-metric="missing_l_inv" title="Missing L > 0: REQ SKUs not listed that have inventory (INV above 0). Same count as the sidebar and the Missing L > 0 badge on each listing page.">
+                        <span class="ml-stat-text">
+                            <span class="ml-stat-label">Missing L &gt; 0</span>
+                            <span class="ml-stat-num" id="total-missing-listing-inv">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingLInv(true)) }}</span>
+                        </span>
+                        <button type="button" class="ml-dot ml-overall-chart-dot" data-metric="missing_l_inv" title="Show graph" aria-label="Show Missing L &gt; 0 graph"></button>
+                    </div>
                     @unless($c2c)
                         <button type="button" class="btn btn-sm btn-primary" id="ml-refresh-all-btn" title="Recount Missing L for every marketplace from the data in the app, the same numbers each listing page shows. Nothing is fetched from the marketplaces.">
                             <i class="fas fa-sync-alt me-1"></i>Refresh all Missing L now
@@ -232,11 +321,11 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <div class="p-2 bg-light border-bottom">
+                <div class="ml-search-wrap">
                     <input type="text" id="missing-listing-search" class="form-control form-control-sm" placeholder="Search by Channel...">
                     <input type="file" id="ml-sheet-csv-input" accept=".csv,text/csv,text/plain" hidden>
                 </div>
-                <div id="missing-listing-table" style="height: calc(100vh - 280px);"></div>
+                <div id="missing-listing-table" style="height: calc(100vh - 300px);"></div>
             </div>
         </div>
     </div>
@@ -386,8 +475,9 @@
                 const listingUrl = String(row.listing_url || '').trim();
                 const color = v === 0 ? '#198754' : '#dc3545';
                 const dotColor = v === 0 ? '#198754' : (v > 0 ? '#dc3545' : '#6c757d');
+                const metric = field === 'missing_listing_inv' ? 'missing_l_inv' : 'missing_l';
                 const chartIcon = withChart
-                    ? `<i class="fas fa-circle ml-metric-chart-icon ms-1" data-channel="${escapeHtml(channel)}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`
+                    ? `<span class="ml-dot-cell ml-metric-chart-icon" data-channel="${escapeHtml(channel)}" data-metric="${metric}" style="--dot:${dotColor};" title="Show graph"></span>`
                     : '';
                 const countHtml = listingUrl
                     ? `<a href="${escapeHtml(listingUrl)}?missing=${linkParam}" class="ml-channel-listing-link" style="color:${color};font-weight:600;" title="Open Missing L SKUs">${v.toLocaleString('en-US')}</a>`
@@ -399,7 +489,7 @@
                 if (!icon) return;
                 e.stopPropagation();
                 const channel = icon.getAttribute('data-channel') || cell.getRow().getData().channel;
-                showMlMetricChart(channel, Number(cell.getValue() || 0));
+                showMlMetricChart(channel, Number(cell.getValue() || 0), icon.getAttribute('data-metric') || 'missing_l');
             },
             bottomCalc: function(values, data) {
                 return (data || []).reduce(function(sum, row) {
@@ -480,20 +570,26 @@
         return Math.round(Number(v || 0)).toLocaleString('en-US');
     }
 
-    function showMlMetricChart(channel, cellValue) {
+    function mlMetricName() {
+        return mlCurrentMetricKey === 'missing_l_inv' ? 'Missing L > 0' : 'Missing L = 0';
+    }
+
+    function mlChartTitle(days) {
+        const who = mlCurrentChartDisplayChannel === 'All' ? '' : (mlCurrentChartDisplayChannel + ' · ');
+        return `${who}${mlMetricName()} (Rolling ${mlChartRangeLabel(days)}, California)`;
+    }
+
+    function showMlMetricChart(channel, cellValue, metric) {
         mlCurrentChartDisplayChannel = String(channel || 'All');
         mlCurrentChartChannel = mlCurrentChartDisplayChannel;
-        mlCurrentMetricKey = 'missing_l';
+        mlCurrentMetricKey = metric === 'missing_l_inv' ? 'missing_l_inv' : 'missing_l';
         mlCurrentChartDays = 32;
         mlCurrentBadgeValue = (cellValue !== undefined && cellValue !== null && cellValue !== '' && !isNaN(cellValue))
             ? cellValue
             : null;
 
         $('#mlChartRangeSelect').val('32');
-        const label = mlCurrentChartDisplayChannel === 'All'
-            ? mlPageTitle
-            : (mlCurrentChartDisplayChannel + ' - ' + mlPageTitle);
-        $('#mlChartModalTitle').text(`${label} (Rolling ${mlChartRangeLabel(mlCurrentChartDays)}, California)`);
+        $('#mlChartModalTitle').text(mlChartTitle(mlCurrentChartDays));
 
         const modal = new bootstrap.Modal(document.getElementById('mlMetricChartModal'));
         modal.show();
@@ -616,11 +712,11 @@
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Missing Listing',
+                    label: mlMetricName(),
                     data: values,
-                    backgroundColor: 'rgba(108,117,125,0.08)',
-                    borderColor: '#adb5bd',
-                    borderWidth: 1.5,
+                    backgroundColor: 'rgba(124,58,237,0.10)',
+                    borderColor: '#8b5cf6',
+                    borderWidth: 2.5,
                     fill: true,
                     tension: 0.3,
                     pointRadius: 3,
@@ -768,21 +864,19 @@
     $(document).ready(function() {
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
-        $('#stat-missing-listing').on('click', '.ml-overall-chart-dot', function(e) {
+        $('#stat-missing-listing, #stat-missing-listing-inv').on('click', '.ml-overall-chart-dot', function(e) {
             e.stopPropagation();
-            const badgeText = $('#total-missing-listing').text().replace(/[,$%]/g, '').trim();
+            const inv = $(this).data('metric') === 'missing_l_inv';
+            const badgeText = $(inv ? '#total-missing-listing-inv' : '#total-missing-listing').text().replace(/[,$%]/g, '').trim();
             const badgeValue = parseFloat(badgeText);
-            showMlMetricChart('All', isNaN(badgeValue) ? null : badgeValue);
+            showMlMetricChart('All', isNaN(badgeValue) ? null : badgeValue, inv ? 'missing_l_inv' : 'missing_l');
         });
 
         $('#mlChartRangeSelect').on('change', function() {
             const days = parseInt($(this).val(), 10);
             if (days === mlCurrentChartDays) return;
             mlCurrentChartDays = days;
-            const label = mlCurrentChartDisplayChannel === 'All'
-                ? 'Missing Listing'
-                : (mlCurrentChartDisplayChannel + ' - Missing Listing');
-            $('#mlChartModalTitle').text(`${label} (Rolling ${mlChartRangeLabel(days)}, California)`);
+            $('#mlChartModalTitle').text(mlChartTitle(days));
             loadMlMetricChart();
         });
 
@@ -1032,7 +1126,7 @@
                 }, shortFilter()),
                 mlMissingColumn('M = 0', 'missing_listing', '1', true,
                     'Missing L = 0: REQ SKUs not listed on this marketplace, including the ones with 0 inventory. Same number as the Missing L = 0 badge on the listing page.', shortFilter()),
-                mlMissingColumn('M > 0', 'missing_listing_inv', 'inv', false,
+                mlMissingColumn('M > 0', 'missing_listing_inv', 'inv', true,
                     'Missing L > 0: REQ SKUs not listed on this marketplace that have inventory (INV above 0). Same number as the Missing L > 0 badge on the listing page.', shortFilter()),
                 {
                     title: "Inactive Listing",

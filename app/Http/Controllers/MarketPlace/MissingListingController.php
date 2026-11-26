@@ -160,9 +160,12 @@ class MissingListingController extends Controller
             $days = (int) $request->input('days', 32);
             $badgeValue = $request->input('badge_value');
             $hasBadge = $badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue);
+            // missing_l = Missing L = 0 (every missing SKU); missing_l_inv = Missing L > 0 (missing SKUs with INV above 0).
+            $inv = $request->input('metric') === 'missing_l_inv';
+            $histKey = $inv ? 'listing_miss_inv_count' : 'listing_miss_count';
 
             if (! Schema::hasTable('channel_master_daily_data')) {
-                return response()->json(['success' => true, 'data' => $this->chartWithLiveOnly($isAll, $channelKey, $badgeValue, $c2cOnly)]);
+                return response()->json(['success' => true, 'data' => $this->chartWithLiveOnly($isAll, $channelKey, $badgeValue, $c2cOnly, $inv)]);
             }
 
             $query = ChannelMasterSummary::query()->orderBy('snapshot_date', 'asc');
@@ -200,7 +203,7 @@ class MissingListingController extends Controller
                     $byChannel = [];
                     foreach ($rows as $row) {
                         $sd = is_array($row->summary_data) ? $row->summary_data : [];
-                        if (! array_key_exists('listing_miss_count', $sd)) {
+                        if (! array_key_exists($histKey, $sd)) {
                             continue;
                         }
                         $ck = $this->chartCanonicalKey((string) $row->channel);
@@ -208,7 +211,7 @@ class MissingListingController extends Controller
                             continue;
                         }
                         if (! isset($byChannel[$ck])) {
-                            $byChannel[$ck] = (float) $sd['listing_miss_count'];
+                            $byChannel[$ck] = (float) $sd[$histKey];
                         }
                     }
                     $value = array_sum($byChannel);
@@ -216,11 +219,11 @@ class MissingListingController extends Controller
                     $best = null;
                     foreach ($rows as $row) {
                         $sd = is_array($row->summary_data) ? $row->summary_data : [];
-                        if (array_key_exists('listing_miss_count', $sd)) {
-                            $best = (float) $sd['listing_miss_count'];
+                        if (array_key_exists($histKey, $sd)) {
+                            $best = (float) $sd[$histKey];
                             break;
                         }
-                        if ($best === null) {
+                        if ($best === null && ! $inv) {
                             $best = (float) ($sd['miss_count'] ?? 0);
                         }
                     }
@@ -239,7 +242,7 @@ class MissingListingController extends Controller
             $todayLabel = now(self::TZ)->format('M d');
             // The page already has today's Missing L. Recounting here is what made each
             // marketplace chart time out before any history could be drawn.
-            $live = $hasBadge ? (float) $badgeValue : $this->liveMissingL($isAll, $channelKey, $c2cOnly);
+            $live = $hasBadge ? (float) $badgeValue : $this->liveMissingL($isAll, $channelKey, $c2cOnly, $inv);
 
             $replaced = false;
             foreach ($chartData as &$point) {
@@ -1175,8 +1178,10 @@ class MissingListingController extends Controller
         }
     }
 
-    private function liveMissingL(bool $isAll, string $channelKey, bool $c2cOnly = false): float
+    private function liveMissingL(bool $isAll, string $channelKey, bool $c2cOnly = false, bool $inv = false): float
     {
+        $field = $inv ? 'PendingInv' : 'Pending';
+
         if ($isAll) {
             $total = 0;
             $seen = [];
@@ -1201,7 +1206,7 @@ class MissingListingController extends Controller
                     continue;
                 }
                 $c = ListingChannelCounts::forChannel((string) $name, false);
-                $total += (int) ($c['Pending'] ?? 0);
+                $total += (int) ($c[$field] ?? 0);
             }
 
             return (float) $total;
@@ -1213,17 +1218,17 @@ class MissingListingController extends Controller
 
         $c = ListingChannelCounts::forChannel($channelKey, false);
 
-        return (float) ($c['Pending'] ?? 0);
+        return (float) ($c[$field] ?? 0);
     }
 
     /**
      * @return list<array{date: string, value: float}>
      */
-    private function chartWithLiveOnly(bool $isAll, string $channelKey, mixed $badgeValue, bool $c2cOnly = false): array
+    private function chartWithLiveOnly(bool $isAll, string $channelKey, mixed $badgeValue, bool $c2cOnly = false, bool $inv = false): array
     {
         $live = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue))
             ? (float) $badgeValue
-            : $this->liveMissingL($isAll, $channelKey, $c2cOnly);
+            : $this->liveMissingL($isAll, $channelKey, $c2cOnly, $inv);
 
         return [[
             'date' => now(self::TZ)->format('M d'),
