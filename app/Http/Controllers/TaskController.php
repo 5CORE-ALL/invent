@@ -6778,7 +6778,7 @@ class TaskController extends Controller
         $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         [$windowStart, $windowEnd] = $this->deletedTasksDateWindow(
-            (string) $request->query('range', 'yesterday'),
+            (string) $request->query('range', '30'),
             $request->query('date'),
             $request->query('from'),
             $request->query('to')

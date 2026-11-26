@@ -637,9 +637,9 @@
                             <div class="deleted-filter-item deleted-filter-item--date">
                                 <label for="filter-date-range" class="form-label">Date</label>
                                 <select id="filter-date-range" class="form-select form-select-sm">
-                                    <option value="yesterday" selected>Yesterday ({{ $yesterdayLabel }})</option>
+                                    <option value="yesterday">Yesterday ({{ $yesterdayLabel }})</option>
                                     <option value="7">Last 7 Days</option>
-                                    <option value="30">Last 30 Days</option>
+                                    <option value="30" selected>Last 30 Days</option>
                                     <option value="date">Date Selection</option>
                                     <option value="custom">From – To</option>
                                 </select>
@@ -882,7 +882,7 @@
 
             // Initialize Tabulator
             var table = new Tabulator("#deleted-tasks-table", {
-                ajaxURL: "{{ route('tasks.deletedData') }}?range=yesterday",
+                ajaxURL: "{{ route('tasks.deletedData') }}?range=30",
                 ajaxContentType: "json",
                 defaultColumn: {
                     headerHozAlign: "center",
@@ -1383,7 +1383,7 @@
 
             var deletedDataBase = @json(route('tasks.deletedData'));
             function deletedDataUrl() {
-                var range = $('#filter-date-range').val() || 'yesterday';
+                var range = $('#filter-date-range').val() || '30';
                 var url = deletedDataBase + '?range=' + encodeURIComponent(range);
                 if (range === 'date') {
                     url += '&date=' + encodeURIComponent($('#filter-date').val() || @json($yesterdayDate));
