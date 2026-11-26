@@ -2938,6 +2938,11 @@ class Kernel extends ConsoleKernel
         // Lifetime Acos / Lifetime Sales columns on /facebook-all-ads-sheet.
         $retryFiveTimesUntil('facebook:sync-lifetime-stats', 'facebook-lifetime-stats-sync', '19:45');
 
+        // Meta revises a day's impressions / clicks / spend for ~4 weeks, but the sync
+        // above only pulls yesterday. Re-pull the last 30 days so the sheet's SPEND /
+        // IMPR / CLK keep matching Ads Manager.
+        $retryFiveTimesUntil('meta-ads:refresh-insights --days=30', 'meta-ads-refresh-insights-30d', '19:10');
+
         // Campaign list of /facebook-all-ads-sheet straight from the Meta API
         // (after meta-ads:sync at 19:00), so no manual Campaign upload is needed.
         $retryFiveTimesUntil('facebook:sync-sheet-campaigns', 'facebook-sheet-campaigns-sync', '19:15');
