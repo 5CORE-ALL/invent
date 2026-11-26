@@ -3686,19 +3686,49 @@
                 if (!rowData) return '';
                 var label = '', title = '', bg = '';
                 if (rowData.is_ate_task == 1) {
-                    label = 'ATE'; title = 'ATE - created by an Auto Task Event rule'; bg = '#ec4899';
+                    label = 'ATE'; title = 'Auto Task Event'; bg = '#ec4899';
                 } else if (rowData.is_automate_task == 1) {
                     var freq = String(rowData.schedule_type || '').toLowerCase();
-                    if (freq === 'daily') { label = 'D'; title = 'Daily task'; bg = '#0d6efd'; }
-                    else if (freq === 'weekly') { label = 'W'; title = 'Weekly task'; bg = '#6f42c1'; }
-                    else if (freq === 'monthly') { label = 'M'; title = 'Monthly task'; bg = '#0f766e'; }
+                    if (freq === 'daily') { label = 'D'; title = 'Daily'; bg = '#0d6efd'; }
+                    else if (freq === 'weekly') { label = 'W'; title = 'Weekly'; bg = '#6f42c1'; }
+                    else if (freq === 'monthly') { label = 'M'; title = 'Monthly'; bg = '#0f766e'; }
                 }
                 if (!label) return '';
-                return '<span title="' + title + '" style="display:inline-flex;align-items:center;justify-content:center;' +
+                return '<span class="task-type-badge" data-full="' + title + '" data-bg="' + bg + '" style="display:inline-flex;align-items:center;justify-content:center;cursor:default;' +
                     'width:24px;height:24px;border-radius:50%;background:' + bg + ';color:#fff;font-weight:700;' +
                     'font-size:' + (label.length > 1 ? '8px' : '11px') + ';line-height:1;margin-right:6px;vertical-align:middle;flex-shrink:0;">' +
                     label + '</span>';
             }
+
+            // Hover (or tap) on a type badge shows the full name (Daily / Weekly / Monthly / Auto Task Event).
+            // A fixed-position bubble is used because Tabulator cells clip anything that overflows them.
+            var $taskTypeTip = null;
+            var taskTypeTipTimer = null;
+            function hideTaskTypeTip() {
+                clearTimeout(taskTypeTipTimer);
+                if ($taskTypeTip) { $taskTypeTip.remove(); $taskTypeTip = null; }
+            }
+            function showTaskTypeTip(el) {
+                hideTaskTypeTip();
+                var full = el.getAttribute('data-full');
+                if (!full) return;
+                var rect = el.getBoundingClientRect();
+                $taskTypeTip = $('<div/>').text(full).css({
+                    position: 'fixed', zIndex: 20000, pointerEvents: 'none',
+                    background: el.getAttribute('data-bg') || '#333', color: '#fff',
+                    fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '12px',
+                    whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,.25)',
+                    left: Math.max(4, rect.left) + 'px', top: (rect.bottom + 6) + 'px'
+                }).appendTo('body');
+            }
+            $(document).on('mouseenter', '.task-type-badge', function() { showTaskTypeTip(this); });
+            $(document).on('mouseleave', '.task-type-badge', hideTaskTypeTip);
+            $(document).on('click', '.task-type-badge', function(e) {
+                e.stopPropagation();
+                showTaskTypeTip(this);
+                taskTypeTipTimer = setTimeout(hideTaskTypeTip, 1800);
+            });
+            $(window).on('scroll resize', hideTaskTypeTip);
 
             function isWeeklyOrMonthlyAutoTask(rowData) {
                 if (!rowData) {
