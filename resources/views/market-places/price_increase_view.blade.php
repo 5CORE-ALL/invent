@@ -712,8 +712,6 @@
             box-shadow: inset 0 0 0 2px #e83e8c;
         }
 
-        /* Columns panel: styled by resources/views/partials/tabulator-column-manager.blade.php (same as /amazon-tabulator-view) */
-        
         /* Totals row – light background, dark text; same font size as body rows */
         #ovl30DetailsModal .modal-totals-row {
             background-color: #eef2ff !important;
@@ -2695,16 +2693,6 @@
                         </button>
                     </div>
 
-                    <!-- Column Visibility Dropdown (6-column layout; drag to reorder, copy / paste the layout) -->
-                    <div class="dropdown d-inline-block">
-                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Columns" aria-label="Columns">
-                            <i class="fas fa-table-columns"></i>
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
-                            <!-- Columns will be populated by JavaScript -->
-                        </ul>
-                    </div>
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV" aria-label="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
@@ -5299,7 +5287,7 @@
                     }
                 }
             },
-            initialSort: [{ column: "dil_percent", dir: "desc" }],
+            initialSort: [{ column: "dil_percent", dir: (function() { try { return localStorage.getItem('price_increase_dil_high_low_v1') === 'asc' ? 'asc' : 'desc'; } catch (e) { return 'desc'; } })() }],
             rowFormatter: function(row) {
                 const data = row.getData();
                 if (data.is_parent_summary === true) {
@@ -5710,59 +5698,26 @@
                     minWidth: 70
                 },
                 {
-                    title: "Avg<br>LMP",
-                    field: "amazon_lmp_price",
-                    visible: true,
-                    hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "Amz LMP. Parent row shows average of child Amz LMPs (children with LMP > 0).",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sku = (rowData.sku || '').replace(/"/g, '&quot;');
-                        const skuEnc = encodeURIComponent(rowData.sku || '');
-                        if (rowData.is_parent_summary === true) {
-                            const v = cell.getValue();
-                            const price = v != null && v !== '' ? parseFloat(v) : null;
-                            if (price == null || !isFinite(price) || price <= 0) {
-                                return '<span class="text-muted">-</span>';
-                            }
-                            const avgPrice = parseFloat(rowData.avg_price || 0);
-                            const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                            return '<span style="font-weight:600;' + styleForCellColor(color) + '" title="Avg of child Amz LMPs">$'
-                                + price.toFixed(2) + '</span>';
-                        }
-                        const value = cell.getValue();
-                        const price = value != null && value !== '' ? parseFloat(value) : null;
-                        if (price == null || price <= 0) {
-                            const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amz repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
-                        }
-                        const avgPrice = parseFloat(rowData.avg_price || 0);
-                        const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
-                    },
-                    minWidth: 70
-                },
-                {
                     title: "LMP by<br>Channel",
                     field: "lmp_channels",
                     headerSort: false,
                     hozAlign: "center",
-                    minWidth: 170,
+                    width: 140,
+                    minWidth: 110,
                     headerTooltip: "Marketplace price (LMP) of every channel, lowest first. Click to open the main LMP drawer. Parent rows show the averages of the children.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const isParent = d.is_parent_summary === true;
                         const skuAttr = String(d.sku || '').replace(/"/g, '&quot;');
                         const chans = [
-                            { f: 'amazon_lmp_price',  mp: 'amazon',  label: 'Amz',    style: 'background:transparent;color:#ff9900;border:1px solid #ff9900;' },
-                            { f: 'ebay_lmp_price',    mp: 'ebay',    label: 'eBay',   style: 'background:#0dcaf0;color:#000;' },
-                            { f: 'google_lmp_price',  mp: 'google',  label: 'Google', style: 'background:#198754;color:#fff;' },
-                            { f: 'bestbuy_lmp_price', mp: 'bestbuy', label: 'BB',     style: 'background:#0046be;color:#fff;' },
-                            { f: 'macy_lmp_price',    mp: 'macy',    label: 'Macy',   style: 'background:#e21a2c;color:#fff;' },
-                            { f: 'reverb_lmp_price',  mp: 'reverb',  label: 'Reverb', style: 'background:#d9281d;color:#fff;' },
-                            { f: 'temu_lmp_price',    mp: 'temu',    label: 'Temu',   style: 'background:#fb7701;color:#fff;' },
-                            { f: 'tiktok_lmp_price',  mp: 'tiktok',  label: 'TT',     style: 'background:#111;color:#fff;' }
+                            { f: 'amazon_lmp_price',  mp: 'amazon',  label: 'Amazon', short: 'A',   style: 'background:transparent;color:#ff9900;border:1px solid #ff9900;' },
+                            { f: 'ebay_lmp_price',    mp: 'ebay',    label: 'eBay',  short: 'E',   style: 'background:#0dcaf0;color:#000;' },
+                            { f: 'google_lmp_price',  mp: 'google',  label: 'Google', short: 'G',   style: 'background:#198754;color:#fff;' },
+                            { f: 'bestbuy_lmp_price', mp: 'bestbuy', label: 'BestBuy', short: 'B',   style: 'background:#0046be;color:#fff;' },
+                            { f: 'macy_lmp_price',    mp: 'macy',    label: 'Macy',  short: 'M',   style: 'background:#e21a2c;color:#fff;' },
+                            { f: 'reverb_lmp_price',  mp: 'reverb',  label: 'Reverb', short: 'R',   style: 'background:#d9281d;color:#fff;' },
+                            { f: 'temu_lmp_price',    mp: 'temu',    label: 'Temu',  short: 'T',   style: 'background:#fb7701;color:#fff;' },
+                            { f: 'tiktok_lmp_price',  mp: 'tiktok',  label: 'TikTok', short: 'TK',  style: 'background:#111;color:#fff;' }
                         ];
                         // Every channel LMP is shown, LOWEST first (then ascending)
                         const found = [];
@@ -5783,7 +5738,8 @@
                         const badges = found.map(function(x, i) {
                             // Lowest (first) = normal size; the other channels are small
                             const size = i === 0 ? '' : 'font-size:9px;padding:2px 4px;font-weight:500;opacity:.9;';
-                            return '<span class="badge" style="font-weight:600;' + x.c.style + size + '">' + x.c.label + ' $' + x.v.toFixed(2) + '</span>';
+                            // Channel shown by its first letter only (TikTok = TK); the full name is in the badge tooltip
+                            return '<span class="badge" style="font-weight:600;' + x.c.style + size + '" title="' + x.c.label + '">' + x.c.short + ' $' + x.v.toFixed(2) + '</span>';
                         }).join('');
                         const wrap = '<span style="display:inline-flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:3px;vertical-align:middle;">' + badges + '</span>';
                         if (isParent) return '<span title="' + tip + '">' + wrap + '</span>';
@@ -6357,6 +6313,27 @@
             }).join('');
         }
 
+        /** Lowest LMP across every channel of a row (0 when none). */
+        function piBoxLowestLmp(d) {
+            let low = 0;
+            ['amazon_lmp_price', 'ebay_lmp_price', 'google_lmp_price', 'bestbuy_lmp_price', 'macy_lmp_price',
+             'reverb_lmp_price', 'temu_lmp_price', 'tiktok_lmp_price'].forEach(function(f) {
+                const v = parseFloat(d && d[f]);
+                if (isFinite(v) && v > 0 && (low === 0 || v < low)) low = v;
+            });
+            return low;
+        }
+        /** SPRICE below the lowest LMP → the number shows in red. */
+        function piBoxPaintSprice(input, price, d) {
+            const p = parseFloat(price);
+            const low = piBoxLowestLmp(d);
+            const below = isFinite(p) && p > 0 && low > 0 && p < low - 0.004;
+            input.style.color = below ? '#dc3545' : '';
+            input.style.fontWeight = below ? '700' : '';
+            const base = 'SPRICE $ — press ✓ or Enter to fill every channel, save and push (Push All)';
+            input.title = below ? ('SPRICE is below the lowest LMP ($' + low.toFixed(2) + ')\n' + base) : base;
+        }
+
         /** Cell content of the SPRICE $ column. */
         function piBoxSpriceCellEl(cell) {
             const row = cell.getRow();
@@ -6381,6 +6358,7 @@
             input.value = shown;
             input.setAttribute('data-sku', d.sku);
             chips.innerHTML = piBoxChipsHtml(parseFloat(shown) > 0 ? shown : saved, d);
+            piBoxPaintSprice(input, shown, d);
             if (piBoxIsPushing(d.sku)) {
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -6393,6 +6371,7 @@
                 piBoxTyped[key] = input.value;
                 const p = parseFloat(input.value);
                 chips.innerHTML = piBoxChipsHtml(p > 0 ? p : saved, row.getData() || d);
+                piBoxPaintSprice(input, input.value, row.getData() || d);
             });
             input.addEventListener('keydown', function(e) {
                 e.stopPropagation();
@@ -13985,6 +13964,7 @@
         // Parents without a dot (some child never pushed) only show under "All".
         const HIST_BUCKETS = ['green', 'yellow', 'red'];
         const HIST_DEFAULT = ['yellow', 'red'];
+        const HIST_STORAGE_KEY = 'price_increase_hist_v1';
         function histSelected() {
             return $('#push-history-blocks input:checked').map(function() { return this.value; }).get();
         }
@@ -14082,9 +14062,20 @@
             else if (this.value !== 'all') sel = sel.filter(function(v) { return v !== 'all'; }); // a colour → clears All
             if (!sel.length) sel = ['all'];                                          // nothing ticked = everything
             histSetSelected(sel);
+            try { localStorage.setItem(HIST_STORAGE_KEY, JSON.stringify(sel)); } catch (e) { /* ignore */ }   // remembered as the default
             updateHistLabel();
             applyFilters();
         });
+        // Restore the History choice the user made last time (default: 7–14d + >14d)
+        (function() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(HIST_STORAGE_KEY) || 'null');
+                if (Array.isArray(saved) && saved.length) {
+                    const ok = saved.filter(function(v) { return v === 'all' || HIST_BUCKETS.indexOf(v) !== -1; });
+                    if (ok.length) histSetSelected(ok.indexOf('all') !== -1 ? ['all'] : ok);
+                }
+            } catch (e) { /* ignore */ }
+        })();
         $(updateHistLabel);
 
         // High / Low switch: unchecked = High → Low (desc, default), checked = Low → High (asc)
@@ -14092,8 +14083,20 @@
             return $('#dil-high-low-switch').is(':checked') ? 'asc' : 'desc';
         }
 
+        const DIL_HL_STORAGE_KEY = 'price_increase_dil_high_low_v1';
+        // Restore the High / Low choice the user made last time
+        (function() {
+            try {
+                if (localStorage.getItem(DIL_HL_STORAGE_KEY) === 'asc') {
+                    $('#dil-high-low-switch').prop('checked', true);
+                    $('#dil-high-low-label').text('Low → High');
+                }
+            } catch (e) { /* ignore */ }
+        })();
+
         $('#dil-high-low-switch').on('change', function() {
             const asc = dilSortDir() === 'asc';
+            try { localStorage.setItem(DIL_HL_STORAGE_KEY, asc ? 'asc' : 'desc'); } catch (e) { /* ignore */ }   // remembered as the default
             $('#dil-high-low-label').text(asc ? 'Low → High' : 'High → Low');
             applyFilters();
             // Parent Only re-sorts inside buildParentView; for SKU / Both just re-sort the table
@@ -14871,55 +14874,26 @@
             if (headerCb) headerCb.checked = isAllFilteredSelected();
         }
 
-        // ==================== COLUMN VISIBILITY FUNCTIONS ====================
+        // ==================== DEFAULT COLUMNS ====================
 
-        // Permanently removed from Columns dropdown and kept hidden in the table
+        // Kept hidden in the table (no Columns panel on this page any more)
         const CVR_HIDDEN_FROM_COLUMN_MENU = [
             'amazon_price', 'amz_pft', 'amz_roi',
             'ebay_lmp_price', 'google_lmp_price', 'temu_lmp_price',
-            'shein_l30', 'faire_l30', 'ae_l30', 'pp_l30'
+            'shein_l30', 'faire_l30', 'ae_l30', 'pp_l30',
+            'image_path', 'parent_display'
         ];
-
-        // Columns panel: the same shared panel as /amazon-tabulator-view (resources/views/partials/tabulator-column-manager.blade.php):
-        // headers (groups) you can add / rename / delete, quick search, search & add, drag between headers, Ctrl+C / Ctrl+V, Save & Close.
-        const tcmConfig = {
-            channel: 'price_increase',
-            // Same saved visibility as before (channel pricing_master_cvr), so everyone's shown / hidden columns are kept
-            visibilityUrl: '/cvr-master-column-visibility',
-            groups: [
-                { key: 'basic', label: 'Basic' },
-                { key: 'inventory', label: 'Inventory & Sales' },
-                { key: 'price', label: 'Price' },
-                { key: 'other', label: 'Temu & Other' }
-            ],
-            fallbackGroup: 'other',
-            showAll: true,
-            skipFields: ['_select'].concat(CVR_HIDDEN_FROM_COLUMN_MENU)
-        };
-        const tcmHooks = {
-            classify: function(field, title) {
-                const t = String(title || '').toLowerCase();
-                if (/temu/.test(t)) return 'other';
-                if (t === 'p' || t === '#' || /\b(sku|parent|image|details|hist|push pending|label|audit|missing)\b/.test(t)) return 'basic';
-                if (/\b(inv|ov l30|sw l30|dil|cvr|views|rating|lqs)\b/.test(t)) return 'inventory';
-                if (/\b(prc|price|nroi|groi|gpft|npft|lmp|sprice)\b/.test(t)) return 'price';
-                return 'other';
-            },
-            skip: function(field, title) { return !String(title || '').trim(); },
-            // Applied after the saved layout loads (the panel can still change them afterwards, as before)
-            forceVisible: function(field) {
-                if (CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(field) !== -1) return false;
-                if (field === 'image_path' || field === 'parent_display') return false; // text columns stay hidden by default
-                if (field === 'label' || field === 'audit' || field === 'amazon_lmp_price' || field === 'box_sprice') return true;
-                return undefined;
-            }
-        };
-        @include('partials.tabulator-column-manager')
+        function hideDefaultHiddenColumns() {
+            CVR_HIDDEN_FROM_COLUMN_MENU.forEach(function(field) {
+                const col = table.getColumn(field);
+                if (col) col.hide();
+            });
+        }
 
         // ==================== TABLE EVENTS ====================
         
         table.on('tableBuilt', function() {
-            applyColumnVisibilityFromServer(); // saved columns + order, then builds the Columns panel
+            hideDefaultHiddenColumns();
         });
 
         table.on('dataLoaded', function(data) {
