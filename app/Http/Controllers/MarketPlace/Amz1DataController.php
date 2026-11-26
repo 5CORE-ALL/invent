@@ -334,6 +334,8 @@ class Amz1DataController extends Ebay1DataController
      */
     protected function withChannelColumns(array $specifics, string $category, ?array $live): array
     {
+        $removed = $this->removedKeys($category);
+        $specifics = $this->withoutRemoved($specifics, $removed);
         $type = $this->typeFromCategory($category);
         if ($type === '') {
             return $specifics;
@@ -353,8 +355,52 @@ class Amz1DataController extends Ebay1DataController
             $have[$this->aspectKey((string) $name)] = true;
         }
         foreach ($this->columnNamesMemo[$type] as $name) {
-            if (! isset($have[$this->aspectKey($name)])) {
+            $nameKey = $this->aspectKey($name);
+            if (! isset($have[$nameKey]) && ! isset($removed[$nameKey])) {
                 $specifics[$name] = '';
+            }
+        }
+
+        return $specifics;
+    }
+
+    /** @var array<string, array<string, true>> category hash => keys of the columns deleted from that tab */
+    private array $removedMemo = [];
+
+    /**
+     * The columns deleted from a product type tab. Amazon keeps defining them for the type, so without this list
+     * the next load would bring them back.
+     *
+     * @return array<string, true>
+     */
+    private function removedKeys(string $category): array
+    {
+        $hash = $this->categoryHash($category);
+        if (! isset($this->removedMemo[$hash])) {
+            $this->removedMemo[$hash] = [];
+            if (Schema::hasTable(Amz1DataService::REMOVED_TABLE)) {
+                foreach (DB::table(Amz1DataService::REMOVED_TABLE)->where('category_hash', $hash)->pluck('name_key') as $key) {
+                    $this->removedMemo[$hash][(string) $key] = true;
+                }
+            }
+        }
+
+        return $this->removedMemo[$hash];
+    }
+
+    /**
+     * @param  array<string, mixed>  $specifics
+     * @param  array<string, true>  $removed
+     * @return array<string, mixed>
+     */
+    private function withoutRemoved(array $specifics, array $removed): array
+    {
+        if ($removed === []) {
+            return $specifics;
+        }
+        foreach (array_keys($specifics) as $name) {
+            if (isset($removed[$this->aspectKey((string) $name)])) {
+                unset($specifics[$name]);
             }
         }
 
@@ -1001,6 +1047,28 @@ class Amz1DataController extends Ebay1DataController
             Cache::forget($this->cacheKey('column_options'));
         }
 
+        // Remember the deletion for the tab: Amazon still defines the field for the product type, and every SKU of the
+        // tab (not only the ones sent here) must stop showing it.
+        if (array_key_exists('category', $validated) && Schema::hasTable(Amz1DataService::REMOVED_TABLE)) {
+            $category = trim((string) $validated['category']);
+            $hash = $this->categoryHash($category);
+            foreach ($names as $nameKey => $name) {
+                $exists = DB::table(Amz1DataService::REMOVED_TABLE)->where('category_hash', $hash)->where('name_key', $nameKey)->exists();
+                if (! $exists) {
+                    DB::table(Amz1DataService::REMOVED_TABLE)->insert([
+                        'category_hash' => $hash,
+                        'category' => mb_substr($category, 0, 500),
+                        'name' => $name,
+                        'name_key' => $nameKey,
+                        'removed_by' => $request->user()?->id,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
+            unset($this->removedMemo[$hash]);
+        }
+
         $results = [];
         foreach ((array) ($validated['items'] ?? []) as $entry) {
             $sku = trim((string) $entry['sku']);
@@ -1023,6 +1091,89 @@ class Amz1DataController extends Ebay1DataController
         }
 
         return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    // ---- Add column: one column on the product type tab, matched with the fields Amazon defines for the type ----
+
+    /**
+     * POST /amz-data/add-column
+     * Reads the product type's current field list from Amazon first, so the new column is matched with a real Amazon
+     * field: a name that is an Amazon field is added once under Amazon's own title (and is sent to Amazon by Push),
+     * a name Amazon does not define is added as an app column only, and the answer says so. A column deleted from
+     * the tab before comes back when it is added again.
+     */
+    public function addColumn(Request $request)
+    {
+        $category = trim((string) $request->input('category', ''));
+        $requested = array_merge((array) $request->input('names', []), $request->filled('name') ? [(string) $request->input('name')] : []);
+
+        $type = $this->typeFromCategory($category);
+        $fields = [];
+        $synced = false;
+        if ($type !== '') {
+            $columns = [];
+            try {
+                $api = app(AmazonSpApiService::class);
+                if ($api->isConfigured()) {
+                    $loaded = (new Amz1DataService($api))->loadDefinition($type);
+                    if ($loaded['ok'] && $loaded['columns'] !== []) {
+                        $columns = $loaded['columns'];
+                        $synced = true;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('AmzData: could not refresh the product type for add-column', ['type' => $type, 'error' => $e->getMessage()]);
+            }
+            if ($columns === []) {
+                $columns = Amz1DataService::cachedColumns($type)['columns'];
+            }
+            foreach ($columns as $column) {
+                $fields[$this->aspectKey((string) $column['title'])] = (string) $column['title'];
+                $fields[$this->aspectKey((string) ($column['key'] ?? ''))] ??= (string) $column['title'];
+            }
+            unset($fields['']);
+        }
+
+        $names = [];
+        $report = [];
+        foreach ($requested as $candidate) {
+            $candidate = trim(preg_replace('/\s+/u', ' ', (string) $candidate) ?? '');
+            $candidateKey = $this->aspectKey($candidate);
+            if ($candidate === '' || $candidateKey === '') {
+                continue;
+            }
+            $title = $fields[$candidateKey] ?? null;
+            $final = $title ?? $candidate;
+            $names[$this->aspectKey($final)] = $final;
+            $report[$this->aspectKey($final)] = ['name' => $final, 'amazon_field' => $title !== null];
+        }
+
+        // A column deleted from this tab earlier is wanted again.
+        if ($names !== [] && Schema::hasTable(Amz1DataService::REMOVED_TABLE)) {
+            $hash = $this->categoryHash($category);
+            DB::table(Amz1DataService::REMOVED_TABLE)->where('category_hash', $hash)->whereIn('name_key', array_keys($names))->delete();
+            unset($this->removedMemo[$hash]);
+        }
+
+        $request->merge(['names' => array_values($names), 'name' => null]);
+        $response = parent::addColumn($request);
+        $payload = $response->getData(true);
+        if (! ($payload['success'] ?? false)) {
+            return $response;
+        }
+
+        $report = array_values($report);
+        $plain = array_values(array_filter($report, static fn ($r) => ! $r['amazon_field']));
+        $message = '';
+        if ($type === '') {
+            $message = 'Added in the app. This tab has no Amazon product type, so nothing can be matched with Amazon.';
+        } elseif ($plain !== []) {
+            $message = '"'.implode('", "', array_column($plain, 'name')).'" '.(count($plain) === 1 ? 'is' : 'are').' not an Amazon field of '.$type.': added in the app only, Amazon will not accept '.(count($plain) === 1 ? 'it' : 'them').' on Push.';
+        } elseif ($synced) {
+            $message = 'Matched with the Amazon fields of '.$type.'.';
+        }
+
+        return response()->json($payload + ['amazon' => $report, 'synced' => $synced, 'message' => $message]);
     }
 
     // ---- Change category: an Amazon product type, changed in the app ----

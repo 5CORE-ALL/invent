@@ -1434,9 +1434,9 @@
                     columnOptions = null;
                     closeAddModal();
                     const added = json.names || names;
-                    document.getElementById('e1dPullStatus').textContent = added.length === 1
+                    document.getElementById('e1dPullStatus').textContent = (added.length === 1
                         ? 'Column "' + added[0] + '" added.'
-                        : added.length + ' columns added.';
+                        : added.length + ' columns added.') + (json.message ? ' ' + json.message : '');
                     await loadData();
                 } catch (e) {
                     document.getElementById('e1dAddHint').innerHTML = '<span class="text-danger">' + esc(e.message || 'Failed') + '</span>';

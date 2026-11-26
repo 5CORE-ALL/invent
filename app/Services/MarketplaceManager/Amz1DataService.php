@@ -24,6 +24,8 @@ class Amz1DataService
 {
     public const TYPE_TABLE = 'amz1_type_columns';
 
+    public const REMOVED_TABLE = 'amz1_removed_columns';
+
     /** Tables of the Amz Data page: a copy of each eBay 1 Data table (same columns and indexes), starting empty. */
     private const COPIED_TABLES = [
         'item_specifics', 'extra_columns', 'column_sources', 'column_groups',
@@ -74,6 +76,19 @@ class Amz1DataService
                     $table->string('error', 500)->nullable();
                     $table->timestamp('fetched_at')->nullable();
                     $table->timestamps();
+                });
+            }
+            // Columns the user deleted from a product type tab: they stay off the tab even though Amazon defines them.
+            if (! Schema::hasTable(self::REMOVED_TABLE)) {
+                Schema::create(self::REMOVED_TABLE, function (Blueprint $table) {
+                    $table->id();
+                    $table->char('category_hash', 40);
+                    $table->string('category', 500)->nullable();
+                    $table->string('name', 191);
+                    $table->string('name_key', 191);
+                    $table->unsignedBigInteger('removed_by')->nullable();
+                    $table->timestamps();
+                    $table->unique(['category_hash', 'name_key']);
                 });
             }
         } catch (\Throwable $e) {
