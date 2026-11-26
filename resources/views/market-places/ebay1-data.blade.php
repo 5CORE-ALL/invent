@@ -155,6 +155,21 @@
             border-radius: 9px; background: #dc2626; color: #fff; border: 1px solid #fff; font-size: 10px; font-weight: 700;
             line-height: 15px; text-align: center; pointer-events: auto; cursor: default;
         }
+        /* Amz Data: present / total under the red count (green), so every header shows both. */
+        #ebay1-data-table.e1d-amz .tabulator-col .tabulator-col-title { max-height: 58px; }
+        #ebay1-data-table .tabulator-col .e1d-have {
+            position: absolute; top: 22px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 0 3px;
+            border-radius: 7px; background: #16a34a; color: #fff; border: 1px solid #fff; font-size: 8.5px; font-weight: 700;
+            line-height: 12px; text-align: center; white-space: nowrap; pointer-events: auto; cursor: default;
+        }
+        .e1d-allcols { margin: .15rem 0 .35rem; border: 1px solid #e2e8f0; border-radius: 8px; padding: .25rem .5rem; background: #fff; }
+        .e1d-allcols > summary { cursor: pointer; display: flex; justify-content: space-between; gap: 1rem; font-size: .82rem; font-weight: 600; color: #1e293b; }
+        .e1d-allcols > summary .have { color: #16a34a; font-weight: 700; }
+        .e1d-allcols > summary .miss { color: #dc2626; font-weight: 700; }
+        .e1d-allcols table { width: 100%; font-size: .78rem; margin-top: .3rem; }
+        .e1d-allcols th { font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; font-weight: 600; }
+        .e1d-allcols td.have { color: #16a34a; font-weight: 700; text-align: right; white-space: nowrap; }
+        .e1d-allcols td.miss { color: #dc2626; font-weight: 700; text-align: right; white-space: nowrap; }
         #ebay1-data-table .tabulator-col .tabulator-col-title i { transform: rotate(90deg); display: inline-block; margin-top: 4px; }
         #ebay1-data-table .tabulator-row:nth-child(even) { background: #f8fafc; }
         #ebay1-data-table .tabulator-row:hover { background: #e8f0fe !important; }
@@ -374,7 +389,7 @@
 
                     <div class="e1d-tabs" id="e1dTabs" role="tablist" aria-label="{{ $siteName }} categories"></div>
 
-                    <div id="ebay1-data-table"></div>
+                    <div id="ebay1-data-table"@if($isAmazon) class="e1d-amz"@endif></div>
                 </div>
             </div>
         </div>
@@ -837,6 +852,7 @@
                     if (key === ALL) return;
                     let specSum = 0, specCells = 0;
                     const columns = [];
+                    const every = [];
                     displayedSpecGroups(tab.rows).forEach(function (names) {
                         let colMiss = 0;
                         for (let i = 0; i < tab.rows.length; i++) {
@@ -854,11 +870,14 @@
                             }
                         }
                         if (colMiss) columns.push({ name: names[0], missing: colMiss });
+                        every.push({ name: names[0], missing: colMiss, present: tab.rows.length - colMiss, total: tab.rows.length });
                     });
                     columns.sort(function (a, b) { return b.missing - a.missing || a.name.localeCompare(b.name); });
+                    every.sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }); });
                     spec.missing += specSum;
                     spec.cells += specCells;
-                    spec.categories.push({ name: key, missing: specSum, cells: specCells, columns: columns });
+                    // "every" (all columns with present / total) is for the screen only; the saved history keeps "columns".
+                    spec.categories.push({ name: key, missing: specSum, cells: specCells, columns: columns, every: every });
                 });
                 spec.categories.sort(function (a, b) { return b.missing - a.missing || a.name.localeCompare(b.name); });
                 specMissing = spec;
@@ -1052,7 +1071,11 @@
                     fetch('{{ $ebayCfg['base'] }}/missing-history', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                        body: JSON.stringify({ missing: specMissing.missing, cells: specMissing.cells, categories: specMissing.categories }),
+                        body: JSON.stringify({
+                            missing: specMissing.missing,
+                            cells: specMissing.cells,
+                            categories: specMissing.categories.map(function (c) { return { name: c.name, missing: c.missing, cells: c.cells, columns: c.columns }; }),
+                        }),
                     }).then(function (res) { if (res.ok) missPosted = sent; }).catch(function () {});
                 }, 4000);
             }
@@ -1062,6 +1085,26 @@
                 return '<span class="e1d-badge specmiss" title="Item specific cells with no data, all categories added up (' + specMissing.cells.toLocaleString() + ' cells in '
                     + specMissing.categories.length + ' categories)">Missing specifics ' + specMissing.missing.toLocaleString()
                     + ' <span class="e1d-hist-dot" role="button" tabindex="0" title="History of this count, day by day"></span></span>';
+            }
+
+            // Every column of every category: values present out of all rows of the category (green), missing (red).
+            function allColumnsHtml() {
+                const cats = specMissing.categories.filter(function (c) { return (c.every || []).length > 0; });
+                if (!cats.length) return '';
+                const head = '<div class="small fw-semibold mt-2 mb-1">All columns of each ' + esc(E1_CAT_WORD) + ' (present / total, missing in red)</div>';
+
+                return head + cats.map(function (c) {
+                    const total = c.every.length ? c.every[0].total : 0;
+                    const present = c.cells - c.missing;
+                    const body = c.every.map(function (col) {
+                        return '<tr><td>' + esc(col.name) + '</td>'
+                            + '<td class="have" title="' + col.present + ' of ' + col.total + ' rows have a value">' + col.present.toLocaleString() + '/' + col.total.toLocaleString() + '</td>'
+                            + '<td class="miss">' + (col.missing ? col.missing.toLocaleString() : '') + '</td></tr>';
+                    }).join('');
+                    return '<details class="e1d-allcols"><summary><span>' + esc(catLabel(c.name)) + ' <small class="text-muted">' + c.every.length + ' columns, ' + total.toLocaleString() + ' rows</small></span>'
+                        + '<span><span class="have">' + present.toLocaleString() + '/' + c.cells.toLocaleString() + '</span> &nbsp; <span class="miss">' + c.missing.toLocaleString() + ' missing</span></span></summary>'
+                        + '<table><thead><tr><th>Column</th><th class="text-end">Present / total</th><th class="text-end">Missing</th></tr></thead><tbody>' + body + '</tbody></table></details>';
+                }).join('');
             }
 
             async function openMissingHistory() {
@@ -1088,7 +1131,8 @@
                 }).join('');
                 const live = '<div class="e1d-misslive"><b>Now:</b> ' + specMissing.missing.toLocaleString() + ' of ' + specMissing.cells.toLocaleString()
                     + ' item specific cells have no data, over ' + specMissing.categories.length + ' categories.</div>'
-                    + (liveCols ? '<div class="e1d-misslive">' + liveCols + '</div>' : '');
+                    + (liveCols ? '<div class="e1d-misslive">' + liveCols + '</div>' : '')
+                    + allColumnsHtml();
                 if (!days.length) {
                     body.innerHTML = live + '<div class="small text-muted p-2">' + esc(note || 'No history yet. Today\u2019s figure is saved a few seconds after the page loads, and a new row is added every day the page is opened.') + '</div>';
                     return;
@@ -1206,13 +1250,25 @@
                     const el = col.getElement();
                     if (!el) return;
                     let badge = el.querySelector(':scope > .e1d-miss');
+                    let have = el.querySelector(':scope > .e1d-have');
                     if (!field || E1_NO_MISS.has(field)) {
                         if (badge) badge.remove();
+                        if (have) have.remove();
                         return;
                     }
                     let missing = 0;
                     for (let i = 0; i < data.length; i++) {
                         if (isMissingValue(data[i][field])) missing++;
+                    }
+                    // Amz Data: how many rows of the tab have a value in this column, out of all rows of the tab.
+                    if (E1_AMAZON) {
+                        if (!have) {
+                            have = document.createElement('span');
+                            have.className = 'e1d-have';
+                            el.appendChild(have);
+                        }
+                        have.textContent = (data.length - missing) + '/' + data.length;
+                        have.title = (data.length - missing) + ' of ' + data.length + ' rows of this tab have a value in this column';
                     }
                     if (!missing) {
                         if (badge) badge.remove();
