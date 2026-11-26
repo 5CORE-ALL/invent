@@ -11857,6 +11857,13 @@ class CvrMasterController extends Controller
                 // Save the pushed price
                 if ($pushedPrice !== null) {
                     $existing['SPRICE_PUSHED_VALUE'] = $pushedPrice;
+                    // Amazon's Price column prefers AMAZON_PUSHED_SALE (+ Business / Min). Leaving the previous push's
+                    // values behind made /amazon-tabulator-view show the OLD price after a newer push (LS 100: 59.99 vs 42.99).
+                    if ($marketplace === 'amazon' && $status === 'pushed' && floatval($pushedPrice) > 0) {
+                        $existing = AmazonSpApiService::stampPushedSaleBusinessMin($existing, floatval($pushedPrice));
+                        // A pull recorded before this push is now out of date.
+                        unset($existing['PRICE_PULLED_VALUE'], $existing['PRICE_PULLED_AT']);
+                    }
                 }
 
                 // Append to rolling push history (newest first, keep 30)

@@ -662,12 +662,37 @@ class OverallAmazonController extends Controller
                     $row['ad_spend'] = $raw['Spend_L30'] ?? null;
                     $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null; // Status: 'pushed', 'applied', 'error'
                     $pushedSale = AmazonPushedPricePullService::pushedSaleFromValue($raw);
-                    $row['AMAZON_PUSHED_SALE'] = $pushedSale;
                     $pulledLive = isset($raw['PRICE_PULLED_VALUE']) && is_numeric($raw['PRICE_PULLED_VALUE'])
                         ? round((float) $raw['PRICE_PULLED_VALUE'], 2)
                         : 0.0;
                     $pullStatus = strtolower((string) ($raw['PRICE_PULL_STATUS'] ?? ''));
                     $pushSt = strtolower((string) ($raw['PUSH_PRC_STATUS'] ?? $raw['SPRICE_STATUS'] ?? ''));
+
+                    // Some push paths only write SPRICE_PUSHED_VALUE and leave an older AMAZON_PUSHED_SALE behind. When the
+                    // last push succeeded, the newer SPRICE_PUSHED_VALUE is the price that went to Amazon.
+                    $lastPushedValue = isset($raw['SPRICE_PUSHED_VALUE']) && is_numeric($raw['SPRICE_PUSHED_VALUE'])
+                        ? round((float) $raw['SPRICE_PUSHED_VALUE'], 2)
+                        : 0.0;
+                    if ($lastPushedValue > 0 && in_array($pushSt, ['pushed', 'applied'], true)
+                        && ($pushedSale === null || abs($lastPushedValue - $pushedSale) > 0.009)) {
+                        $pushedSale = $lastPushedValue;
+                    }
+                    $row['AMAZON_PUSHED_SALE'] = $pushedSale;
+
+                    // A stored live pull only counts if it was taken after the last push; an older pull describes a
+                    // price that has since been replaced.
+                    $pulledAtTs = ! empty($raw['PRICE_PULLED_AT']) ? strtotime((string) $raw['PRICE_PULLED_AT']) : false;
+                    $lastPushTs = 0;
+                    foreach (['SPRICE_PUSHED_AT', 'PUSH_PRC_PUSHED_AT'] as $pushAtKey) {
+                        $ts = ! empty($raw[$pushAtKey]) ? strtotime((string) $raw[$pushAtKey]) : false;
+                        if ($ts !== false && $ts > $lastPushTs) {
+                            $lastPushTs = $ts;
+                        }
+                    }
+                    if ($pulledLive > 0 && $pulledAtTs !== false && $pulledAtTs < $lastPushTs
+                        && in_array($pushSt, ['pushed', 'applied'], true)) {
+                        $pulledLive = 0.0;
+                    }
                     // Buy Box / datasheet keep Your Price. After a successful push the
                     // customer price is the Sale — use it so Price = S PRC and the
                     // blue badge does not come back on refresh. A later live pull wins
