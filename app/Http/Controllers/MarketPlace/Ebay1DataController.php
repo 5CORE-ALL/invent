@@ -105,6 +105,28 @@ class Ebay1DataController extends Controller
     }
 
     /**
+     * Hook: the title a channel shows from Title Master, by SKU key. A SKU without one keeps the title of its metrics.
+     *
+     * @return array<string, string>
+     */
+    protected function masterTitlesBySku(): array
+    {
+        return [];
+    }
+
+    /**
+     * Hook: fills blank cells of the item specifics of a SKU from another source (Amz Data: the eBay 1 values).
+     * Only columns the SKU already has are filled; no column is added.
+     *
+     * @param  array<string, mixed>  $specifics
+     * @return array<string, mixed>
+     */
+    protected function fillSpecificsFromElsewhere(array $specifics, string $skuKey, string $sku = ''): array
+    {
+        return $specifics;
+    }
+
+    /**
      * Hook: the listing rows of the channel (CP Master SKUs with INV, REQ / NRL, Listed and the listing id).
      * Amazon builds its own, because its listing page does not use the channel registry.
      *
@@ -181,6 +203,7 @@ class Ebay1DataController extends Controller
             $extras = $this->extraColumnsByCategory();
             $sources = $this->columnSourcesByCategory();
             $techSpecs = ($extras === [] && $sources === []) ? [] : $this->technicalSpecValuesBySku();
+            $masterTitles = $this->masterTitlesBySku();
 
             // UPC column: the code held in CP Master (product_master), as on Technical Specifications.
             $cpUpc = ProductUpc::forSkus($listing->map(static fn ($item) => trim((string) ($item->sku ?? '')))->filter()->values()->all());
@@ -205,6 +228,7 @@ class Ebay1DataController extends Controller
 
                 // Columns added by hand to this category tab: the value comes from Technical Specifications.
                 $specifics = $this->withChannelColumns($live['specifics'] ?? [], $category, $live);
+                $specifics = $this->fillSpecificsFromElsewhere($specifics, $key, $sku);
                 foreach ($extras[$this->categoryHash($category)] ?? [] as $extraKey => $extraName) {
                     $already = false;
                     foreach (array_keys($specifics) as $existingName) {
@@ -308,7 +332,7 @@ class Ebay1DataController extends Controller
                     'listed' => (string) ($item->listed ?? 'Pending'),
                     'item_id' => $itemId,
                     'buyer_link' => (string) ($item->buyer_link ?? ($metric['ebay_link'] ?? '')),
-                    'ebay_title' => $pendingTitle !== '' ? $pendingTitle : (string) ($metric['ebay_title'] ?? ''),
+                    'ebay_title' => $pendingTitle !== '' ? $pendingTitle : ($masterTitles[$key] ?? (string) ($metric['ebay_title'] ?? '')),
                     'title_pending' => $pendingTitle !== '',
                     'ebay_price' => $pendingPrice !== null ? $pendingPrice : $this->num($metric['ebay_price'] ?? null),
                     'price_pending' => $pendingPrice !== null,
