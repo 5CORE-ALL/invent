@@ -366,6 +366,108 @@ class Amz1DataController extends Ebay1DataController
         return ['attr_pending' => array_keys($this->needTypes)];
     }
 
+    // ---- Title from Title Master, matching columns from eBay 1 Data ----
+
+    /**
+     * The Amazon title column is the Title 170 saved in Title Master (product_master.title150), the title the
+     * Title Master page pushes to Amazon. A SKU with none keeps the title of its Amazon listing.
+     *
+     * @return array<string, string>
+     */
+    protected function masterTitlesBySku(): array
+    {
+        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'title150')) {
+            return [];
+        }
+        $query = DB::table('product_master')->whereNotNull('sku')->whereNotNull('title150')->where('title150', '!=', '');
+        if (Schema::hasColumn('product_master', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+        $out = [];
+        foreach ($query->get(['sku', 'title150']) as $row) {
+            $title = trim((string) $row->title150);
+            if ($title !== '') {
+                $out[$this->skuKey((string) $row->sku)] = $title;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @var array<string, array<string, string>>|null SKU key => eBay 1 aspect key => value */
+    private ?array $ebayValuesMemo = null;
+
+    /**
+     * The item specifics of every SKU as eBay 1 Data holds them, by aspect key (blank and "Does not apply" left out).
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function ebayValuesBySku(): array
+    {
+        if ($this->ebayValuesMemo !== null) {
+            return $this->ebayValuesMemo;
+        }
+        $this->ebayValuesMemo = [];
+        if (! Schema::hasTable('ebay1_item_specifics')) {
+            return $this->ebayValuesMemo;
+        }
+        foreach (DB::table('ebay1_item_specifics')->select(['sku', 'specifics'])->get() as $row) {
+            $decoded = json_decode((string) $row->specifics, true);
+            if (! is_array($decoded)) {
+                continue;
+            }
+            $values = [];
+            foreach ($decoded as $name => $value) {
+                $name = (string) $name;
+                $value = is_scalar($value) ? trim((string) $value) : '';
+                if ($name === '' || str_starts_with($name, '__') || $this->isBlankValue($value)) {
+                    continue;
+                }
+                $aspect = $this->aspectKey($name);
+                if ($aspect !== '' && ! isset($values[$aspect])) {
+                    $values[$aspect] = $value;
+                }
+            }
+            if ($values !== []) {
+                $this->ebayValuesMemo[$this->skuKey((string) $row->sku)] = $values;
+            }
+        }
+
+        return $this->ebayValuesMemo;
+    }
+
+    private function isBlankValue(string $value): bool
+    {
+        return in_array(strtolower(trim($value)), ['', 'does not apply', 'not applicable', '—'], true);
+    }
+
+    /**
+     * A blank Amazon cell takes the value eBay 1 Data has for the column of the same name. Only the columns the SKU
+     * already has are filled (never a second column for the same field), and a value Amazon holds is kept.
+     */
+    protected function fillSpecificsFromElsewhere(array $specifics, string $skuKey): array
+    {
+        $ebay = $this->ebayValuesBySku()[$skuKey] ?? [];
+        if ($ebay === []) {
+            return $specifics;
+        }
+        $filledAspects = [];
+        foreach ($specifics as $name => $value) {
+            $name = (string) $name;
+            $aspect = $this->aspectKey($name);
+            if ($aspect === '' || str_starts_with($name, '__') || ! isset($ebay[$aspect]) || isset($filledAspects[$aspect])) {
+                continue;
+            }
+            // The first column of a field takes the value; a repeated spelling of it stays as it is.
+            $filledAspects[$aspect] = true;
+            if ($this->isBlankValue(is_scalar($value) ? (string) $value : '')) {
+                $specifics[$name] = $ebay[$aspect];
+            }
+        }
+
+        return $specifics;
+    }
+
     /**
      * Every product type known here: the listings report, the SKUs already pulled, the types already loaded.
      *
