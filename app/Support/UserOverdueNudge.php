@@ -44,9 +44,11 @@ final class UserOverdueNudge
             if ($minOverdueDays > 0) {
                 $weekly = "DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$days} DAY) < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)";
                 $regular = "DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)";
+                $daily = "DATE(start_date) < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)";
             } else {
                 $weekly = "DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$days} DAY) <= CURDATE()";
                 $regular = "DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < CURDATE()";
+                $daily = "DATE(start_date) < CURDATE()";
             }
 
             return (int) Task::query()
@@ -63,6 +65,9 @@ final class UserOverdueNudge
                         WHEN COALESCE(is_automate_task, 0) = 1
                              AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly')
                         THEN {$weekly}
+                        WHEN COALESCE(is_automate_task, 0) = 1
+                             AND LOWER(COALESCE(schedule_type, '')) = 'daily'
+                        THEN {$daily}
                         ELSE {$regular}
                     END)"
                 )

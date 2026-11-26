@@ -3769,6 +3769,11 @@
                 if (!bd) {
                     return false;
                 }
+                // Daily automated tasks: overdue the day after TID. Everything else: TID + 1 day grace.
+                var isAutoRow = rowData.is_automate_task == 1 || rowData.is_automate_task === true || rowData.is_automate_task === '1';
+                if (isAutoRow && String(rowData.schedule_type || '').toLowerCase() === 'daily') {
+                    return taskBusinessToday > bd;
+                }
                 return taskBusinessToday > addDaysYmd(bd, 1);
             }
 

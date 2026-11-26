@@ -414,6 +414,7 @@ class TaskController extends Controller
 
     /**
      * Overdue when office-calendar TID day + 1 full day has passed (matches UI grace).
+     * Daily automated tasks are overdue the day after TID.
      * Weekly/monthly automated tasks are overdue 6 days after created_at.
      */
     protected function whereOverdueByBusinessTid(Builder $query): Builder
@@ -427,6 +428,9 @@ class TaskController extends Controller
                     WHEN COALESCE(is_automate_task, 0) = 1
                          AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly')
                     THEN DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$weeklyMonthlyDays} DAY) <= CURDATE()
+                    WHEN COALESCE(is_automate_task, 0) = 1
+                         AND LOWER(COALESCE(schedule_type, '')) = 'daily'
+                    THEN DATE(start_date) < CURDATE()
                     ELSE DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < CURDATE()
                 END)"
             );

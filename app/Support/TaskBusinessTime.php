@@ -130,15 +130,25 @@ class TaskBusinessTime
 
     /**
      * Grace days before a task counts as overdue.
-     * Weekly/monthly automated tasks: 6 days from created_at. Everything else: 1 day from TID.
+     * Weekly/monthly automated tasks: 6 days from created_at.
+     * Daily automated tasks: 0 (overdue the day after TID).
+     * Everything else: 1 day from TID.
      */
     public static function overdueGraceDays(?string $scheduleType, bool $isAutomateTask = false): int
     {
         if ($isAutomateTask && static::isWeeklyOrMonthly($scheduleType)) {
             return static::weeklyMonthlyOverdueDays();
         }
+        if ($isAutomateTask && static::isDaily($scheduleType)) {
+            return 0;
+        }
 
         return 1;
+    }
+
+    public static function isDaily(?string $scheduleType): bool
+    {
+        return strtolower(trim((string) $scheduleType)) === 'daily';
     }
 
     /** due_date / completion_date window when an automated instance is created. */
@@ -185,6 +195,7 @@ class TaskBusinessTime
     /**
      * Same overdue rule as the /tasks list: Done and Archived are never overdue.
      * Weekly/monthly automated tasks are overdue on created date + 6 days.
+     * Daily automated tasks are overdue the day after TID (business date > TID).
      * Every other task is overdue once the business date is after TID + 1 day.
      */
     public static function isTaskOverdue(
@@ -212,7 +223,9 @@ class TaskBusinessTime
         }
 
         try {
-            $dayAfterGrace = static::parse($tid)->addDay()->toDateString();
+            $dayAfterGrace = static::parse($tid)
+                ->addDays(static::overdueGraceDays((string) $scheduleType, $isAutomateTask))
+                ->toDateString();
         } catch (\Throwable) {
             return false;
         }
