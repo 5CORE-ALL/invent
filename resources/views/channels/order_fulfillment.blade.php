@@ -221,16 +221,27 @@
         .of-ph-btn { border: 1px solid rgba(255,255,255,.16); background: transparent; color: #cfd1ff; border-radius: 99px; padding: 6px 14px; font-size: .78rem; font-weight: 700; cursor: pointer; transition: all .15s; }
         .of-ph-btn:hover { background: rgba(255,255,255,.08); }
         .of-ph-btn.is-on { background: linear-gradient(135deg, #7c3aed, #ec4899); color: #fff; border-color: transparent; }
-        .of-ph-chartbox { position: relative; height: 310px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 20px; padding: 12px 14px; }
+        .of-ph-chartbox { position: relative; height: 360px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 20px; padding: 12px 14px; }
         .of-ph-hint { font-size: .72rem; color: rgba(233,234,255,.55); margin: 8px 2px 12px; }
-        .of-ph-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
-        .of-ph-chip { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 11px; border-radius: 14px; cursor: pointer; color: #e9eaff; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); transition: all .15s; }
-        .of-ph-chip:hover { background: rgba(255,255,255,.11); transform: translateY(-1px); }
-        .of-ph-chip.is-off { opacity: .38; }
+        .of-ph-badge--daily { background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 60%, #a855f7 100%); box-shadow: 0 6px 16px -6px rgba(99, 102, 241, 0.75); }
+        .of-ph-badge--daily:hover { box-shadow: 0 10px 22px -6px rgba(99, 102, 241, 0.9); }
+        .of-ph-stat-btn { border: 0; color: #fff; text-align: left; cursor: pointer; transition: transform .15s, background .15s; }
+        .of-ph-stat-btn:hover { background: rgba(255,255,255,.3); transform: translateY(-2px); }
+        .of-ph-stat-btn.is-on { background: rgba(255,255,255,.34); box-shadow: inset 0 0 0 2px rgba(255,255,255,.8); }
+        .of-ph-stat-btn em { display: block; font-style: normal; font-size: .62rem; font-weight: 700; opacity: .9; margin-top: 2px; }
+        .of-ph-picker-title { font-size: .74rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: rgba(233,234,255,.7); margin: 4px 2px 8px; }
+        .of-ph-sites { display: flex; flex-direction: column; gap: 6px; }
+        .of-ph-site { display: grid; grid-template-columns: minmax(130px, 210px) minmax(0, 1fr) 54px 64px; align-items: center; gap: 12px; text-align: left; padding: 8px 12px; border-radius: 14px; cursor: pointer; color: #e9eaff; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); transition: all .15s; }
+        .of-ph-site:hover { background: rgba(255,255,255,.1); transform: translateX(2px); }
+        .of-ph-site.is-sel { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.55); box-shadow: 0 0 0 2px rgba(255,255,255,.12); }
+        .of-ph-site-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: .82rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .of-ph-bar { height: 12px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+        .of-ph-bar i { display: block; height: 100%; border-radius: 99px; }
+        .of-ph-site-num { font-weight: 800; font-size: 1rem; text-align: right; font-variant-numeric: tabular-nums; }
+        .of-ph-site-d { text-align: right; }
         .of-ph-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 10px currentColor; }
-        .of-ph-chip .of-ph-name { flex: 1; min-width: 0; font-size: .78rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .of-ph-chip .of-ph-num { font-weight: 800; font-variant-numeric: tabular-nums; }
-        .of-ph-chip .of-ph-d { font-size: .66rem; font-weight: 800; padding: 1px 6px; border-radius: 99px; }
+        .of-ph-d { font-size: .66rem; font-weight: 800; padding: 1px 6px; border-radius: 99px; }
+        @media (max-width: 640px) { .of-ph-site { grid-template-columns: minmax(0, 1fr) 46px 56px; } .of-ph-bar { display: none; } }
         .of-ph-d.up { background: rgba(251, 113, 133, .22); color: #fda4af; }
         .of-ph-d.down { background: rgba(52, 211, 153, .2); color: #6ee7b7; }
         .of-ph-table { width: 100%; margin-top: 14px; font-size: .8rem; border-collapse: separate; border-spacing: 0 4px; }
@@ -267,6 +278,10 @@
                                 <i class="fas fa-chart-line" aria-hidden="true"></i>
                                 Pending by site <b id="of-ph-total">…</b>
                                 <span class="of-ph-delta" id="of-ph-delta"></span>
+                            </button>
+                            <button type="button" class="of-ph-badge of-ph-badge--daily" id="of-ph-badge-daily" title="Pending orders at 3:30 PM Ohio time, day by day">
+                                <i class="fas fa-clock" aria-hidden="true"></i>
+                                3:30 PM Ohio <b id="of-ph-daily-total">—</b>
                             </button>
                         @endif
                         @if(!empty($ofScanPendingOnly))
@@ -334,14 +349,17 @@
                     <div class="of-ph-stats">
                         <div class="of-ph-stat"><b id="of-ph-s-now">—</b><span>Pending now</span></div>
                         <div class="of-ph-stat"><b id="of-ph-s-delta">—</b><span>vs last hour</span></div>
-                        <div class="of-ph-stat"><b id="of-ph-s-daily">—</b><span>3:30 PM today (Ohio)</span></div>
+                        <button type="button" class="of-ph-stat of-ph-stat-btn" data-ph-tab="daily" title="Open the day-by-day 3:30 PM graph">
+                            <b id="of-ph-s-daily">—</b><span id="of-ph-s-daily-label">3:30 PM record (Ohio)</span>
+                            <em><i class="fas fa-chart-line" aria-hidden="true"></i> day-by-day graph</em>
+                        </button>
                         <div class="of-ph-stat"><b id="of-ph-s-sites">—</b><span>Sites with pending</span></div>
                     </div>
                 </div>
                 <div class="of-ph-body">
                     <div class="of-ph-tools">
                         <button type="button" class="of-ph-btn is-on" data-ph-tab="hourly">Hourly</button>
-                        <button type="button" class="of-ph-btn" data-ph-tab="daily">3:30 PM daily</button>
+                        <button type="button" class="of-ph-btn" data-ph-tab="daily">3:30 PM each day</button>
                         <span class="of-ph-spacer"></span>
                         <button type="button" class="of-ph-btn" data-ph-range="24h">24h</button>
                         <button type="button" class="of-ph-btn is-on" data-ph-range="7d">7d</button>
@@ -349,9 +367,13 @@
                         <button type="button" class="of-ph-btn" id="of-ph-reload" title="Reload the saved history"><i class="fas fa-rotate" aria-hidden="true"></i></button>
                     </div>
                     <div id="of-ph-content">
-                        <div class="of-ph-chartbox"><canvas id="of-ph-canvas"></canvas></div>
+                        <div class="of-ph-chartbox" id="of-ph-chartbox"><canvas id="of-ph-canvas"></canvas></div>
+                        <div class="of-ph-empty" id="of-ph-tab-empty" style="display:none;"></div>
                         <div class="of-ph-hint" id="of-ph-hint"></div>
-                        <div class="of-ph-chips" id="of-ph-chips"></div>
+                        <div id="of-ph-picker">
+                            <div class="of-ph-picker-title" id="of-ph-picker-title"></div>
+                            <div class="of-ph-sites" id="of-ph-sites"></div>
+                        </div>
                         <div id="of-ph-daily-table"></div>
                     </div>
                     <div class="of-ph-empty" id="of-ph-empty" style="display:none;"></div>
@@ -2289,25 +2311,28 @@
 (function () {
     const badge = document.getElementById('of-ph-badge');
     if (!badge) return;
+    const dailyBadge = document.getElementById('of-ph-badge-daily');
 
     const HISTORY_URL = @json(route('order.fulfillment.pending.history'));
-    const OHIO_TZ = 'America/New_York';
     const HOUR_MS = 3600000;
-    const PALETTE = ['#8b5cf6', '#ec4899', '#f97316', '#22d3ee', '#a3e635', '#facc15', '#fb7185', '#38bdf8'];
-    const OTHER = { key: '__other', label: 'Other sites', color: '#94a3b8' };
+    const TOTAL = '__total';
+    const TOTAL_COLOR = '#f472b6';
+    const PALETTE = ['#a78bfa', '#fb7185', '#fb923c', '#22d3ee', '#a3e635', '#facc15', '#38bdf8', '#34d399', '#f472b6', '#c084fc'];
 
     let data = null;
     let range = '7d';
     let tab = 'hourly';
+    let selected = TOTAL;
     let chart = null;
-    const hidden = new Set();
 
     const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const num = (n) => Number(n || 0).toLocaleString();
     const el = (id) => document.getElementById(id);
 
-    function ohioToday() {
-        return new Date().toLocaleDateString('en-CA', { timeZone: OHIO_TZ });
+    function hexA(hex, a) {
+        const h = hex.replace('#', '');
+        const n = parseInt(h, 16);
+        return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
     }
 
     function deltaChip(d) {
@@ -2315,151 +2340,196 @@
         return '<span class="of-ph-d ' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '▲ +' : '▼ ') + d + '</span>';
     }
 
-    // Top sites (by pending now) get their own colour; every other site is summed into "Other sites".
-    function seriesDefs() {
-        const sites = (data && data.latest && data.latest.sites) || [];
-        const defs = sites.slice(0, 8).map(function (s, i) {
-            return { key: s.slug, label: s.label, color: PALETTE[i % PALETTE.length] };
-        });
-        if (sites.length > 8) defs.push(OTHER);
-        return defs;
-    }
+    function latestSites() { return (data && data.latest && data.latest.sites) || []; }
 
-    function valuesFor(rows, def, topKeys) {
-        return rows.map(function (r) {
-            if (def.key === OTHER.key) {
-                let rest = 0;
-                Object.keys(r.counts || {}).forEach(function (k) { if (topKeys.indexOf(k) === -1) rest += Number(r.counts[k] || 0); });
-                return rest;
-            }
-            return Number((r.counts || {})[def.key] || 0);
-        });
+    function siteColor(slug) {
+        const i = latestSites().findIndex(function (s) { return s.slug === slug; });
+        return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
     }
+    function siteLabel(slug) {
+        const s = latestSites().filter(function (x) { return x.slug === slug; })[0];
+        return s ? s.label : ((data && data.labels && data.labels[slug]) || slug);
+    }
+    const selColor = () => selected === TOTAL ? TOTAL_COLOR : siteColor(selected);
+    const selLabel = () => selected === TOTAL ? 'All sites' : siteLabel(selected);
+    const rowValue = (r) => selected === TOTAL ? Number(r.total || 0) : Number((r.counts || {})[selected] || 0);
 
-    function paintBadge() {
-        const total = data && data.latest ? data.latest.total : null;
-        el('of-ph-total').textContent = total === null ? '—' : num(total);
-        const prev = data && data.latest ? data.latest.previous_total : null;
-        const d = total !== null && prev !== null && prev !== undefined ? total - prev : null;
+    // The 3:30 PM records, oldest first, limited by the 7d / 30d buttons.
+    function dailyRows() {
+        const all = (data && data.daily) || [];
+        return all.slice(-(range === '30d' ? 30 : 7));
+    }
+    function currentRows() { return tab === 'hourly' ? ((data && data.hourly) || []) : dailyRows(); }
+
+    function paintBadges() {
+        const l = data && data.latest;
+        el('of-ph-total').textContent = l ? num(l.total) : '—';
+        const d = l && l.previous_total !== null && l.previous_total !== undefined ? l.total - l.previous_total : null;
         const chip = el('of-ph-delta');
         chip.textContent = d ? (d > 0 ? '▲ +' + d : '▼ ' + d) : '';
         chip.title = d ? 'Change since the previous hourly snapshot' : '';
+        if (dailyBadge) {
+            const all = (data && data.daily) || [];
+            const last = all[all.length - 1];
+            el('of-ph-daily-total').textContent = last ? num(last.total) : '—';
+            dailyBadge.title = last ? 'Pending orders at 3:30 PM Ohio time on ' + last.label + '. Click for the day-by-day graph.' : 'The first 3:30 PM Ohio record is saved at 3:30 PM. Click to open.';
+        }
     }
 
     function paintHeader() {
         const l = data && data.latest;
         el('of-ph-updated').textContent = l
-            ? 'Updated ' + l.label + ' (Ohio time) · refreshed every hour · daily record at ' + (data.daily_time || '3:30 PM') + ' Ohio time'
+            ? 'Updated ' + l.label + ' (Ohio time) · refreshes every hour · daily record saved at ' + (data.daily_time || '3:30 PM') + ' Ohio time'
             : (data && data.message) || 'No data yet';
         el('of-ph-s-now').textContent = l ? num(l.total) : '—';
         const d = l && l.previous_total !== null && l.previous_total !== undefined ? l.total - l.previous_total : null;
         el('of-ph-s-delta').textContent = d === null ? '—' : (d > 0 ? '+' + num(d) : num(d));
-        const today = ohioToday();
-        const todays = ((data && data.daily) || []).filter(function (r) { return r.date === today; })[0];
-        el('of-ph-s-daily').textContent = todays ? num(todays.total) : '—';
+        const all = (data && data.daily) || [];
+        const last = all[all.length - 1];
+        el('of-ph-s-daily').textContent = last ? num(last.total) : '—';
+        el('of-ph-s-daily-label').textContent = last ? '3:30 PM record · ' + last.label : '3:30 PM record (Ohio)';
         el('of-ph-s-sites').textContent = l ? num(l.sites.length) : '—';
     }
 
-    function paintChips() {
-        const defs = seriesDefs();
-        const l = data && data.latest;
-        const sites = (l && l.sites) || [];
-        const topKeys = defs.map(function (d) { return d.key; });
-        const html = defs.map(function (def) {
-            let count; let delta = null;
-            if (def.key === OTHER.key) {
-                const rest = sites.filter(function (s) { return topKeys.indexOf(s.slug) === -1; });
-                count = rest.reduce(function (a, s) { return a + s.orders; }, 0);
-                if (rest.every(function (s) { return s.delta !== null; })) delta = rest.reduce(function (a, s) { return a + s.delta; }, 0);
-            } else {
-                const s = sites.filter(function (x) { return x.slug === def.key; })[0];
-                count = s ? s.orders : 0;
-                delta = s ? s.delta : null;
-            }
-            return '<button type="button" class="of-ph-chip' + (hidden.has(def.key) ? ' is-off' : '') + '" data-key="' + esc(def.key) + '" title="Click to show / hide on the graph">' +
-                '<span class="of-ph-dot" style="background:' + def.color + ';color:' + def.color + '"></span>' +
-                '<span class="of-ph-name">' + esc(def.label) + '</span>' +
-                '<span class="of-ph-num">' + num(count) + '</span>' + deltaChip(delta) + '</button>';
-        }).join('');
-        el('of-ph-chips').innerHTML = html;
+    function paintSites() {
+        const sites = latestSites();
+        const l = data.latest;
+        const max = Math.max.apply(null, [1].concat(sites.map(function (s) { return s.orders; })));
+        const rows = ['<button type="button" class="of-ph-site' + (selected === TOTAL ? ' is-sel' : '') + '" data-key="' + TOTAL + '">' +
+            '<span class="of-ph-site-name"><span class="of-ph-dot" style="background:' + TOTAL_COLOR + ';color:' + TOTAL_COLOR + '"></span>All sites (total)</span>' +
+            '<span class="of-ph-bar"><i style="width:100%;background:' + TOTAL_COLOR + '"></i></span>' +
+            '<span class="of-ph-site-num">' + num(l.total) + '</span><span class="of-ph-site-d"></span></button>'];
+        sites.forEach(function (s) {
+            const c = siteColor(s.slug);
+            rows.push('<button type="button" class="of-ph-site' + (selected === s.slug ? ' is-sel' : '') + '" data-key="' + esc(s.slug) + '">' +
+                '<span class="of-ph-site-name"><span class="of-ph-dot" style="background:' + c + ';color:' + c + '"></span>' + esc(s.label) + '</span>' +
+                '<span class="of-ph-bar"><i style="width:' + Math.max(3, Math.round(s.orders / max * 100)) + '%;background:' + c + '"></i></span>' +
+                '<span class="of-ph-site-num">' + num(s.orders) + '</span><span class="of-ph-site-d">' + deltaChip(s.delta) + '</span></button>');
+        });
+        el('of-ph-sites').innerHTML = rows.join('');
+        el('of-ph-picker-title').textContent = tab === 'hourly'
+            ? 'Pending right now by site: click one to graph it'
+            : 'Click a site to see its 3:30 PM number for each day';
     }
 
     function paintDailyTable() {
         const box = el('of-ph-daily-table');
-        if (tab !== 'daily') { box.innerHTML = ''; return; }
-        const rows = ((data && data.daily) || []).slice().reverse();
-        if (!rows.length) { box.innerHTML = ''; return; }
-        const body = rows.map(function (r, i) {
-            const older = rows[i + 1];
+        const all = ((data && data.daily) || []).slice().reverse();
+        if (tab !== 'daily' || !all.length) { box.innerHTML = ''; return; }
+        const body = all.map(function (r, i) {
+            const older = all[i + 1];
             const d = older ? r.total - older.total : null;
             const top = Object.keys(r.counts || {}).map(function (k) { return { k: k, n: r.counts[k] }; })
                 .sort(function (a, b) { return b.n - a.n; }).slice(0, 3)
                 .map(function (x) { return esc((data.labels && data.labels[x.k]) || x.k) + ' ' + num(x.n); }).join(' · ');
             return '<tr><td>' + esc(r.label) + '</td><td>' + esc(r.recorded_at) + '</td><td><b>' + num(r.total) + '</b> ' + deltaChip(d) + '</td><td>' + (top || '—') + '</td></tr>';
         }).join('');
-        box.innerHTML = '<table class="of-ph-table"><thead><tr><th>Day</th><th>Recorded (Ohio)</th><th>Pending orders</th><th>Top sites</th></tr></thead><tbody>' + body + '</tbody></table>';
+        box.innerHTML = '<table class="of-ph-table"><thead><tr><th>Day</th><th>Recorded (Ohio)</th><th>Pending at 3:30 PM</th><th>Top sites</th></tr></thead><tbody>' + body + '</tbody></table>';
     }
 
+    // Draws the number above (some of) the points so the graph can be read without hovering.
+    const valueLabels = {
+        id: 'ofPhValueLabels',
+        afterDatasetsDraw: function (c) {
+            const meta = c.getDatasetMeta(0);
+            const vals = c.data.datasets[0].data;
+            const n = vals.length;
+            const step = Math.max(1, Math.ceil(n / 12));
+            const ctx = c.ctx;
+            ctx.save();
+            ctx.font = '800 13px system-ui, sans-serif';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            meta.data.forEach(function (p, i) {
+                if (i % step !== 0 && i !== n - 1) return;
+                ctx.fillText(num(vals[i]), p.x, p.y - 12);
+            });
+            ctx.restore();
+        },
+    };
+
     function renderChart() {
-        const canvas = el('of-ph-canvas');
         if (chart) { chart.destroy(); chart = null; }
-        if (!window.Chart || !data || !data.latest) return;
+        const rows = currentRows();
+        if (!window.Chart || !rows.length) return;
 
-        const rows = tab === 'hourly' ? data.hourly : data.daily;
-        const defs = seriesDefs();
-        const topKeys = defs.map(function (d) { return d.key; });
-        const isLine = tab === 'hourly';
-        const labels = rows.map(function (r) { return r.label; });
+        const canvas = el('of-ph-canvas');
+        const color = selColor();
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight || 300);
+        grad.addColorStop(0, hexA(color, 0.5));
+        grad.addColorStop(1, hexA(color, 0.02));
+        const isDaily = tab === 'daily';
+        const tick = 'rgba(233,234,255,0.85)';
 
-        const datasets = defs.map(function (def) {
-            return {
-                label: def.label,
-                data: valuesFor(rows, def, topKeys),
-                hidden: hidden.has(def.key),
-                borderColor: def.color,
-                backgroundColor: isLine ? def.color + '55' : def.color + 'cc',
-                fill: isLine,
-                tension: 0.35,
-                borderWidth: isLine ? 2 : 0,
-                borderRadius: isLine ? 0 : 6,
-                pointRadius: isLine ? (rows.length > 60 ? 0 : 2) : 0,
-                pointHoverRadius: 5,
-            };
-        });
-
-        const grid = 'rgba(255,255,255,0.08)';
-        const tick = 'rgba(233,234,255,0.6)';
         chart = new Chart(canvas, {
-            type: isLine ? 'line' : 'bar',
-            data: { labels: labels, datasets: datasets },
+            type: 'line',
+            data: {
+                labels: rows.map(function (r) { return r.label; }),
+                datasets: [{
+                    label: selLabel() + ': pending orders',
+                    data: rows.map(rowValue),
+                    borderColor: color,
+                    backgroundColor: grad,
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 4,
+                    pointRadius: rows.length > 48 ? 0 : 6,
+                    pointHoverRadius: 9,
+                    pointBackgroundColor: '#0f1020',
+                    pointBorderColor: color,
+                    pointBorderWidth: 3,
+                }],
+            },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: { padding: { top: 22, right: 18 } },
                 interaction: { mode: 'index', intersect: false },
                 scales: {
-                    x: { stacked: true, grid: { display: false }, ticks: { color: tick, maxRotation: 0, autoSkip: true, maxTicksLimit: isLine ? 8 : 14, font: { size: 10 } } },
-                    y: { stacked: true, beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
+                    x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: tick, maxRotation: 0, autoSkip: true, maxTicksLimit: isDaily ? 12 : 8, font: { size: 11, weight: '600' } } },
+                    y: {
+                        beginAtZero: true,
+                        grace: '18%',
+                        grid: { color: 'rgba(255,255,255,0.14)' },
+                        ticks: { color: tick, precision: 0, font: { size: 12, weight: '700' } },
+                        title: { display: true, text: 'Pending orders', color: tick, font: { size: 12, weight: '700' } },
+                    },
                 },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: 'rgba(15,16,32,0.96)',
-                        borderColor: 'rgba(255,255,255,0.15)',
+                        backgroundColor: 'rgba(15,16,32,0.97)',
+                        borderColor: 'rgba(255,255,255,0.2)',
                         borderWidth: 1,
+                        padding: 12,
+                        titleFont: { size: 13, weight: '800' },
+                        bodyFont: { size: 13, weight: '700' },
+                        footerFont: { size: 12, weight: '600' },
                         callbacks: {
+                            title: function (items) {
+                                const r = rows[items[0].dataIndex];
+                                return isDaily ? r.label + ' · saved ' + r.recorded_at + ' (Ohio)' : r.label + ' (Ohio)';
+                            },
+                            label: function (item) { return ' ' + selLabel() + ': ' + num(item.parsed.y) + ' pending'; },
                             footer: function (items) {
-                                const sum = items.reduce(function (a, it) { return a + (it.parsed.y || 0); }, 0);
-                                return 'Total: ' + num(sum);
+                                if (selected !== TOTAL) return '';
+                                const r = rows[items[0].dataIndex];
+                                return Object.keys(r.counts || {}).map(function (k) { return { k: k, n: r.counts[k] }; })
+                                    .sort(function (a, b) { return b.n - a.n; }).slice(0, 5)
+                                    .map(function (x) { return siteLabel(x.k) + ': ' + num(x.n); });
                             },
                         },
                     },
                 },
             },
+            plugins: [valueLabels],
         });
     }
 
     function paint() {
-        paintBadge();
+        paintBadges();
         paintHeader();
         const has = !!(data && data.latest);
         el('of-ph-content').style.display = has ? '' : 'none';
@@ -2470,16 +2540,37 @@
                 '<div class="mt-2 small">Or run <code>php artisan order-fulfillment:snapshot-pending</code> once.</div>';
             return;
         }
-        el('of-ph-hint').textContent = tab === 'hourly'
-            ? 'Pending orders per site, one point per hourly refresh. Click a site below to show / hide it.'
-            : 'The record taken every day at ' + (data.daily_time || '3:30 PM') + ' Ohio time (the first refresh after 3:30 PM if that one was missed).';
-        paintChips();
+
+        const rows = currentRows();
+        const noRows = rows.length === 0;
+        el('of-ph-chartbox').style.display = noRows ? 'none' : '';
+        const tabEmpty = el('of-ph-tab-empty');
+        tabEmpty.style.display = noRows ? '' : 'none';
+        if (noRows) {
+            tabEmpty.innerHTML = '<big>🕞</big><div><b>No 3:30 PM record yet.</b></div>' +
+                '<div class="mt-1 small">The number is saved every day at exactly 3:30 PM Ohio time. The first point appears right after the next 3:30 PM, and the graph only changes then.</div>';
+        }
+
+        let hint;
+        if (tab === 'hourly') {
+            hint = rows.length === 1
+                ? 'Only one hourly snapshot so far: the line grows by one point every hour.'
+                : 'One point per hourly refresh (Ohio time). Hover a point for the site breakdown.';
+        } else {
+            hint = 'One point per day: the pending orders at 3:30 PM Ohio time. It only changes after the next 3:30 PM.';
+        }
+        el('of-ph-hint').textContent = hint;
+        el('of-ph-hint').style.display = noRows ? 'none' : '';
+        el('of-ph-picker').style.display = noRows ? 'none' : '';
+        paintSites();
         paintDailyTable();
         renderChart();
+        // 24h only makes sense for the hourly graph.
+        document.querySelectorAll('[data-ph-range="24h"]').forEach(function (b) { b.style.display = tab === 'daily' ? 'none' : ''; });
     }
 
     function load() {
-        return fetch(HISTORY_URL + '?range=' + encodeURIComponent(range), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+        return fetch(HISTORY_URL + '?range=' + encodeURIComponent(range === '24h' && tab === 'daily' ? '7d' : range), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (json) {
                 if (!json || !json.success) throw new Error((json && json.message) || 'failed');
@@ -2496,30 +2587,31 @@
         document.querySelectorAll('[' + attr + ']').forEach(function (b) { b.classList.toggle('is-on', b.getAttribute(attr) === value); });
     }
 
-    badge.addEventListener('click', function () {
+    function openModal(openTab) {
+        tab = openTab;
+        setActive('data-ph-tab', tab);
         const modal = el('of-ph-modal');
         if (window.bootstrap && bootstrap.Modal && modal) bootstrap.Modal.getOrCreateInstance(modal).show();
+        if (data) paint();
         load();
-    });
+    }
+
+    badge.addEventListener('click', function () { openModal('hourly'); });
+    dailyBadge?.addEventListener('click', function () { openModal('daily'); });
     el('of-ph-modal')?.addEventListener('click', function (e) {
         const t = e.target.closest('[data-ph-tab]');
         if (t) { tab = t.getAttribute('data-ph-tab'); setActive('data-ph-tab', tab); paint(); return; }
         const r = e.target.closest('[data-ph-range]');
         if (r) { range = r.getAttribute('data-ph-range'); setActive('data-ph-range', range); load(); return; }
-        const chip = e.target.closest('.of-ph-chip');
-        if (chip) {
-            const key = chip.getAttribute('data-key');
-            if (hidden.has(key)) hidden.delete(key); else hidden.add(key);
-            paintChips();
-            renderChart();
-        }
+        const site = e.target.closest('.of-ph-site');
+        if (site) { selected = site.getAttribute('data-key') || TOTAL; paintSites(); renderChart(); }
     });
     el('of-ph-reload')?.addEventListener('click', load);
-    // The graph re-renders when the modal finishes opening so Chart.js measures the real size.
+    // Re-render once the modal has finished opening so Chart.js measures the real size.
     el('of-ph-modal')?.addEventListener('shown.bs.modal', function () { renderChart(); });
 
     load();
-    // The snapshots are saved every hour, so re-read them every hour (badge and open graph).
+    // Snapshots are saved every hour, so re-read them every hour (badges and the open graph).
     setInterval(load, HOUR_MS);
 })();
 </script>

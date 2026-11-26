@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 class OrderFulfillmentSnapshotPendingCommand extends Command
 {
     protected $signature = 'order-fulfillment:snapshot-pending
-        {--daily : Also save the 3:30 PM Ohio daily record (if today has none yet)}';
+        {--daily : Also save the 3:30 PM Ohio daily record. Only written when the run starts at 3:30 PM Ohio time (scheduler use)}';
 
     protected $description = 'Save pending orders per site for the history badge on /order-fulfillment/pending.';
 
@@ -42,8 +42,11 @@ class OrderFulfillmentSnapshotPendingCommand extends Command
             'Saved: %d pending orders across %d sites%s.',
             $result['total'],
             $result['sites'],
-            $result['daily'] ? ' (daily record for '.$result['daily_date'].' saved)' : ''
+            $result['daily'] ? ' (3:30 PM record for '.$result['daily_date'].' saved)' : ''
         ));
+        if ($result['daily_skipped']) {
+            $this->warn('Not 3:30 PM Ohio time (or today already has its record): the 3:30 PM record was not written.');
+        }
 
         return self::SUCCESS;
     }

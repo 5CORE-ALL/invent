@@ -11,8 +11,9 @@ use Illuminate\Support\Facades\Schema;
  * Records and reads the pending-order history behind the badge on /order-fulfillment/pending.
  *
  *  - every hour: one 'hourly' row with the pending orders per site;
- *  - once a day, from 3:30 PM Ohio (Eastern) time: one 'daily' row. The first run at or after
- *    3:30 PM writes it, so a late or missed scheduler tick still records that day.
+ *  - once a day, at 3:30 PM Ohio (Eastern) time: one 'daily' row with what was pending at that moment.
+ *    It is only written by the run that starts in the 3:30 PM window, never by a later catch-up,
+ *    so every daily record really is the 3:30 PM number and only changes the next day at 3:30 PM.
  */
 class PendingSnapshotService
 {
@@ -20,6 +21,9 @@ class PendingSnapshotService
     public const DAILY_HOUR = 15;
 
     public const DAILY_MINUTE = 30;
+
+    /** A run that starts within this many minutes after 3:30 PM Ohio still counts as the 3:30 PM record. */
+    public const DAILY_WINDOW_MINUTES = 10;
 
     public static function available(): bool
     {
@@ -29,17 +33,22 @@ class PendingSnapshotService
     /**
      * Count pending orders per site now and save the rows.
      *
-     * @return array{total: int, sites: int, hourly: bool, daily: bool, daily_date: string}
+     * $daily is true only for the 3:30 PM Ohio scheduler run. The daily record is written when that run
+     * started inside the 3:30 PM window; started any other time (a manual run, a late run) it is skipped,
+     * so the record is never a later number passed off as the 3:30 PM one.
+     *
+     * @return array{total: int, sites: int, hourly: bool, daily: bool, daily_date: string, daily_skipped: bool}
      */
-    public function capture(bool $forceDaily = false): array
+    public function capture(bool $daily = false): array
     {
         $tz = Snapshot::TIMEZONE;
-        $counts = app(OrderFulfillmentController::class)->pendingCountsBySite();
-        $total = (int) array_sum(array_column($counts, 'orders'));
-
+        // Stamp the start: counting takes a while, but the numbers describe this moment.
         $now = now();
         $ohio = $now->copy()->setTimezone($tz);
         $date = $ohio->toDateString();
+
+        $counts = app(OrderFulfillmentController::class)->pendingCountsBySite();
+        $total = (int) array_sum(array_column($counts, 'orders'));
 
         Snapshot::create([
             'kind' => Snapshot::KIND_HOURLY,
@@ -49,7 +58,7 @@ class PendingSnapshotService
             'counts' => $counts,
         ]);
 
-        $dailyDue = $forceDaily || $this->afterDailyTime($ohio);
+        $dailyDue = $daily && $this->inDailyWindow($ohio);
         $dailyWritten = false;
         if ($dailyDue && ! Snapshot::query()->where('kind', Snapshot::KIND_DAILY)->whereDate('snapshot_date', $date)->exists()) {
             Snapshot::create([
@@ -74,12 +83,17 @@ class PendingSnapshotService
             'hourly' => true,
             'daily' => $dailyWritten,
             'daily_date' => $date,
+            'daily_skipped' => $daily && ! $dailyDue,
         ];
     }
 
-    private function afterDailyTime(Carbon $ohio): bool
+    /** True from 3:30 PM Ohio until DAILY_WINDOW_MINUTES later. */
+    public function inDailyWindow(Carbon $ohio): bool
     {
-        return $ohio->greaterThanOrEqualTo($ohio->copy()->setTime(self::DAILY_HOUR, self::DAILY_MINUTE, 0));
+        $start = $ohio->copy()->setTime(self::DAILY_HOUR, self::DAILY_MINUTE, 0);
+
+        return $ohio->greaterThanOrEqualTo($start)
+            && $ohio->lessThan($start->copy()->addMinutes(self::DAILY_WINDOW_MINUTES));
     }
 
     /**
@@ -118,7 +132,7 @@ class PendingSnapshotService
 
         $dailyRows = Snapshot::query()
             ->where('kind', Snapshot::KIND_DAILY)
-            ->where('snapshot_date', '>=', now($tz)->subDays(max($days, 14))->toDateString())
+            ->where('snapshot_date', '>=', now($tz)->subDays(90)->toDateString())
             ->orderBy('snapshot_date')
             ->get();
 
