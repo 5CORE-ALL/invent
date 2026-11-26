@@ -269,6 +269,23 @@
     .es-pill.teal { background: #ccfbf1; color: #0f766e; }
     .es-pill.red { color: #dc2626; font-weight: 600; }
     .es-pill.blue-text { color: #2563eb; font-weight: 700; }
+    /* Late joining: banner (target time in California + IST) and the Joining column. */
+    .es-join-banner { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem; margin-top: .6rem; font-size: .8rem; color: #334155; }
+    .es-join-banner .es-join-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .6rem; border-radius: 8px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; white-space: nowrap; }
+    .es-join-banner .es-join-chip b { font-weight: 700; }
+    .es-join-banner .es-join-chip.ist { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+    .es-join-banner .es-join-chip.now { background: #f8fafc; border-color: #e2e8f0; color: #475569; }
+    .es-join-late-btn { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .7rem; border-radius: 999px; border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; font-weight: 700; cursor: pointer; }
+    .es-join-late-btn.is-zero { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
+    .es-join-late-btn.is-active { background: #dc2626; border-color: #b91c1c; color: #fff; }
+    .es-join-cell { line-height: 1.25; white-space: nowrap; font-size: .78rem; }
+    .es-join-cell .t { color: #0f172a; font-weight: 600; }
+    .es-join-cell .t small { color: #64748b; font-weight: 600; }
+    .es-join-cell .t.ist { color: #166534; }
+    .es-join-late { display: inline-block; margin-top: .1rem; padding: 0 .45rem; border-radius: 999px; background: #dc2626; color: #fff; font-size: .68rem; font-weight: 700; }
+    .es-join-ok { display: inline-block; margin-top: .1rem; color: #15803d; font-size: .68rem; font-weight: 700; }
+    .es-join-muted { color: #94a3b8; font-size: .72rem; }
+    tr.es-late-row .es-name { color: #b91c1c; }
     .es-pct { min-width: 90px; }
     .es-input-col { min-width: 84px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .es-live-toggles {
@@ -371,6 +388,29 @@
                         @endif
                     </div>
                 </div>
+                @if(!empty($joining))
+                <div class="es-join-banner" id="joinBanner">
+                    <span class="es-join-chip" title="Employees must log in by this time (California time, follows daylight saving)">
+                        Joining time <b id="joinTargetPt">{{ $joining['target_pt'] }}</b> {{ $joining['tz_label'] }}
+                    </span>
+                    <span class="es-join-chip ist" title="Same moment in India time">
+                        = <b id="joinTargetIst">{{ $joining['target_ist'] }}</b> IST
+                    </span>
+                    <span class="es-join-chip" title="Logging in after this time is marked late">
+                        {{ (int) ($joining['grace_minutes'] ?? 0) }} min grace · late after <b id="joinLateAfterPt">{{ $joining['late_after_pt'] ?? '' }}</b> PT / <b id="joinLateAfterIst">{{ $joining['late_after_ist'] ?? '' }}</b> IST
+                    </span>
+                    <span class="es-join-chip now" title="Current time">
+                        Now <b id="joinNowPt">{{ $joining['now_pt'] }}</b> PT · <b id="joinNowIst">{{ $joining['now_ist'] }}</b> IST
+                    </span>
+                    <span class="es-join-chip now" id="joinDayChip">
+                        Checked day <b id="joinDay">{{ \Carbon\Carbon::parse($joining['date'])->format('D, M j') }}</b>
+                        <span id="joinWeekend" @if(empty($joining['weekend'])) hidden @endif>(weekend, not checked)</span>
+                    </span>
+                    <button type="button" class="es-join-late-btn {{ (int) ($joining['late_count'] ?? 0) === 0 ? 'is-zero' : '' }}" id="joinLateBtn" title="Show only employees who joined late (or have not joined yet)">
+                        Late joining <span id="joinLateCount">{{ (int) ($joining['late_count'] ?? 0) }}</span>
+                    </button>
+                </div>
+                @endif
             </div>
         </div>
     </div>
@@ -454,6 +494,7 @@
                     <option value="all">Status: All</option>
                     <option value="logged">Status: Logged</option>
                     <option value="not_logged">Status: Not logged</option>
+                    <option value="late">Status: Late joining</option>
                     @if(\App\Support\AttendanceAccess::isPresident())
                     <option value="alerts">Status: Alerts</option>
                     @endif
@@ -472,6 +513,7 @@
                                 <th class="es-time-col" style="width:5%">Time</th>
                                 <th class="es-sort es-live-col" data-sort="live" data-type="num" style="width:6%">Live</th>
                                 <th class="es-sort es-shot-col" data-sort="lastImage" data-type="num" style="width:9%">Last Image</th>
+                                <th class="es-sort" data-sort="join" data-type="num" style="width:9%" title="First login of the checked day, in California (PT) and India (IST) time. Red = after the joining time.">Joining PT / IST</th>
                                 <th class="es-sort" data-sort="span" data-type="num" style="width:12%">Activity</th>
                                 <th class="es-sort" data-sort="wtCurrent" data-type="num" style="width:9%" title="Current month so far: Login time − Idle">WT Current</th>
                                 <th class="es-sort" data-sort="including" data-type="num" style="width:9%">L30</th>
@@ -486,8 +528,10 @@
                         </thead>
                         <tbody id="summaryBody">
                             @foreach($rows as $row)
-                            <tr class="es-selectable {{ (int) ($executive ?? 0) === (int) $row['user_id'] ? 'es-selected' : '' }}"
+                            <tr class="es-selectable {{ (int) ($executive ?? 0) === (int) $row['user_id'] ? 'es-selected' : '' }}{{ !empty($row['join_late']) ? ' es-late-row' : '' }}"
                                 data-user-id="{{ $row['user_id'] }}"
+                                data-late="{{ !empty($row['join_late']) ? '1' : '0' }}"
+                                data-join="{{ !empty($row['join_late']) ? (int) ($row['join_late_minutes'] ?? 0) : -1 }}"
                                 data-name="{{ strtolower($row['name']) }}"
                                 data-display-name="{{ $row['name'] }}"
                                 data-email="{{ strtolower($row['email']) }}"
@@ -580,6 +624,23 @@
                                     @endif
                                 </td>
                                 <td>
+                                    @if(!empty($row['join_pt']))
+                                    <div class="es-join-cell">
+                                        <div class="t">{{ $row['join_pt'] }} <small>PT</small></div>
+                                        <div class="t ist">{{ $row['join_ist'] }} <small>IST</small></div>
+                                        @if(!empty($row['join_late']))
+                                        <span class="es-join-late">{{ $row['join_label'] }}</span>
+                                        @elseif(($row['join_status'] ?? '') === 'on_time')
+                                        <span class="es-join-ok">On time</span>
+                                        @endif
+                                    </div>
+                                    @elseif(!empty($row['join_late']))
+                                    <div class="es-join-cell"><span class="es-join-late">{{ $row['join_label'] }}</span></div>
+                                    @else
+                                    <span class="es-join-muted">{{ ($row['join_label'] ?? '—') !== '—' ? $row['join_label'] : '—' }}</span>
+                                    @endif
+                                </td>
+                                <td>
                                     <div class="es-span">
                                         @if($row['activity_is_live'])<span class="es-live-dot me-1"></span>@endif
                                         {{ $row['activity_span'] }}
@@ -615,7 +676,7 @@
                             @endforeach
                             @if(count($rows) === 0)
                             <tr class="es-empty-row">
-                                <td colspan="17" class="text-center text-muted py-4">No employees match the current filters.</td>
+                                <td colspan="18" class="text-center text-muted py-4">No employees match the current filters.</td>
                             </tr>
                             @endif
                         </tbody>
@@ -804,7 +865,8 @@
             const matchesStatus = status === 'all'
                 || (status === 'logged' && hasWorked)
                 || (status === 'not_logged' && !hasWorked)
-                || (status === 'alerts' && tr.dataset.hasAlert === '1');
+                || (status === 'alerts' && tr.dataset.hasAlert === '1')
+                || (status === 'late' && tr.dataset.late === '1');
             const matchesLive = liveFilter === 'all' || liveStatus === liveFilter;
             tr.style.display = (matchesSearch && matchesStatus && matchesLive) ? '' : 'none';
         });
@@ -1054,16 +1116,64 @@
         return '<td class="es-input-col">' + fmt(row.click_count) + '</td><td class="es-input-col">' + fmt(row.key_count) + '</td>';
     }
 
+    // First login of the checked day in California and India time, red "Late" when after the joining time.
+    function joinCell(row) {
+        const label = escapeAttr(row.join_label || '');
+        if (row.join_pt) {
+            const tag = row.join_late
+                ? '<span class="es-join-late">' + label + '</span>'
+                : (row.join_status === 'on_time' ? '<span class="es-join-ok">On time</span>' : '');
+            return '<div class="es-join-cell"><div class="t">' + escapeAttr(row.join_pt) + ' <small>PT</small></div>'
+                + '<div class="t ist">' + escapeAttr(row.join_ist) + ' <small>IST</small></div>' + tag + '</div>';
+        }
+        if (row.join_late) return '<div class="es-join-cell"><span class="es-join-late">' + label + '</span></div>';
+        return '<span class="es-join-muted">' + (label || '—') + '</span>';
+    }
+
+    function paintJoining(j) {
+        if (!j) return;
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        set('joinTargetPt', j.target_pt);
+        set('joinTargetIst', j.target_ist);
+        set('joinLateAfterPt', j.late_after_pt);
+        set('joinLateAfterIst', j.late_after_ist);
+        set('joinNowPt', j.now_pt);
+        set('joinNowIst', j.now_ist);
+        set('joinLateCount', Number(j.late_count || 0));
+        const d = new Date(String(j.date) + 'T12:00:00');
+        if (!isNaN(d)) set('joinDay', d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }));
+        const wk = document.getElementById('joinWeekend');
+        if (wk) wk.hidden = !j.weekend;
+        document.getElementById('joinLateBtn')?.classList.toggle('is-zero', Number(j.late_count || 0) === 0);
+    }
+
+    // The "Now" chips tick every 30 seconds without reloading the table.
+    function tickJoinClock() {
+        const fmt = tz => new Date().toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+        const pt = document.getElementById('joinNowPt');
+        const ist = document.getElementById('joinNowIst');
+        if (pt) pt.textContent = fmt('America/Los_Angeles');
+        if (ist) ist.textContent = fmt('Asia/Kolkata');
+    }
+    setInterval(tickJoinClock, 30000);
+
+    document.getElementById('joinLateBtn')?.addEventListener('click', function () {
+        const on = statusFilter && statusFilter.value === 'late';
+        if (statusFilter) statusFilter.value = on ? 'all' : 'late';
+        this.classList.toggle('is-active', !on);
+        applyRowFilters();
+    });
+
     function renderRows(rows) {
         const body = document.getElementById('summaryBody');
         if (!body) return;
         const selectedId = String(executiveSelect?.value || 0);
         if (!rows.length) {
-            body.innerHTML = '<tr class="es-empty-row"><td colspan="17" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
+            body.innerHTML = '<tr class="es-empty-row"><td colspan="18" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
             return;
         }
         body.innerHTML = rows.map(row => `
-            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}" data-user-id="${row.user_id || ''}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-input-pct="${row.input_tracked ? (row.input_pct || 0) : (row.input_has_activity ? 0 : -1)}" data-clicks="${row.input_tracked ? (row.click_count || 0) : (row.input_has_activity ? 0 : -1)}" data-keys="${row.input_tracked ? (row.key_count || 0) : (row.input_has_activity ? 0 : -1)}" data-idle="${row.idle_seconds || 0}" data-idle-count="${row.idle_count || 0}" data-wt-current="${row.wt_current_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}" data-has-alert="${row.fraud_alert ? '1' : '0'}">
+            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}${row.join_late ? ' es-late-row' : ''}" data-user-id="${row.user_id || ''}" data-late="${row.join_late ? '1' : '0'}" data-join="${row.join_late ? (row.join_late_minutes || 0) : -1}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-input-pct="${row.input_tracked ? (row.input_pct || 0) : (row.input_has_activity ? 0 : -1)}" data-clicks="${row.input_tracked ? (row.click_count || 0) : (row.input_has_activity ? 0 : -1)}" data-keys="${row.input_tracked ? (row.key_count || 0) : (row.input_has_activity ? 0 : -1)}" data-idle="${row.idle_seconds || 0}" data-idle-count="${row.idle_count || 0}" data-wt-current="${row.wt_current_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}" data-has-alert="${row.fraud_alert ? '1' : '0'}">
                 <td class="es-avatar-col">${avatarCell(row)}</td>
                 <td>
                     <div class="es-name">${row.name}${fraudTriangle(row)}</div>
@@ -1073,6 +1183,7 @@
                 <td class="es-time-col"><a href="${escapeAttr(row.timeline_url || '#')}" target="_blank" rel="noopener" class="es-time-btn" title="Open timeline in a new tab"><img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true"></a></td>
                 <td class="es-live-col"><button type="button" class="es-live-btn" data-live-url="${escapeAttr(row.live_url || '')}" data-name="${escapeAttr(row.name || '')}" title="Watch live screen and record — ${escapeAttr(row.live_label || 'Absent')}"><span class="es-live-status ${row.live_status || 'absent'}"></span></button></td>
                 <td class="es-shot-col">${lastImageCell(row)}</td>
+                <td>${joinCell(row)}</td>
                 <td>
                     <div class="es-span">${row.activity_is_live ? '<span class="es-live-dot me-1"></span>' : ''}${row.activity_span}</div>
                     ${row.activity_updated ? `<div class="es-span-updated">${row.activity_updated}</div>` : ''}
@@ -1104,6 +1215,7 @@
             const data = await r.json();
             paintKpis(data.l30_totals || data.totals);
             if (!kpiOnlyRefresh) {
+                paintJoining(data.joining);
                 const nextRows = Array.isArray(data.rows) ? data.rows : [];
                 if (nextRows.length || !document.querySelector('#summaryBody tr:not(.es-empty-row)')) {
                     renderRows(nextRows);

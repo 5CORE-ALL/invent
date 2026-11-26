@@ -164,6 +164,16 @@ return [
     'timeline_day_reset_ist' => env('ATTENDANCE_TIMELINE_DAY_RESET_IST', '12:30'),
 
     /*
+    | Late joining alert (Team Monitoring): the first login of the day must be at or before this
+    | wall-clock time in the joining timezone (DST aware: 9:00 AM California is 9:30 PM IST in
+    | summer and 10:30 PM IST in winter). Weekends (in that timezone) are not checked.
+    */
+    'joining_time' => env('ATTENDANCE_JOINING_TIME', '09:00'),
+    'joining_timezone' => env('ATTENDANCE_JOINING_TIMEZONE', 'America/Los_Angeles'),
+    'joining_grace_minutes' => (int) env('ATTENDANCE_JOINING_GRACE_MINUTES', 10),
+    'joining_skip_weekends' => (bool) env('ATTENDANCE_JOINING_SKIP_WEEKENDS', true),
+
+    /*
     | App names treated as productive / unproductive for scoring.
     */
     'productive_apps' => ['code', 'excel', 'winword', 'powerpnt', 'figma', 'slack', 'teams', 'chrome', 'msedge', 'firefox'],

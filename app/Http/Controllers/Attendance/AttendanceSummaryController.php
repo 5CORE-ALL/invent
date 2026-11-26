@@ -44,6 +44,7 @@ class AttendanceSummaryController extends Controller
             'totals' => $payload['l30_totals'],
             'l30_from' => $payload['l30_from'],
             'l30_to' => $payload['l30_to'],
+            'joining' => $payload['joining'],
             'not_logged' => $payload['not_logged'],
             'total_employees' => $payload['total_employees'],
         ]);
@@ -106,6 +107,7 @@ class AttendanceSummaryController extends Controller
             'l30_to' => $l30To,
             'not_logged' => $summary['not_logged'],
             'total_employees' => $summary['total_employees'],
+            'joining' => $summary['joining'] ?? null,
             'from' => $from,
             'to' => $to,
             'range_key' => $rangeKey,

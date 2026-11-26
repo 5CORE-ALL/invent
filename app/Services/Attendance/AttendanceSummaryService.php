@@ -86,6 +86,7 @@ class AttendanceSummaryService
                 ->keyBy('user_id');
 
         $fraudAlerts = AttendanceFraudAlerts::forUsers($userIds);
+        $joining = $this->joiningInfo($userIds, $to);
 
         // Keyboard / click totals for the same period as the table. `tracked_beats` counts heartbeats
         // where the agent's input hook was verified working, so "0" can be told apart from "not tracked".
@@ -218,19 +219,136 @@ class AttendanceSummaryService
                 'timeline_api' => url('/attendance/employee/'.$employee->id.'/timeline'),
                 'captures_url' => url('/attendance/employee/'.$employee->id.'/captures').'?date='.$to.'&timezone='.$timezone,
                 'live_url' => route('attendance.live.show', $employee),
-            ];
+            ] + ($joining['by_user'][$employee->id] ?? $this->emptyJoiningFields());
         }
 
         usort($rows, fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
 
         $notLogged = collect($rows)->filter(fn (array $r) => ! $r['has_worked'])->count();
+        $joining['meta']['late_count'] = collect($rows)->where('join_late', true)->count();
 
         return [
+            'joining' => $joining['meta'],
             'rows' => $rows,
             'totals' => $this->formatKpiTotals($totals),
             'not_logged' => $notLogged,
             'total_employees' => count($rows),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function emptyJoiningFields(): array
+    {
+        return [
+            'join_status' => 'none',
+            'join_late' => false,
+            'join_late_minutes' => 0,
+            'join_pt' => null,
+            'join_ist' => null,
+            'join_label' => '—',
+        ];
+    }
+
+    /**
+     * Late joining check: first login of the day against the joining time (9:00 AM California by default).
+     * The day checked is the last day of the range, capped at today in the joining timezone.
+     *
+     * @param  array<int, int>  $userIds
+     * @return array{by_user: array<int, array<string, mixed>>, meta: array<string, mixed>}
+     */
+    public function joiningInfo(array $userIds, string $to): array
+    {
+        $tz = (string) config('attendance.joining_timezone', 'America/Los_Angeles');
+        $time = (string) config('attendance.joining_time', '09:00');
+        $appTz = (string) config('app.timezone', 'UTC');
+        $grace = max(0, (int) config('attendance.joining_grace_minutes', 10));
+
+        $nowTz = now()->timezone($tz);
+        $day = min($to, $nowTz->toDateString());
+        $isToday = $day === $nowTz->toDateString();
+        $target = Carbon::parse($day.' '.$time, $tz);
+        $weekend = (bool) config('attendance.joining_skip_weekends', true) && $target->isWeekend();
+
+        $meta = [
+            'date' => $day,
+            'is_today' => $isToday,
+            'weekend' => $weekend,
+            'grace_minutes' => $grace,
+            'late_after_pt' => $target->copy()->addMinutes($grace)->format('g:i A'),
+            'late_after_ist' => $target->copy()->addMinutes($grace)->timezone('Asia/Kolkata')->format('g:i A'),
+            'tz_label' => $tz === 'America/Los_Angeles' ? 'California' : $tz,
+            'target_pt' => $target->format('g:i A'),
+            'target_ist' => $target->copy()->timezone('Asia/Kolkata')->format('g:i A'),
+            'now_pt' => $nowTz->format('g:i A'),
+            'now_ist' => now()->timezone('Asia/Kolkata')->format('g:i A'),
+            'late_count' => 0,
+        ];
+
+        if ($userIds === []) {
+            return ['by_user' => [], 'meta' => $meta];
+        }
+
+        $first = AttendanceSession::query()
+            ->whereIn('user_id', $userIds)
+            ->where('started_at', '>=', Carbon::parse($day, $tz)->startOfDay()->timezone($appTz)->format('Y-m-d H:i:s'))
+            ->where('started_at', '<=', Carbon::parse($day, $tz)->endOfDay()->timezone($appTz)->format('Y-m-d H:i:s'))
+            ->orderBy('started_at')
+            ->get()
+            ->unique('user_id')
+            ->keyBy('user_id');
+
+        $byUser = [];
+        foreach ($userIds as $userId) {
+            $fields = $this->emptyJoiningFields();
+            $session = $first->get($userId);
+
+            if ($session?->started_at) {
+                $in = $session->started_at->copy()->timezone($tz);
+                $lateSeconds = max(0, $in->timestamp - $target->timestamp);
+                $lateMinutes = intdiv($lateSeconds, 60);
+                // Late only after the grace period (9:00 AM + 10 min); the "Late" time counts from 9:00 AM.
+                $late = ! $weekend && $lateSeconds > $grace * 60;
+                $fields['join_pt'] = $in->format('h:i A');
+                $fields['join_ist'] = $in->copy()->timezone('Asia/Kolkata')->format('h:i A');
+                $fields['join_status'] = $weekend ? 'off' : ($late ? 'late' : 'on_time');
+                $fields['join_late'] = $late;
+                $fields['join_late_minutes'] = $late ? $lateMinutes : 0;
+                $fields['join_label'] = $late ? 'Late '.$this->formatLateMinutes($lateMinutes) : ($weekend ? 'Weekend' : 'On time');
+            } elseif ($weekend) {
+                $fields['join_status'] = 'off';
+                $fields['join_label'] = 'Weekend';
+            } elseif ($isToday && $nowTz->gt($target)) {
+                // Past the joining time plus grace today and not logged in yet.
+                $lateSeconds = $nowTz->timestamp - $target->timestamp;
+                $lateMinutes = intdiv($lateSeconds, 60);
+                if ($lateSeconds > $grace * 60) {
+                    $fields['join_status'] = 'not_joined';
+                    $fields['join_late'] = true;
+                    $fields['join_late_minutes'] = $lateMinutes;
+                    $fields['join_label'] = 'Not joined · '.$this->formatLateMinutes($lateMinutes);
+                } else {
+                    $fields['join_status'] = 'pending';
+                    $fields['join_label'] = 'Not yet';
+                }
+            } elseif ($isToday) {
+                $fields['join_status'] = 'pending';
+                $fields['join_label'] = 'Not yet';
+            }
+
+            $byUser[(int) $userId] = $fields;
+        }
+
+        return ['by_user' => $byUser, 'meta' => $meta];
+    }
+
+    private function formatLateMinutes(int $minutes): string
+    {
+        $h = intdiv($minutes, 60);
+        $m = $minutes % 60;
+
+        return $h > 0 ? sprintf('%dh %02dm', $h, $m) : sprintf('%dm', $m);
     }
 
     /**
