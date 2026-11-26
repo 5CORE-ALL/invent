@@ -1,0 +1,198 @@
+name: TikTok GMV Max spend sync
+
+# TikTok blocks the production server's IP (India) for the GMV Max report, so this job
+# runs on GitHub's runner (US), fetches spend per product and POSTs it to the app,
+# which stores it and applies it to tiktok_gmv_ads. The repo is PUBLIC: this job must
+# never print tokens or business data - it only reports counts as annotations.
+on:
+  push:
+    branches: [tiktok-gmv-test]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TT_TOKEN: ${{ secrets.TIKTOK_ADS_ACCESS_TOKEN }}
+      TT_ADV: ${{ secrets.TIKTOK_ADS_ADVERTISER_ID }}
+      TT_STORE: ${{ secrets.TIKTOK_SHOP_ID }}
+      INGEST_KEY: ${{ secrets.TIKTOK_GMV_INGEST_KEY }}
+      INGEST_URL: https://inventory.5coremanagement.com/api/tiktok-gmv-max/ingest
+    steps:
+      - name: Check secrets
+        run: |
+          for v in TT_TOKEN TT_ADV TT_STORE INGEST_KEY; do
+            if [ -z "${!v}" ]; then echo "::error title=missing secret::$v is not set"; exit 1; fi
+          done
+
+      - name: Fetch GMV Max spend and upload
+        run: |
+          set -uo pipefail
+          # Pasted secrets often carry a trailing newline/space; strip all whitespace.
+          TT_TOKEN=$(printf '%s' "$TT_TOKEN" | tr -d '[:space:]')
+          TT_ADV=$(printf '%s' "$TT_ADV" | tr -d '[:space:]')
+          TT_STORE=$(printf '%s' "$TT_STORE" | tr -d '[:space:]')
+          INGEST_KEY=$(printf '%s' "$INGEST_KEY" | tr -d '[:space:]')
+          B=https://business-api.tiktok.com/open_api/v1.3
+          # Windows in the ad account's own timezone (Etc/GMT+5), like Ads Manager:
+          # L30 = 30 days ago..yesterday, L7 = 7 days ago..yesterday, L1 = yesterday.
+          ADV_TZ='Etc/GMT+5'
+          YESTERDAY=$(TZ=$ADV_TZ date -d 'yesterday' +%F)
+          TODAY=$(TZ=$ADV_TZ date +%F)
+          D30=$(TZ=$ADV_TZ date -d '29 days ago' +%F)
+          D7=$(TZ=$ADV_TZ date -d '6 days ago' +%F)
+          summary=""
+
+          # 1) every GMV Max campaign (product + live), all pages. The product report needs campaign IDs.
+          : > camps.txt; : > camps_meta.ndjson; metakeys=''; page=1; total=1
+          while [ "$page" -le "$total" ] && [ "$page" -le 50 ]; do
+            http=$(curl -sS -m 60 -o c.json -w '%{http_code}' -G "$B/gmv_max/campaign/get/" \
+              -H "Access-Token: $TT_TOKEN" \
+              --data-urlencode "advertiser_id=$TT_ADV" \
+              --data-urlencode 'filtering={"gmv_max_promotion_types":["PRODUCT_GMV_MAX","LIVE_GMV_MAX"]}' \
+              --data-urlencode "page=$page" --data-urlencode 'page_size=100') || { echo "::error title=GMV Max campaigns::curl failed"; exit 1; }
+            code=$(jq -r '.code // -1' c.json 2>/dev/null || echo -1)
+            if [ "$http" != "200" ] || [ "$code" != "0" ]; then
+              echo "::error title=GMV Max campaigns::http=$http tiktok_code=$code $(jq -r '.message // ""' c.json 2>/dev/null | head -c 200)"; exit 1
+            fi
+            jq -r '(.data.list // [])[] | .campaign_id | tostring' c.json >> camps.txt
+            jq -c '(.data.list // [])[] | {id: (.campaign_id|tostring), name: (.campaign_name // null),
+                   status: (.operation_status // .status // null),
+                   budget: (.budget // .daily_budget // null),
+                   type: (.gmv_max_promotion_type // .promotion_type // .objective_type // null)}' c.json >> camps_meta.ndjson
+            [ -z "${metakeys:-}" ] && metakeys=$(jq -r '(.data.list // [])[0] // {} | keys | join("+")' c.json)
+            total=$(jq -r '.data.page_info.total_page // 1' c.json); page=$((page+1))
+          done
+          sort -u camps.txt -o camps.txt
+          jq -s 'map({key: .id, value: .}) | from_entries' camps_meta.ndjson > meta.json
+          ncamp=$(wc -l < camps.txt | tr -d ' ')
+          if [ "$ncamp" -eq 0 ]; then echo "::error title=GMV Max::no campaigns returned"; exit 1; fi
+          rm -f chunk_*; split -l 100 camps.txt chunk_
+
+          # 2) per-product spend: item-level report, <=100 campaign IDs per request, summed per product.
+          fetch_range() {
+            local range="$1" start="$2" end="$3" chunk ids page total http code err=""
+            : > "rows_$range.ndjson"
+            for chunk in chunk_*; do
+              ids=$(jq -R . < "$chunk" | jq -sc .)
+              page=1; total=1
+              while [ "$page" -le "$total" ] && [ "$page" -le 60 ]; do
+                http=$(curl -sS -m 90 -o resp.json -w '%{http_code}' -G "$B/gmv_max/report/get/" \
+                  -H "Access-Token: $TT_TOKEN" \
+                  --data-urlencode "advertiser_id=$TT_ADV" \
+                  --data-urlencode "store_ids=[\"$TT_STORE\"]" \
+                  --data-urlencode 'dimensions=["item_group_id"]' \
+                  --data-urlencode 'metrics=["cost","orders","gross_revenue"]' \
+                  --data-urlencode "start_date=$start" --data-urlencode "end_date=$end" \
+                  --data-urlencode "filtering={\"campaign_ids\":$ids}" \
+                  --data-urlencode "page=$page" --data-urlencode 'page_size=100') || { echo "::error title=GMV Max $range::curl failed"; return 1; }
+                code=$(jq -r '.code // -1' resp.json 2>/dev/null || echo -1)
+                if [ "$http" != "200" ] || [ "$code" != "0" ]; then
+                  echo "::error title=GMV Max $range::http=$http tiktok_code=$code $(jq -r '.message // ""' resp.json 2>/dev/null | head -c 200)"; return 1
+                fi
+                jq -c '(.data.list // [])[] |
+                  {id: ((.dimensions.item_group_id // .dimensions.item_id // "") | tostring),
+                   cost: ((.metrics.cost // 0) | if type=="object" then (.amount // .value // 0) else . end | tonumber? // 0)}' \
+                  resp.json >> "rows_$range.ndjson"
+                total=$(jq -r '.data.page_info.total_page // 1' resp.json)
+                page=$((page+1))
+              done
+            done
+            jq -s '[.[] | select(.id != "" and .cost > 0)] | group_by(.id) | map({key: .[0].id, value: (map(.cost) | add)}) | from_entries' \
+              "rows_$range.ndjson" > "map_$range.json"
+            jq -n --arg r "$range" --slurpfile m "map_$range.json" '{range: $r, rows: $m[0]}' > "payload_$range.json"
+            local n up
+            n=$(jq 'length' "map_$range.json")
+            up=$(curl -sS -m 120 -X POST "$INGEST_URL" \
+                  -H "X-Ingest-Key: $INGEST_KEY" -H 'Content-Type: application/json' \
+                  -H 'Accept: application/json' --data @"payload_$range.json" \
+                  -w ' http=%{http_code}')
+            summary="$summary | $range products_with_spend=$n upload: $(echo "$up" | head -c 220)"
+          }
+
+          # 2b) which products (item_group_id) each active campaign sells, from the L30 window.
+          build_cprod() {
+            local f="$1" cid page total http arr
+            echo '{}' > cprod.json; echo '{}' > cbudget.json
+            for cid in $(jq -r 'select(.id != "" and (.cost > 0 or .orders > 0)) | .id' "$f" | awk 'NR<=100'); do
+              : > cp_ids.txt; page=1; total=1
+              while [ "$page" -le "$total" ] && [ "$page" -le 10 ]; do
+                http=$(curl -sS -m 90 -o cp.json -w '%{http_code}' -G "$B/gmv_max/report/get/" \
+                  -H "Access-Token: $TT_TOKEN" \
+                  --data-urlencode "advertiser_id=$TT_ADV" \
+                  --data-urlencode "store_ids=[\"$TT_STORE\"]" \
+                  --data-urlencode 'dimensions=["item_group_id"]' \
+                  --data-urlencode 'metrics=["cost"]' \
+                  --data-urlencode "start_date=$D30" --data-urlencode "end_date=$TODAY" \
+                  --data-urlencode "filtering={\"campaign_ids\":[\"$cid\"]}" \
+                  --data-urlencode "page=$page" --data-urlencode 'page_size=100') || break
+                [ "$http" = "200" ] && [ "$(jq -r '.code // -1' cp.json 2>/dev/null || echo -1)" = "0" ] || break
+                jq -r '(.data.list // [])[] | (.dimensions.item_group_id // "") | tostring' cp.json >> cp_ids.txt
+                total=$(jq -r '.data.page_info.total_page // 1' cp.json); page=$((page+1))
+              done
+              # current daily budget of this campaign
+              if curl -sS -m 40 -o ci.json -G "$B/campaign/gmv_max/info/" -H "Access-Token: $TT_TOKEN" \
+                   --data-urlencode "advertiser_id=$TT_ADV" --data-urlencode "campaign_id=$cid"; then
+                bud=$(jq -c '(.data.budget // null) | if type=="object" then (.amount // null) else . end' ci.json 2>/dev/null || echo null)
+                case "$bud" in ''|*[!0-9.nul]*) bud=null ;; esac
+                jq --arg c "$cid" --argjson b "${bud:-null}" '.[$c] = $b' cbudget.json > cbudget.tmp && mv cbudget.tmp cbudget.json
+              fi
+              arr=$(jq -R -s 'split("\n") | map(select(length > 0)) | unique' cp_ids.txt)
+              jq --arg c "$cid" --argjson a "$arr" '.[$c] = $a' cprod.json > cprod.tmp && mv cprod.tmp cprod.json
+            done
+          }
+
+          # 3) campaign-level totals (same columns as the Ads Manager export), <=100 campaigns per request.
+          fetch_campaigns() {
+            local range="$1" start="$2" end="$3" chunk ids page total http code up n
+            : > "crows_$range.ndjson"
+            for chunk in chunk_*; do
+              ids=$(jq -R . < "$chunk" | jq -sc .)
+              page=1; total=1
+              while [ "$page" -le "$total" ] && [ "$page" -le 60 ]; do
+                http=$(curl -sS -m 90 -o cresp.json -w '%{http_code}' -G "$B/gmv_max/report/get/" \
+                  -H "Access-Token: $TT_TOKEN" \
+                  --data-urlencode "advertiser_id=$TT_ADV" \
+                  --data-urlencode "store_ids=[\"$TT_STORE\"]" \
+                  --data-urlencode 'dimensions=["campaign_id"]' \
+                  --data-urlencode 'metrics=["cost","orders","gross_revenue","roi"]' \
+                  --data-urlencode "start_date=$start" --data-urlencode "end_date=$end" \
+                  --data-urlencode "filtering={\"campaign_ids\":$ids}" \
+                  --data-urlencode "page=$page" --data-urlencode 'page_size=100') || { echo "::error title=GMV Max campaigns $range::curl failed"; return 1; }
+                code=$(jq -r '.code // -1' cresp.json 2>/dev/null || echo -1)
+                if [ "$http" != "200" ] || [ "$code" != "0" ]; then
+                  echo "::error title=GMV Max campaigns $range::http=$http tiktok_code=$code $(jq -r '.message // ""' cresp.json 2>/dev/null | head -c 200)"; return 1
+                fi
+                jq -c '(.data.list // [])[] |
+                  def num: (if type=="object" then (.amount // .value // 0) else . end) | (tonumber? // 0);
+                  {id: ((.dimensions.campaign_id // "") | tostring),
+                   cost: ((.metrics.cost // 0) | num), orders: ((.metrics.orders // 0) | num),
+                   revenue: ((.metrics.gross_revenue // 0) | num), roi: ((.metrics.roi // null) | if . == null then null else num end)}' \
+                  cresp.json >> "crows_$range.ndjson"
+                total=$(jq -r '.data.page_info.total_page // 1' cresp.json)
+                page=$((page+1))
+              done
+            done
+            [ -f cprod.json ] || build_cprod "crows_$range.ndjson"
+            jq -s --slurpfile meta meta.json --slurpfile cprod cprod.json --slurpfile cbud cbudget.json --arg r "$range" --arg s "$start" --arg e "$end" \
+              '{range: $r, start_date: $s, end_date: $e,
+                campaigns: [ .[] | select(.id != "" and (.cost > 0 or .orders > 0)) | . as $c | ($meta[0][$c.id] // {}) as $m
+                  | {campaign_id: $c.id, campaign_name: $m.name, status: $m.status, budget: ($cbud[0][$c.id] // $m.budget), promotion_type: $m.type, item_group_ids: ($cprod[0][$c.id] // []),
+                     cost: $c.cost, orders: $c.orders, gross_revenue: $c.revenue, roi: $c.roi}]}' \
+              "crows_$range.ndjson" > "cpayload_$range.json"
+            n=$(jq '.campaigns | length' "cpayload_$range.json")
+            up=$(curl -sS -m 120 -X POST "${INGEST_URL%/ingest}/campaigns" \
+                  -H "X-Ingest-Key: $INGEST_KEY" -H 'Content-Type: application/json' \
+                  -H 'Accept: application/json' --data @"cpayload_$range.json" \
+                  -w ' http=%{http_code}')
+            summary="$summary | campaigns $range n=$n upload: $(echo "$up" | head -c 160)"
+          }
+
+          rc=0
+          fetch_campaigns L30 "$D30" "$TODAY" || rc=1
+          fetch_campaigns L7 "$D7" "$TODAY" || rc=1
+          fetch_campaigns L1 "$YESTERDAY" "$YESTERDAY" || rc=1
+          fetch_range L30 "$D30" "$TODAY" || rc=1
+          fetch_range L1 "$YESTERDAY" "$YESTERDAY" || rc=1
+          echo "::notice title=GMV Max sync::campaigns=$ncamp campaigns_with_budget=$(jq '[.[] | select(. != null)] | length' cbudget.json 2>/dev/null || echo 0) campaigns_with_products=$(jq '[.[] | select(length > 0)] | length' cprod.json 2>/dev/null || echo 0) meta_keys=$metakeys window $D30..$TODAY $summary"
+          exit $rc
