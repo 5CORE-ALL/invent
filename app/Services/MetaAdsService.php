@@ -141,6 +141,47 @@ class MetaAdsService
     }
 
     /**
+     * Fetch the ARCHIVED campaigns of an ad account (id, name, status,
+     * effective_status). {@see fetchCampaigns()} never returns them because
+     * Meta omits archived campaigns unless effective_status asks for them.
+     * Uses cursor (`after`) pagination — the `paging.next` URL does not carry
+     * the access token on follow-up pages.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchArchivedCampaigns(string $adAccountMetaId): array
+    {
+        $accountId = str_starts_with($adAccountMetaId, 'act_') ? $adAccountMetaId : 'act_' . $adAccountMetaId;
+        $baseUrl = config('services.meta.base_url', 'https://graph.facebook.com/v21.0');
+        $url = "{$baseUrl}/{$accountId}/campaigns";
+
+        $out = [];
+        $after = null;
+        $pages = 0;
+        do {
+            $params = [
+                'access_token' => config('services.meta.access_token'),
+                'fields' => 'id,name,status,effective_status',
+                'limit' => 500,
+                'effective_status' => json_encode(['ARCHIVED']),
+            ];
+            if ($after) {
+                $params['after'] = $after;
+            }
+
+            $response = \Illuminate\Support\Facades\Http::timeout(120)->get($url, $params);
+            if (! $response->successful()) {
+                throw new \Exception('Failed to fetch archived campaigns: ' . ($response->json('error.message') ?? $response->body()));
+            }
+
+            $out = array_merge($out, $response->json('data') ?? []);
+            $after = $response->json('paging.next') ? $response->json('paging.cursors.after') : null;
+        } while ($after && ++$pages < 50);
+
+        return $out;
+    }
+
+    /**
      * Fetch ad sets for a campaign
      * 
      * @param string $campaignMetaId

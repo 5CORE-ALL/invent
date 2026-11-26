@@ -110,9 +110,36 @@ class SyncMetaCampaignsJob implements ShouldQueue
                 $synced++;
             }
 
+            // Meta's default /campaigns listing leaves out ARCHIVED campaigns, so
+            // campaigns archived after their last sync kept a stale name / status
+            // forever (e.g. shown as ACTIVE on /facebook-all-ads-sheet). Refresh
+            // name + status of the archived ones we already store. Rows are only
+            // updated, never created, so no archived history is added.
+            $archivedRefreshed = 0;
+            if ($adAccount && $this->adAccountMetaId) {
+                try {
+                    foreach ($metaAdsService->fetchArchivedCampaigns($this->adAccountMetaId) as $campaign) {
+                        $metaId = $campaign['id'] ?? null;
+                        if (! $metaId) continue;
+                        $archivedRefreshed += MetaCampaign::where('meta_id', $metaId)
+                            ->where('ad_account_id', $adAccount->id)
+                            ->update([
+                                'name' => $campaign['name'] ?? null,
+                                'status' => $campaign['status'] ?? null,
+                                'effective_status' => $campaign['effective_status'] ?? null,
+                                'synced_at' => now(),
+                            ]);
+                    }
+                } catch (\Throwable $e) {
+                    // Never fail the main campaign sync because of this refresh.
+                    Log::warning('SyncMetaCampaignsJob: archived refresh failed', ['error' => $e->getMessage()]);
+                }
+            }
+
             Log::info('SyncMetaCampaignsJob: Completed', [
                 'user_id' => $this->userId,
                 'synced' => $synced,
+                'archived_refreshed' => $archivedRefreshed,
             ]);
         } catch (\Exception $e) {
             Log::error('SyncMetaCampaignsJob: Failed', [
