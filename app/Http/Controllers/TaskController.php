@@ -6594,6 +6594,49 @@ class TaskController extends Controller
     }
 
     /**
+     * L30 Active Working Hours of one employee, for the badge on /tasks/deleted when an Assignee / Assignor is picked.
+     * Same figure as Att L30 on the Task Summary. Only people the viewer may see on the Task Summary.
+     */
+    public function deletedL30ActiveHours(Request $request)
+    {
+        $name = trim((string) $request->query('name', ''));
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Pick an employee.'], 422);
+        }
+
+        $viewer = Auth::user();
+        $matches = User::query()
+            ->where('name', 'LIKE', '%'.str_replace(['%', '_'], ['\%', '\_'], $name).'%')
+            ->get(['id', 'name']);
+        $exact = $matches->first(fn ($u) => mb_strtolower(trim((string) $u->name)) === mb_strtolower($name));
+        $person = $exact ?: ($matches->count() === 1 ? $matches->first() : null);
+
+        if (! $person) {
+            return response()->json([
+                'success' => true,
+                'hours' => null,
+                'name' => $name,
+                'message' => $matches->isEmpty() ? 'No employee named "'.$name.'".' : 'Several employees match "'.$name.'".',
+            ]);
+        }
+
+        $allowed = $this->getTaskSummaryVisibleUserIds($viewer);
+        if ($allowed !== null && ! in_array((int) $person->id, $allowed, true)) {
+            return response()->json(['success' => true, 'hours' => null, 'name' => $person->name, 'message' => 'Not available for this employee.']);
+        }
+
+        try {
+            $hours = (float) ($this->getTaskSummaryAttendanceHours([(int) $person->id])[(int) $person->id] ?? 0);
+        } catch (\Throwable $e) {
+            \Log::warning('Deleted tasks L30 active hours (employee) failed: '.$e->getMessage());
+
+            return response()->json(['success' => true, 'hours' => null, 'name' => $person->name, 'message' => 'Could not load hours.']);
+        }
+
+        return response()->json(['success' => true, 'hours' => round($hours, 1), 'name' => $person->name]);
+    }
+
+    /**
      * Badge stats from deleted_tasks only (last 30 days by deleted_at).
      */
     public function deletedBadgeStats(Request $request)

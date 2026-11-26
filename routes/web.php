@@ -8350,6 +8350,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/deleted', [\App\Http\Controllers\TaskController::class, 'deletedIndex'])->name('tasks.deleted');
     Route::get('/tasks/deleted/data', [\App\Http\Controllers\TaskController::class, 'deletedData'])->name('tasks.deletedData');
     Route::post('/tasks/deleted/{id}/revive', [\App\Http\Controllers\TaskController::class, 'reviveDeletedTask'])->name('tasks.deleted.revive');
+    Route::get('/tasks/deleted-l30-active-hours', [\App\Http\Controllers\TaskController::class, 'deletedL30ActiveHours'])->name('tasks.deletedL30ActiveHours');
     Route::get('/tasks/deleted-badge-stats', [\App\Http\Controllers\TaskController::class, 'deletedBadgeStats'])->name('tasks.deletedBadgeStats');
     Route::post('/tasks/set-selected-user', [\App\Http\Controllers\TaskController::class, 'setSelectedUser'])->name('tasks.setSelectedUser');
     Route::get('/get-user-rr', [\App\Http\Controllers\TaskController::class, 'getUserRR'])->name('tasks.getUserRR');

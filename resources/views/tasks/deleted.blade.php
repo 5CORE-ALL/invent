@@ -526,7 +526,7 @@
                     <div class="stat-content">
                         <div class="stat-label">L30 ACTIVE WORKING HRS</div>
                         <div class="stat-value" id="badge-stat-l30-hrs">{{ isset($stats['l30_active_hours']) && $stats['l30_active_hours'] !== null ? number_format((float) $stats['l30_active_hours'], 1) : '-' }}</div>
-                        <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;" title="Active working hours over the last 30 days, same as Att L30 on the Task Summary">{{ $stats['l30_active_who'] ?? '' }}@if(($stats['l30_active_people'] ?? 1) > 1) · {{ $stats['l30_active_people'] }} people @endif · last 30 days</div>
+                        <div class="stat-label mt-1" id="badge-stat-l30-sub" style="font-size: 10px; opacity: 0.9;" title="Active working hours over the last 30 days, same as Att L30 on the Task Summary">{{ $stats['l30_active_who'] ?? '' }}@if(($stats['l30_active_people'] ?? 1) > 1) · {{ $stats['l30_active_people'] }} people @endif · last 30 days</div>
                     </div>
                 </div>
             </div>
@@ -1392,6 +1392,50 @@
                 setTimeout(function() {
                     updateBadgesFromTable();
                 }, 0);
+                refreshL30ActiveHours();
+            }
+
+            // L30 Active Working Hours badge: the employee picked in Assignee (else Assignor) -> that person's hours;
+            // nobody picked -> the page's default (team / selected user / you).
+            var l30Default = { hours: $('#badge-stat-l30-hrs').text(), sub: $('#badge-stat-l30-sub').text() };
+            var l30Cache = {};
+            var l30Timer = null;
+            var l30Req = null;
+            function paintL30(hoursText, subText) {
+                $('#badge-stat-l30-hrs').text(hoursText);
+                $('#badge-stat-l30-sub').text(subText);
+            }
+            function refreshL30ActiveHours() {
+                var name = (($('#filter-assignee').val() || '').trim()) || (($('#filter-assignor').val() || '').trim());
+                clearTimeout(l30Timer);
+                if (l30Req) { l30Req.abort(); l30Req = null; }
+                if (!name) {
+                    paintL30(l30Default.hours, l30Default.sub);
+                    return;
+                }
+                var key = name.toLowerCase();
+                if (l30Cache[key]) {
+                    paintL30(l30Cache[key].hours, l30Cache[key].sub);
+                    return;
+                }
+                l30Timer = setTimeout(function() {
+                    paintL30('…', name + ' · last 30 days');
+                    l30Req = $.getJSON(@json(route('tasks.deletedL30ActiveHours')), { name: name }).done(function(res) {
+                        var hrs = (res && res.hours !== null && res.hours !== undefined)
+                            ? Number(res.hours).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                            : '-';
+                        var sub = ((res && res.hours !== null && res.hours !== undefined)
+                            ? (res.name || name) + ' · last 30 days'
+                            : ((res && res.message) || 'Not available'));
+                        l30Cache[key] = { hours: hrs, sub: sub };
+                        // Only paint if the filter still names the same person.
+                        var cur = (($('#filter-assignee').val() || '').trim() || ($('#filter-assignor').val() || '').trim()).toLowerCase();
+                        if (cur === key) paintL30(hrs, sub);
+                    }).fail(function(_x, status) {
+                        if (status === 'abort') return;
+                        paintL30('-', 'Could not load hours');
+                    });
+                }, 350);
             }
 
             $('#filter-search').on('keyup', applyFilters);
