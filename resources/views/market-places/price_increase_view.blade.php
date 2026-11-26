@@ -5663,21 +5663,6 @@
                     }
                 },
                 {
-                    title: "Avg<br>NROI%",
-                    field: "avg_nroi",
-                    hozAlign: "center",
-                    minWidth: 60,
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value == null || value === '') return '-';
-                        const pct = parseFloat(value);
-                        if (!Number.isFinite(pct)) return '-';
-                        const st = (window.MetricPctColors && MetricPctColors.nroiStyle(pct)) || '';
-                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
-                    }
-                },
-                {
                     title: "Avg<br>Price",
                     field: "avg_price",
                     hozAlign: "center",
@@ -5772,6 +5757,21 @@
                         return `<span style="${styleForGpftValue(value)}">${Math.round(value)}%</span>`;
                     },
                     minWidth: 70
+                },
+                {
+                    title: "Avg<br>NROI%",
+                    field: "avg_nroi",
+                    hozAlign: "center",
+                    minWidth: 60,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        if (!Number.isFinite(pct)) return '-';
+                        const st = (window.MetricPctColors && MetricPctColors.nroiStyle(pct)) || '';
+                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
+                    }
                 },
                 {
                     title: "Avg<br>NPFT%",
@@ -10929,6 +10929,17 @@
             // The siblings' SPRICE is saved before anything is pushed, so every sibling push already has its price in place
             $.when(chpushRunSaves(sku, saveJobs, applySiblings), sibSaveDfd).always(function(saveRes, sibSaveRes) {
                 sibSaveRes = sibSaveRes || { saved: 0, failed: 0, total: 0 };
+                // Siblings ticked: the other rows' SPRICE $ column follows too (this price + the "+$ SPRICE" amount),
+                // saved in each sibling's own box price so it also survives a refresh
+                if (sibSkus.length && sibSaveRes.total && sibSaveRes.failed < sibSaveRes.total) {
+                    const mainBox = sameSpriceBox[sameBoxKey(sku)];
+                    const baseBox = (chpushSameBase && sameBoxKey(chpushSameBase.sku) === sameBoxKey(sku) && chpushSameBase.x > 0)
+                        ? chpushSameBase.x
+                        : (mainBox && mainBox.price > 0 ? mainBox.price : 0);
+                    if (baseBox > 0) {
+                        sibSkus.forEach(function(sibSku) { persistSameSpriceBox(sibSku, siblingPriceWithAdd(baseBox, sibAdd)); });
+                    }
+                }
                 if (saveRes && saveRes.failed) {
                     showToast('Could not save the suggested price for ' + saveRes.failed + ' channel(s) of ' + sku, 'error');
                 } else {
@@ -14392,6 +14403,30 @@
 
         /** Show only current parent's rows (children first, parent row last – like product master). No other filters. */
         let currentPlayParentName = null; // so a filter / switch change keeps the parent you are on when it is still in the list
+
+        // Remember Play / Pause + the parent you are on, so after a page refresh Play starts from there (not from the first parent)
+        const PLAY_STATE_STORAGE_KEY = 'price_increase_play_state_v1';
+        let playResumeParent = null;   // parent to start from on the next Play (set after a refresh)
+        function savePlayState(active) {
+            try {
+                const prev = JSON.parse(localStorage.getItem(PLAY_STATE_STORAGE_KEY) || 'null') || {};
+                const state = {
+                    active: !!active,
+                    mode: playNavMode || prev.mode || 'default',
+                    parent: (active ? currentPlayParentName : (prev.parent || currentPlayParentName)) || null
+                };
+                localStorage.setItem(PLAY_STATE_STORAGE_KEY, JSON.stringify(state));
+            } catch (e) { /* ignore */ }
+        }
+        /** Once, after the first data load: continue Play (or just remember the parent for the next Play) where the page was refreshed. */
+        function restorePlayState() {
+            let st = null;
+            try { st = JSON.parse(localStorage.getItem(PLAY_STATE_STORAGE_KEY) || 'null'); } catch (e) { st = null; }
+            if (!st || !st.parent) return;
+            playResumeParent = st.parent;
+            if (st.active) startPlayNavigation(st.mode || 'default');
+        }
+
         function showCurrentParentPlayView() {
             if (!fullDataset || fullDataset.length === 0) return;
             const parentRows = getPlayParentRows();
@@ -14425,6 +14460,7 @@
             table.clearFilter();
             suppressDataLoadedHandler = true;
             table.clearSort(); // Keep our order: parent row last, don't re-sort by DIL% etc.
+            savePlayState(true);
             table.setData(displayData).then(() => {
                 updateSummary();
                 updatePlayButtonStates();
@@ -14448,7 +14484,10 @@
             playNavMode = nextMode;
             isPlayNavigationActive = true;
             currentPlayParentIndex = 0;
-            currentPlayParentName = null;
+            // After a refresh start from the parent you were on (when it is in the list), otherwise from the first one
+            currentPlayParentName = (playResumeParent && parentRowsPreview.some(function(p) { return p.parent === playResumeParent; }))
+                ? playResumeParent : null;
+            playResumeParent = null;
             dotExpandedParent = null;
             expandedParent = null;
             showCurrentParentPlayView();
@@ -14475,6 +14514,7 @@
         }
 
         function stopPlayNavigation() {
+            savePlayState(false);   // paused: keep the parent (and mode) for the next Play after a refresh
             isPlayNavigationActive = false;
             playNavMode = null;
             currentPlayParentIndex = 0;
@@ -14914,8 +14954,13 @@
                 updateRecentPushedToggle();
                 applyFilters();
                 updateSummary();
+                if (!playStateRestored) {
+                    playStateRestored = true;
+                    restorePlayState();   // refresh keeps Play / Pause and the parent you were on
+                }
             });
         });
+        let playStateRestored = false;
 
         table.on('renderComplete', function() {
             setTimeout(() => updateSummary(), 100);
