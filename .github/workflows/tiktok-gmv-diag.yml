@@ -1,0 +1,52 @@
+name: TikTok GMV Max diagnostics (temporary)
+
+# TEMPORARY, test branch only. Prints status/messages only - never the token or business data.
+on:
+  push:
+    branches: [tiktok-gmv-test]
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TT_TOKEN: ${{ secrets.TIKTOK_ADS_ACCESS_TOKEN }}
+      TT_ADV: ${{ secrets.TIKTOK_ADS_ADVERTISER_ID }}
+      TT_STORE: ${{ secrets.TIKTOK_SHOP_ID }}
+    steps:
+      - name: Diagnose
+        run: |
+          set -uo pipefail
+          TT_TOKEN=$(printf '%s' "$TT_TOKEN" | tr -d '[:space:]')
+          TT_ADV=$(printf '%s' "$TT_ADV" | tr -d '[:space:]')
+          TT_STORE=$(printf '%s' "$TT_STORE" | tr -d '[:space:]')
+          B=https://business-api.tiktok.com/open_api/v1.3
+          out="lens adv=${#TT_ADV} store=${#TT_STORE} token=${#TT_TOKEN}"
+
+          # 1) which stores does this advertiser see?
+          http=$(curl -sS -m 40 -o s.json -w '%{http_code}' -G "$B/gmv_max/store/list/" \
+            -H "Access-Token: $TT_TOKEN" --data-urlencode "advertiser_id=$TT_ADV")
+          out="$out || store/list http=$http code=$(jq -r '.code // "?"' s.json) msg=$(jq -r '.message // ""' s.json | head -c 100)"
+          n=$(jq -r '(.data.store_list // .data.list // []) | length' s.json 2>/dev/null)
+          match=$(jq -r --arg s "$TT_STORE" '[(.data.store_list // .data.list // [])[] | select((.store_id // .shop_id // "" | tostring) == $s)] | length' s.json 2>/dev/null)
+          keys=$(jq -r '(.data.store_list // .data.list // [])[0] // {} | keys | join(",")' s.json 2>/dev/null | head -c 160)
+          out="$out stores=$n matches_configured_id=$match keys=$keys"
+
+          # 2) report call variants - print the full TikTok message for each
+          try() {
+            local label="$1" sparam="$2"
+            http=$(curl -sS -m 40 -o r.json -w '%{http_code}' -G "$B/gmv_max/report/get/" \
+              -H "Access-Token: $TT_TOKEN" \
+              --data-urlencode "advertiser_id=$TT_ADV" \
+              --data-urlencode "$sparam" \
+              --data-urlencode 'dimensions=["item_id"]' \
+              --data-urlencode 'metrics=["cost","orders","gross_revenue"]' \
+              --data-urlencode "start_date=$(TZ=America/Los_Angeles date -d '30 days ago' +%F)" \
+              --data-urlencode "end_date=$(TZ=America/Los_Angeles date -d yesterday +%F)" \
+              --data-urlencode 'page_size=5')
+            out="$out || $label http=$http code=$(jq -r '.code // "?"' r.json) msg=$(jq -r '.message // ""' r.json | head -c 160) rows=$(jq -r '(.data.list // []) | length' r.json 2>/dev/null)"
+          }
+          try 'quoted'   "store_ids=[\"$TT_STORE\"]"
+          try 'single'   "store_ids=$TT_STORE"
+          try 'store_id' "store_id=$TT_STORE"
+          echo "::notice title=GMV diag::$out"
