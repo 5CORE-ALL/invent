@@ -80,16 +80,26 @@
             flex-shrink: 0;
         }
         #slo-gpft-low-badge,
-        #slo-groi-low-badge {
+        #slo-groi-low-badge,
+        #slo-npft-alert-badge,
+        #slo-nroi-alert-badge {
             cursor: pointer;
             user-select: none;
         }
+        .slo-alert-badge .fa-triangle-exclamation {
+            color: #dc3545;
+            margin-right: 2px;
+        }
         #slo-gpft-low-badge:hover,
-        #slo-groi-low-badge:hover {
+        #slo-groi-low-badge:hover,
+        #slo-npft-alert-badge:hover,
+        #slo-nroi-alert-badge:hover {
             filter: brightness(0.97);
         }
         #slo-gpft-low-badge.is-active,
-        #slo-groi-low-badge.is-active {
+        #slo-groi-low-badge.is-active,
+        #slo-npft-alert-badge.is-active,
+        #slo-nroi-alert-badge.is-active {
             box-shadow: inset 0 0 0 2px #842029;
         }
         #slo-toolbar .form-control-sm,
@@ -673,6 +683,12 @@
                             <span class="badge slo-summary-badge" id="slo-groi-low-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="Click to filter GROI% under 50%.">
                                 GROI % &lt; 50%: <span id="slo-groi-low-count">0</span>
                             </span>
+                            <span class="badge slo-summary-badge slo-alert-badge" id="slo-npft-alert-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="Price alert: click to show orders with NPRFT% under 10%. Counts distinct SKUs.">
+                                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Price Alert NPRFT% &lt; 10%: <span id="slo-npft-alert-count">0</span> SKUs
+                            </span>
+                            <span class="badge slo-summary-badge slo-alert-badge" id="slo-nroi-alert-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="Price alert: click to show orders with NROI% under 30%. Counts distinct SKUs.">
+                                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Price Alert NROI% &lt; 30%: <span id="slo-nroi-alert-count">0</span> SKUs
+                            </span>
                         </div>
                         <div id="slo-toolbar-row2">
                             <div class="slo-filter-field">
@@ -1205,6 +1221,42 @@
         if (badge) badge.classList.toggle('is-active', sloGroiLowFilter);
     }
 
+    // Price alerts: NPRFT% under 10 and NROI% under 30. Badges count distinct SKUs.
+    let sloNpftAlertFilter = false;
+    let sloNroiAlertFilter = false;
+
+    function sloIsNpftAlert(row) {
+        const v = row && row.npft_pct;
+        if (v === null || v === undefined || v === '') return false;
+        const n = Number(v);
+        return Number.isFinite(n) && n < 10;
+    }
+
+    function sloIsNroiAlert(row) {
+        const v = row && row.nroi_pct;
+        if (v === null || v === undefined || v === '') return false;
+        const n = Number(v);
+        return Number.isFinite(n) && n < 30;
+    }
+
+    function sloCountAlertSkus(rows, test) {
+        const skus = new Set();
+        (rows || []).forEach(function (row) {
+            const sku = String((row && row.sku) || '').trim().toLowerCase();
+            if (sku && test(row)) skus.add(sku);
+        });
+        return skus.size;
+    }
+
+    function sloUpdateAlertBadges(rows) {
+        const npftEl = document.getElementById('slo-npft-alert-count');
+        const nroiEl = document.getElementById('slo-nroi-alert-count');
+        if (npftEl) npftEl.textContent = sloCountAlertSkus(rows, sloIsNpftAlert).toLocaleString();
+        if (nroiEl) nroiEl.textContent = sloCountAlertSkus(rows, sloIsNroiAlert).toLocaleString();
+        document.getElementById('slo-npft-alert-badge')?.classList.toggle('is-active', sloNpftAlertFilter);
+        document.getElementById('slo-nroi-alert-badge')?.classList.toggle('is-active', sloNroiAlertFilter);
+    }
+
     function applyClientFilters(table) {
         if (!table) return;
         const q = ($('#slo-order-search').val() || '').trim().toLowerCase();
@@ -1212,7 +1264,7 @@
         const slug = sloResolvedChannelSlug();
         const status = sloStatusFilterValue();
 
-        if (!q && !channel && !status && !sloGpftLowFilter && !sloGroiLowFilter) {
+        if (!q && !channel && !status && !sloGpftLowFilter && !sloGroiLowFilter && !sloNpftAlertFilter && !sloNroiAlertFilter) {
             table.clearFilter(true);
             sloApplyLatestFirstSort(table);
             return;
@@ -1233,6 +1285,8 @@
             }
             if (sloGpftLowFilter && !sloIsGpftLow(data)) return false;
             if (sloGroiLowFilter && !sloIsGroiLow(data)) return false;
+            if (sloNpftAlertFilter && !sloIsNpftAlert(data)) return false;
+            if (sloNroiAlertFilter && !sloIsNroiAlert(data)) return false;
             if (!channel) return true;
             if (slug) {
                 return String(data.mm_slug || '').toLowerCase() === slug;
@@ -1290,6 +1344,7 @@
             sloRebuildStatusOptions(rows);
             sloUpdateGpftLowBadge(rows);
             sloUpdateGroiLowBadge(rows);
+            sloUpdateAlertBadges(rows);
             return rows;
         },
         dataLoaded: function () {
@@ -1661,6 +1716,22 @@
         this.title = sloGroiLowFilter
             ? 'Showing GROI% under 50%. Click to show all.'
             : 'Click to filter GROI% under 50%.';
+        applyClientFilters(table);
+    });
+    document.getElementById('slo-npft-alert-badge')?.addEventListener('click', function () {
+        sloNpftAlertFilter = !sloNpftAlertFilter;
+        this.classList.toggle('is-active', sloNpftAlertFilter);
+        this.title = sloNpftAlertFilter
+            ? 'Showing orders with NPRFT% under 10%. Click to show all.'
+            : 'Price alert: click to show orders with NPRFT% under 10%. Counts distinct SKUs.';
+        applyClientFilters(table);
+    });
+    document.getElementById('slo-nroi-alert-badge')?.addEventListener('click', function () {
+        sloNroiAlertFilter = !sloNroiAlertFilter;
+        this.classList.toggle('is-active', sloNroiAlertFilter);
+        this.title = sloNroiAlertFilter
+            ? 'Showing orders with NROI% under 30%. Click to show all.'
+            : 'Price alert: click to show orders with NROI% under 30%. Counts distinct SKUs.';
         applyClientFilters(table);
     });
 
