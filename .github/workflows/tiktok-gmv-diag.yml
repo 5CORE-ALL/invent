@@ -38,7 +38,7 @@ jobs:
           while [ "$page" -le "$total" ] && [ "$page" -le 20 ]; do
             curl -sS -m 40 -o c.json -G "$B/gmv_max/campaign/get/" -H "Access-Token: $TT_TOKEN" \
               --data-urlencode "advertiser_id=$TT_ADV" \
-              --data-urlencode 'filtering={"gmv_max_promotion_types":["PRODUCT","LIVE"]}' \
+              --data-urlencode 'filtering={"gmv_max_promotion_types":["PRODUCT_GMV_MAX","LIVE_GMV_MAX"]}' \
               --data-urlencode "page=$page" --data-urlencode 'page_size=100'
             jq -c '(.data.list // [])[] | {id: (.campaign_id|tostring), st: (.operation_status // ""), t: (.promotion_type // .gmv_max_promotion_type // "")}' c.json >> camps.ndjson
             total=$(jq -r '.data.page_info.total_page // 1' c.json); page=$((page+1))
