@@ -1108,6 +1108,8 @@ return [
         // TikTok rejects India IPs ("Client IP address is in banned Country list").
         // Route calls through a non-India proxy, e.g. socks5h://user:pass@host:1080 or http://host:3128
         'proxy' => env('TIKTOK_ADS_PROXY'),
+        // Shared secret for POST /api/tiktok-gmv-max/ingest (GitHub Actions job running outside India).
+        'gmv_ingest_key' => env('TIKTOK_GMV_INGEST_KEY'),
         'timeout' => (int) env('TIKTOK_ADS_TIMEOUT', 30),
     ],
 

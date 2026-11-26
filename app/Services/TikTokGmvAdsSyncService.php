@@ -410,8 +410,33 @@ class TikTokGmvAdsSyncService
             ];
         }
 
+        return ['applied' => $this->applySpendRows($range, $report['rows'], $productMap), 'skipped' => false];
+    }
+
+    /**
+     * Apply spend uploaded by the GitHub Actions job straight to the table (no TikTok Shop re-sync).
+     */
+    public function applyUploadedGmvMaxSpend(string $range): int
+    {
+        if (! Schema::hasTable('tiktok_gmv_ads')) {
+            return 0;
+        }
+        $rows = TikTokGmvMaxReportService::loadUploadedSpend($range);
+        if ($rows === null || $rows === []) {
+            return 0;
+        }
+
+        return $this->applySpendRows($range, $rows, $this->productIdToSkuMap());
+    }
+
+    /**
+     * @param  array<string, float>  $rows  item_id => spend
+     * @param  array<string, string>  $productMap
+     */
+    private function applySpendRows(string $range, array $rows, array $productMap): int
+    {
         $applied = 0;
-        foreach ($report['rows'] as $itemId => $spend) {
+        foreach ($rows as $itemId => $spend) {
             $sku = $productMap[(string) $itemId] ?? '';
             if ($sku === '' || $spend <= 0) {
                 continue;
@@ -429,7 +454,7 @@ class TikTokGmvAdsSyncService
             $applied++;
         }
 
-        return ['applied' => $applied, 'skipped' => false];
+        return $applied;
     }
 
     public function applyUploadedCampaignSpend(string $range): int

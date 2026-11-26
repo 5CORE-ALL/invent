@@ -90,6 +90,10 @@ Route::prefix('rfq-form')->group(function() {
 // api for task manager
 Route::get('/l30-total-sales', [ChannelMasterController::class, 'getViewChannelData1']);
 
+// GMV Max spend per product, pushed by a GitHub Actions job running outside India (shared-secret header).
+Route::post('/tiktok-gmv-max/ingest', [App\Http\Controllers\Api\TikTokGmvMaxIngestController::class, 'ingest'])
+    ->middleware('throttle:30,1');
+
 // TikTok Shop Webhook
 // Route::post('/webhooks/tiktok/orders', [App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);
 // Route::get('/webhooks/tiktok/test', [App\Http\Controllers\Api\TiktokWebhookController::class, 'testWebhook']);

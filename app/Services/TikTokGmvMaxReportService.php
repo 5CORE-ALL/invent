@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -11,10 +12,80 @@ use Illuminate\Support\Facades\Log;
  */
 class TikTokGmvMaxReportService
 {
+    /** Uploaded data older than this is ignored (the daily job refreshes it). */
+    private const UPLOAD_MAX_AGE_HOURS = 72;
+
     /**
+     * Live call first; if TikTok is unreachable from this server (India IP ban) fall back to the
+     * spend uploaded by the GitHub Actions job (see TikTokGmvMaxIngestController).
+     *
      * @return array{rows: array<string, float>, skipped: bool, reason?: string, pages: int}
      */
     public function fetchItemSpend(string $startDate, string $endDate): array
+    {
+        $live = $this->fetchItemSpendLive($startDate, $endDate);
+        if (empty($live['skipped']) && ($live['rows'] ?? []) !== []) {
+            return $live;
+        }
+
+        $range = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) >= 7 ? 'L30' : 'L1';
+        $uploaded = self::loadUploadedSpend($range);
+        if ($uploaded !== null) {
+            return ['rows' => $uploaded, 'skipped' => false, 'pages' => 0, 'source' => 'uploaded'];
+        }
+
+        return $live;
+    }
+
+    /**
+     * @param  array<string, float>  $rows  item_id => spend
+     */
+    public static function storeUploadedSpend(string $range, array $rows): void
+    {
+        $dir = storage_path('app/tiktok-gmv-max');
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        file_put_contents(
+            $dir.'/'.$range.'.json',
+            json_encode(['fetched_at' => now()->toIso8601String(), 'rows' => $rows]),
+            LOCK_EX
+        );
+    }
+
+    /**
+     * @return array<string, float>|null  null when nothing fresh is stored
+     */
+    public static function loadUploadedSpend(string $range): ?array
+    {
+        $file = storage_path('app/tiktok-gmv-max/'.$range.'.json');
+        if (! is_file($file)) {
+            return null;
+        }
+        $json = json_decode((string) file_get_contents($file), true);
+        if (! is_array($json) || ! is_array($json['rows'] ?? null)) {
+            return null;
+        }
+        try {
+            if (Carbon::parse((string) ($json['fetched_at'] ?? ''))->lt(now()->subHours(self::UPLOAD_MAX_AGE_HOURS))) {
+                return null;
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $rows = [];
+        foreach ($json['rows'] as $itemId => $spend) {
+            $rows[(string) $itemId] = (float) $spend;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array{rows: array<string, float>, skipped: bool, reason?: string, pages: int}
+     */
+    private function fetchItemSpendLive(string $startDate, string $endDate): array
     {
         $token = trim((string) config('services.tiktok_ads.access_token'));
         $advertiserId = trim((string) config('services.tiktok_ads.advertiser_id'));
