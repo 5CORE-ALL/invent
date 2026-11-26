@@ -4106,6 +4106,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Page attendance: periods (day / 7 days / 30 days) that ended without a check-in become a
+        // "missed" history row plus a task for the person. Runs just after midnight India time.
+        $schedule->command('page-attendance:check')
+            ->dailyAt('00:10')
+            ->timezone('Asia/Kolkata')
+            ->name('page-attendance-check')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Daily catch-up also re-fetches marketplace orders, then import + fulfill + tracking.
         // --max-minutes 120 (hard kill at 125) stays below the 180 min lock.
         $schedule->command('mm:push-orders-tracking --days=7 --skip-inventory --max-minutes=120')

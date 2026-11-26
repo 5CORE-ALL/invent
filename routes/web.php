@@ -710,6 +710,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/order-fulfillment/sku-suggest', [OrderFulfillmentController::class, 'suggestSkus'])->name('order.fulfillment.sku.suggest');
     Route::get('/order-fulfillment/data', [OrderFulfillmentController::class, 'data'])->name('order.fulfillment.data');
     Route::get('/order-fulfillment/pending-history', [OrderFulfillmentController::class, 'pendingHistory'])->name('order.fulfillment.pending.history');
+    Route::get('/page-attendance/{pageKey}/state', [\App\Http\Controllers\PageAttendanceController::class, 'state'])->name('page.attendance.state');
+    Route::post('/page-attendance/{pageKey}/check-in', [\App\Http\Controllers\PageAttendanceController::class, 'checkIn'])->name('page.attendance.checkin');
+    Route::post('/page-attendance/{pageKey}/assign', [\App\Http\Controllers\PageAttendanceController::class, 'assign'])->name('page.attendance.assign');
+    Route::delete('/page-attendance/{pageKey}/assignments/{id}', [\App\Http\Controllers\PageAttendanceController::class, 'remove'])->whereNumber('id')->name('page.attendance.remove');
     Route::post('/order-fulfillment/tracking/lookup', [OrderFulfillmentController::class, 'lookupTracking'])->name('order.fulfillment.tracking.lookup');
     Route::post('/order-fulfillment/tracking', [OrderFulfillmentController::class, 'saveTracking'])->name('order.fulfillment.tracking.save');
     Route::post('/order-fulfillment/tracking-status', [OrderFulfillmentController::class, 'refreshTrackingStatus'])->name('order.fulfillment.tracking.status');

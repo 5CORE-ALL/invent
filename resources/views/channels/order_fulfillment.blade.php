@@ -283,6 +283,7 @@
                                 <i class="fas fa-clock" aria-hidden="true"></i>
                                 3:30 PM Ohio <b id="of-ph-daily-total">—</b>
                             </button>
+                            @include('partials.page-attendance-badge', ['paKey' => 'order-fulfillment.pending'])
                         @endif
                         @if(!empty($ofScanPendingOnly))
                             <span class="badge of-summary-badge" style="background:#f8d7da; color:#b02a37;" title="Rows with a tracking number and no carrier scan, over 36 hours after the order time"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Alerts: <span id="of-alert-count">0</span></span>
@@ -381,6 +382,7 @@
             </div>
         </div>
     </div>
+    @include('partials.page-attendance-modal', ['paKey' => 'order-fulfillment.pending'])
     @endif
 
     @if(!empty($ofScanPendingOnly))
