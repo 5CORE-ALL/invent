@@ -227,7 +227,7 @@
         .pi-box-wrap .pi-box-input,
         .pi-box-wrap .pi-box-input:hover,
         .pi-box-wrap .pi-box-input:focus,
-        .pi-box-wrap .pi-box-input:focus-visible { border: 0 !important; outline: none !important; box-shadow: none !important; background-color: #f1f5f9; }
+        .pi-box-wrap .pi-box-input:focus-visible { border: 0 !important; outline: none !important; box-shadow: none !important; background: transparent !important; }
         .pi-box-wrap .pi-box-go { height: 28px; width: 30px; padding: 0; line-height: 1; flex: 0 0 auto; }
         .pi-box-wrap .pi-box-chips { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding-left: 6px; border-left: 1px solid #cbd5e1; }
         .pi-box-wrap .pi-box-chip { display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 5px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: 11px; font-weight: 700; }
@@ -527,9 +527,10 @@
 
         /* Playback controls – default (teal/primary) + NPFT (violet) */
         .cvr-play-group .btn.rounded-circle {
-            width: 32px;
-            height: 32px;
+            width: 24px;
+            height: 24px;
             padding: 0;
+            font-size: 10px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -544,9 +545,12 @@
         .cvr-play-group #play-cvr-pause,
         .cvr-play-group #play-groi-auto,
         .cvr-play-group #play-groi-pause {
-            width: 38px;
-            height: 38px;
+            width: 28px;
+            height: 28px;
+            font-size: 12px;
         }
+        .cvr-play-group.btn-group { gap: 2px; }
+        .cvr-play-group .btn.me-1 { margin-right: 0 !important; }
         .cvr-play-npft-main {
             background-color: #6f42c1 !important;
             border-color: #5a32a3 !important;
@@ -657,6 +661,12 @@
             background-color: #6c757d;
         }
 
+        /* High / Low switch: compact "H/L" until you hover it, then the full text shows */
+        .pi-hl-full { display: none; }
+        .pi-hl-switch:hover .pi-hl-short, .pi-hl-switch:focus-within .pi-hl-short { display: none; }
+        .pi-hl-switch:hover .pi-hl-full, .pi-hl-switch:focus-within .pi-hl-full { display: inline; }
+        /* No grey "no filter" dot on the filter buttons (saves space); a coloured dot still shows once a colour is picked */
+        .dropdown-toggle > .status-circle.default { display: none; }
         .status-circle.red {
             background-color: #dc3545;
         }
@@ -2427,10 +2437,10 @@
              
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm"
-                        style="width: 130px;">
-                        <option value="all">All Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
+                        style="width: 80px;" title="Inventory: All / = 0 / &gt; 0">
+                        <option value="all">All</option>
+                        <option value="zero">= 0</option>
+                        <option value="more" selected>&gt; 0</option>
                     </select>
 
                     <!-- DIL Filter (Walmart-style dropdown) -->
@@ -2518,38 +2528,38 @@
                     </div>
 
                     <!-- OV vs SW L30 (green = match, red = mismatch) -->
-                    <select id="sw-l30-match-filter" class="form-select form-select-sm" style="width: auto; min-width: 168px;"
-                        title="Show rows where OV L30 equals SW L30 (green), or only mismatches (red text)">
-                        <option value="all" selected>SW L30 — All</option>
-                        <option value="red">SW L30 — Red only</option>
+                    <select id="sw-l30-match-filter" class="form-select form-select-sm" style="width: 112px;"
+                        title="SW L30: All rows, or Red only = rows where SW L30 does not match OV L30 (red text)">
+                        <option value="all" selected>SW: All</option>
+                        <option value="red">SW: Red</option>
                     </select>
 
                     <!-- High / Low switch: sorts the table by DIL% (off = High → Low, on = Low → High) -->
-                    <div class="form-check form-switch d-flex align-items-center gap-2 mb-0 px-2 py-1 border rounded bg-white"
+                    <div class="form-check form-switch pi-hl-switch d-flex align-items-center gap-2 mb-0 px-2 py-1 border rounded bg-white"
                         style="min-height: 31px;" title="Switch DIL% order: off = High → Low, on = Low → High">
                         <input class="form-check-input ms-0 mt-0" type="checkbox" role="switch" id="dil-high-low-switch" style="cursor:pointer;">
                         <label class="form-check-label mb-0" for="dil-high-low-switch" style="cursor:pointer; font-size: 13px; white-space: nowrap;">
-                            High / Low: <b id="dil-high-low-label">High → Low</b>
+                            <span class="pi-hl-short">H/L</span><span class="pi-hl-full">High / Low: <b id="dil-high-low-label">High → Low</b></span>
                         </label>
                     </div>
 
                     <!-- SKU/Parent Filter -->
-                    <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="both">Both (SKU + Parent)</option>
-                        <option value="sku">SKU Only</option>
-                        <option value="parent" selected>Parent Only</option>
+                    <select id="sku-parent-filter" class="form-select form-select-sm" style="width: 150px;" title="Show: 📚 Both (SKU + Parent) / 🏷️ SKU only / 📁 Parent only" aria-label="SKU / Parent view">
+                        <option value="both" title="Both (SKU + Parent)">📚 Both</option>
+                        <option value="sku" title="SKU only">🏷️ SKU</option>
+                        <option value="parent" title="Parent only" selected>📁 Parent</option>
                     </select>
 
                     <button type="button" id="channels-list-btn" class="btn btn-sm btn-primary" data-bs-toggle="modal"
-                        data-bs-target="#channelsListModal" title="Show all channels by type">
-                        <i class="fas fa-store"></i> Channels
+                        data-bs-target="#channelsListModal" title="Channels — show all channels by type" aria-label="Channels">
+                        <i class="fas fa-store"></i>
                     </button>
 
                     <!-- Push history (Hist column): default shows everything; hiding recent pushes is opt-in -->
                     <div id="push-history-blocks" class="dropdown hist-dd" title="Parent push history (Hist dot) — tick one or more">
                         <button type="button" id="push-history-dd-btn" class="btn btn-sm btn-outline-secondary dropdown-toggle"
-                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-                            <span id="push-history-dd-label">History</span>
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Push history filter" aria-label="Push history">
+                            <span id="push-history-dd-label"><i class="fas fa-history"></i></span>
                         </button>
                         <div class="dropdown-menu hist-dd-menu">
                             <label class="hist-dd-item" title="Every parent — nothing hidden"><input type="checkbox" value="all" class="form-check-input">
@@ -2565,12 +2575,8 @@
                     <span id="push-history-total" class="badge bg-light text-dark border" style="font-size:12px;"
                         title="Parents where every child SKU has been pushed, out of all parents">Pushed 0 / 0</span>
 
-                    <button type="button" id="remove-filter-btn" class="btn btn-sm btn-outline-danger" title="Remove all filters">
-                        <i class="fas fa-times-circle"></i> Remove Filter
-                    </button>
-
                     <!-- Play → shows Pause, enables Next/Prev; Pause → back to normal, disables Next/Prev -->
-                    <div class="btn-group align-items-center ms-2 cvr-play-group" role="group" aria-label="Parent playback">
+                    <div class="btn-group align-items-center ms-1 cvr-play-group" role="group" aria-label="Parent playback">
                         <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
                             title="Previous parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
                             <i class="fas fa-step-backward"></i>
@@ -2590,7 +2596,7 @@
                     </div>
 
                     <!-- NPFT Play: start from Lowest NPFT% (different color) -->
-                    <div class="btn-group align-items-center ms-2 cvr-play-group cvr-play-npft" role="group" aria-label="Lowest NPFT% playback">
+                    <div class="btn-group align-items-center ms-1 cvr-play-group cvr-play-npft" role="group" aria-label="Lowest NPFT% playback">
                         <button type="button" id="play-npft-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
                             title="Previous: lower NPFT% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
                             <i class="fas fa-step-backward"></i>
@@ -2610,7 +2616,7 @@
                     </div>
 
                     <!-- Dil Play: start from Lowest Dil% (orange) -->
-                    <div class="btn-group align-items-center ms-2 cvr-play-group cvr-play-dil" role="group" aria-label="Lowest Dil% playback">
+                    <div class="btn-group align-items-center ms-1 cvr-play-group cvr-play-dil" role="group" aria-label="Lowest Dil% playback">
                         <button type="button" id="play-dil-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
                             title="Previous: lower Dil% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
                             <i class="fas fa-step-backward"></i>
@@ -2630,7 +2636,7 @@
                     </div>
 
                     <!-- CVR Play: start from Lowest CVR% (pink) -->
-                    <div class="btn-group align-items-center ms-2 cvr-play-group cvr-play-cvr" role="group" aria-label="Lowest CVR% playback">
+                    <div class="btn-group align-items-center ms-1 cvr-play-group cvr-play-cvr" role="group" aria-label="Lowest CVR% playback">
                         <button type="button" id="play-cvr-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
                             title="Previous: lower CVR% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
                             <i class="fas fa-step-backward"></i>
@@ -2650,7 +2656,7 @@
                     </div>
 
                     <!-- GROI Play: start from Lowest GROI% (cyan) -->
-                    <div class="btn-group align-items-center ms-2 cvr-play-group cvr-play-groi" role="group" aria-label="Lowest GROI% playback">
+                    <div class="btn-group align-items-center ms-1 cvr-play-group cvr-play-groi" role="group" aria-label="Lowest GROI% playback">
                         <button type="button" id="play-groi-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
                             title="Previous: lower GROI% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
                             <i class="fas fa-step-backward"></i>
@@ -2672,19 +2678,15 @@
                     <!-- Column Visibility Dropdown (6-column layout; drag to reorder, copy / paste the layout) -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Columns" aria-label="Columns">
+                            <i class="fas fa-table-columns"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
-                    </button>
-
-                    <button id="export-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-file-excel"></i> Export CSV
+                    <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV" aria-label="Export CSV">
+                        <i class="fas fa-file-excel"></i>
                     </button>
 
                     {{-- Temu Clear/Push removed from outer toolbar — use OV L30 modal Temu push instead --}}
@@ -5726,8 +5728,8 @@
                     field: "lmp_channels",
                     headerSort: false,
                     hozAlign: "center",
-                    minWidth: 110,
-                    headerTooltip: "Lowest marketplace price across all competitor channels (hover for each channel). Click to open the main LMP drawer. Parent rows show the lowest of the children averages.",
+                    minWidth: 170,
+                    headerTooltip: "Marketplace price (LMP) of every channel, lowest first. Click to open the main LMP drawer. Parent rows show the averages of the children.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const isParent = d.is_parent_summary === true;
@@ -5742,26 +5744,30 @@
                             { f: 'temu_lmp_price',    mp: 'temu',    label: 'Temu',   style: 'background:#fb7701;color:#fff;' },
                             { f: 'tiktok_lmp_price',  mp: 'tiktok',  label: 'TT',     style: 'background:#111;color:#fff;' }
                         ];
-                        // Only the LOWEST channel LMP is shown; the tooltip lists every channel
-                        let low = null;
-                        const all = [];
+                        // Every channel LMP is shown, LOWEST first (then ascending)
+                        const found = [];
                         chans.forEach(function(c) {
                             const v = parseFloat(d[c.f]);
                             if (!isFinite(v) || !(v > 0)) return;
-                            all.push(c.label + ' $' + v.toFixed(2));
-                            if (!low || v < low.v) low = { c: c, v: v };
+                            found.push({ c: c, v: v });
                         });
+                        found.sort(function(a, b) { return a.v - b.v; });
+                        const all = found.map(function(x) { return x.c.label + ' $' + x.v.toFixed(2); });
                         // Dot = same action as the "LMP" button in the SKU modal header (opens the LMP drawer)
                         const dot = isParent ? '' : '<a href="#" class="view-lmp-competitors ms-1" data-sku="' + skuAttr
                             + '" style="text-decoration:none;" title="View LMP competitors">'
                             + '<i class="fas fa-circle" style="color:#5bb8c0;font-size:10px;vertical-align:middle;"></i></a>';
-                        if (!low) return isParent ? '<span class="text-muted">-</span>' : '<span class="text-muted">-</span>' + dot;
-                        const tip = (isParent ? 'Average of child LMPs — lowest: ' : 'Lowest LMP — click to open the LMP drawer\n') + all.join(' · ');
-                        const badge = '<span class="badge" style="font-weight:600;' + low.c.style + '" title="' + tip.replace(/"/g, '&quot;') + '">'
-                            + low.c.label + ' $' + low.v.toFixed(2) + '</span>';
-                        if (isParent) return badge;
-                        return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" style="text-decoration:none;" title="'
-                            + tip.replace(/"/g, '&quot;') + '">' + badge + '</a>' + dot;
+                        if (!found.length) return '<span class="text-muted">-</span>' + dot;
+                        const tipBase = isParent ? 'Average of child LMPs, lowest first: ' : 'LMP by channel, lowest first — click to open the LMP drawer\n';
+                        const tip = (tipBase + all.join(' · ')).replace(/"/g, '&quot;');
+                        const badges = found.map(function(x, i) {
+                            // Lowest (first) = normal size; the other channels are small
+                            const size = i === 0 ? '' : 'font-size:9px;padding:2px 4px;font-weight:500;opacity:.9;';
+                            return '<span class="badge" style="font-weight:600;' + x.c.style + size + '">' + x.c.label + ' $' + x.v.toFixed(2) + '</span>';
+                        }).join('');
+                        const wrap = '<span style="display:inline-flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:3px;vertical-align:middle;">' + badges + '</span>';
+                        if (isParent) return '<span title="' + tip + '">' + wrap + '</span>';
+                        return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" style="text-decoration:none;" title="' + tip + '">' + wrap + '</a>' + dot;
                     }
                 },
                 {
@@ -6312,16 +6318,21 @@
 
         function piBoxChipsHtml(price, d) {
             const am = piBoxSpriceMetrics(price, d);
-            const defs = [['GPFT', am && am.gpft, getSgpftSpftColor], ['GROI', am && am.groi, getSgroiColor],
-                          ['NPFT', am && am.npft, getSgpftSpftColor], ['NROI', am && am.nroi, getSroiColor]];
+            // Same colouring as /amazon-tabulator-view: MetricPctColors with each metric's own bands
+            // (GPFT / GROI / NPFT / NROI), e.g. NPFT 28% = green, GROI 128% = green.
+            const defs = [['GPFT', am && am.gpft, 'gpft'], ['GROI', am && am.groi, 'groi'],
+                          ['NPFT', am && am.npft, 'npft'], ['NROI', am && am.nroi, 'nroi']];
             const title = am
                 ? ('Amazon percentages on $' + am.price.toFixed(2) + ': LP $' + am.lp.toFixed(2) + ', ship $' + am.ship.toFixed(2)
                     + ', Ads ' + am.ads.toFixed(2) + '%, margin ' + Math.round(am.margin * 100) + '%')
                 : 'Enter a price (needs LP) to see GPFT / GROI / NPFT / NROI';
             return defs.map(function(v) {
-                const val = am
-                    ? '<span style="' + styleForCellColor(v[2](v[1])) + '">' + Math.round(v[1]) + '%</span>'
-                    : '<span class="text-muted">-</span>';
+                let val = '<span class="text-muted">-</span>';
+                if (am) {
+                    val = window.MetricPctColors
+                        ? MetricPctColors.htmlFor(v[2], v[1], { decimals: 0, empty: '0%' })
+                        : '<span style="color:#dc3545;font-weight:600;">' + Math.round(v[1]) + '%</span>';
+                }
                 return '<span class="pi-box-chip" title="' + title + '"><span class="pi-box-lbl">' + v[0] + '</span>' + val + '</span>';
             }).join('');
         }
@@ -14027,9 +14038,9 @@
             const dots = { green: '#28a745', yellow: '#ffc107', red: '#dc3545' };
             let html;
             if (!sel.length || sel.indexOf('all') !== -1) {
-                html = 'History All <b class="hist-count">' + cnt('all') + '</b>';
+                html = '<i class="fas fa-history"></i> All <b class="hist-count">' + cnt('all') + '</b>';
             } else {
-                html = 'History ' + HIST_BUCKETS.filter(function(k) { return sel.indexOf(k) !== -1; }).map(function(k) {
+                html = '<i class="fas fa-history"></i> ' + HIST_BUCKETS.filter(function(k) { return sel.indexOf(k) !== -1; }).map(function(k) {
                     return '<i class="fas fa-circle" style="color:' + dots[k] + ';font-size:9px"></i> <b class="hist-count">' + cnt(k) + '</b>';
                 }).join(' ');
             }
@@ -14594,7 +14605,33 @@
             $('.manual-dropdown-container').removeClass('show');
         });
 
+        /** Icon + count in the Both / SKU / Parent dropdown (counts follow the inventory filter). */
+        function updateViewCounts() {
+            const sel = document.getElementById('sku-parent-filter');
+            if (!sel || !Array.isArray(fullDataset)) return;
+            const inventoryFilter = $('#inventory-filter').val();
+            let parents = 0, skus = 0;
+            fullDataset.forEach(function(row) {
+                const inv = parseFloat(row.inventory) || 0;
+                if (inventoryFilter === 'zero' && inv !== 0) return;
+                if (inventoryFilter === 'more' && !(inv > 0)) return;
+                if (row.is_parent_summary === true) parents++; else skus++;
+            });
+            const fmt = function(n) { return n.toLocaleString('en-US'); };
+            const set = function(val, icon, name, n, tip) {
+                const opt = sel.querySelector('option[value="' + val + '"]');
+                if (!opt) return;
+                opt.textContent = icon + ' ' + name + ' ' + fmt(n);
+                opt.title = tip + ': ' + fmt(n);
+            };
+            set('both', '📚', 'Both', parents + skus, 'Both (SKU + Parent)');
+            set('sku', '🏷️', 'SKU', skus, 'SKU only');
+            set('parent', '📁', 'Parent', parents, 'Parent only');
+            sel.title = 'Show: 📚 Both (' + fmt(parents + skus) + ') / 🏷️ SKU only (' + fmt(skus) + ') / 📁 Parent only (' + fmt(parents) + ')';
+        }
+
         function applyFilters() {
+            updateViewCounts();
             // When Play navigation is active, ignore all filters and show only current parent (same as product master)
             if (isPlayNavigationActive) {
                 showCurrentParentPlayView();
@@ -14751,39 +14788,6 @@
             applyFilters();
         });
 
-        $('#remove-filter-btn').on('click', function() {
-            $('#inventory-filter').val('more');
-            $('#sku-parent-filter').val('parent');
-            try { localStorage.setItem(SKU_PARENT_VIEW_STORAGE_KEY, 'parent'); } catch (e) { /* ignore */ }
-            $('#sku-search').val('');
-            $('#parent-search').val('');
-            // Reset DIL
-            const $allDil = $('.column-filter[data-column="dil_percent"][data-color="all"]');
-            $('.column-filter[data-column="dil_percent"]').removeClass('active');
-            $allDil.addClass('active');
-            $('#dilFilterDropdown').html('').append($allDil.find('.status-circle').clone()).append(' DIL%');
-            // Reset CVR
-            const $allCvr = $('.column-filter[data-column="avg_cvr"][data-range="all"]');
-            $('.column-filter[data-column="avg_cvr"]').removeClass('active');
-            $allCvr.addClass('active');
-            $('#cvrFilterDropdown').html('').append($allCvr.find('.status-circle').clone()).append(' CVR');
-            // Reset GPFT%
-            const $allGpft = $('.column-filter[data-column="avg_gpft"][data-range="all"]');
-            $('.column-filter[data-column="avg_gpft"]').removeClass('active');
-            $allGpft.addClass('active');
-            $('#gpftFilterDropdown').html('').append($allGpft.find('.status-circle').clone()).append(' GPFT%');
-            // Reset NPFT%
-            const $allNpft = $('.column-filter[data-column="avg_pft"][data-range="all"]');
-            $('.column-filter[data-column="avg_pft"]').removeClass('active');
-            $allNpft.addClass('active');
-            $('#npftFilterDropdown').html('').append($allNpft.find('.status-circle').clone()).append(' NPFT%');
-            $('#sw-l30-match-filter').val('all');
-            $('#dil-high-low-switch').prop('checked', false);
-            $('#dil-high-low-label').text('High → Low');
-            histSetSelected(['all']); updateHistLabel();
-            applyFilters();
-        });
-
         // ==================== SUMMARY FUNCTIONS ====================
         
         function updateSummary() {
@@ -14921,15 +14925,6 @@
 
         table.on('renderComplete', function() {
             setTimeout(() => updateSummary(), 100);
-        });
-
-        document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-            table.getColumns().forEach(col => {
-                const f = col.getField();
-                if (f && CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(f) === -1) col.show();
-            });
-            buildColumnDropdown();
-            saveColumnVisibilityToServer();
         });
 
         // ==================== EXPORT FUNCTIONS ====================
