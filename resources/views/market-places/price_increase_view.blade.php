@@ -14267,21 +14267,102 @@
             return fullDataset.filter(row => row.is_parent_summary === true);
         }
 
-        /** Parent list for active playback. npft/dil/cvr/groi = lowest metric first. */
+        /**
+         * Does this parent pass the toolbar filters that are on right now (Inventory, DIL / CVR / GPFT / NPFT, SW L30, History,
+         * Parent search)? Play walks only the parents that pass, exactly like the Parent Only list.
+         */
+        function parentPassesActiveFilters(row) {
+            const inv = parseFloat(row.inventory) || 0;
+            const inventoryFilter = $('#inventory-filter').val();
+            if (inventoryFilter === 'zero' && inv !== 0) return false;
+            if (inventoryFilter === 'more' && !(inv > 0)) return false;
+
+            const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
+            if (dilFilter !== 'all') {
+                const l30 = parseFloat(row.overall_l30) || 0;
+                const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                if (dilFilter === 'red' && !(dil < 25)) return false;
+                if (dilFilter === 'green' && !(dil >= 25 && dil < 50)) return false;
+                if (dilFilter === 'pink' && !(dil >= 50)) return false;
+            }
+
+            const cvrRange = $('.column-filter[data-column="avg_cvr"].active')?.data('range') || 'all';
+            if (cvrRange !== 'all') {
+                const cvr = parseFloat(row.avg_cvr) || 0;
+                const ok = cvrRange === '0' ? (cvr >= 0 && cvr < 0.01)
+                    : cvrRange === '0.01-1' ? (cvr >= 0.01 && cvr < 1)
+                    : cvrRange === '1-2' ? (cvr >= 1 && cvr < 2)
+                    : cvrRange === '2-3' ? (cvr >= 2 && cvr < 3)
+                    : cvrRange === '3-4' ? (cvr >= 3 && cvr < 4)
+                    : cvrRange === '0-4' ? (cvr >= 0 && cvr < 4)
+                    : cvrRange === '4-7' ? (cvr >= 4 && cvr < 7)
+                    : cvrRange === '7-13' ? (cvr >= 7 && cvr < 13)
+                    : cvrRange === '10+' ? (cvr >= 10)
+                    : true;
+                if (!ok) return false;
+            }
+
+            const gpftRange = $('.column-filter[data-column="avg_gpft"].active')?.data('range') || 'all';
+            if (gpftRange !== 'all') {
+                const gpft = parseFloat(row.avg_gpft) || 0;
+                let ok = true;
+                if (gpftRange === 'lt-20') ok = gpft <= 20;
+                else if (gpftRange === '20-30') ok = gpft > 20 && gpft < 30;
+                else if (gpftRange === '30-43' || gpftRange === '30-40') ok = gpft >= 30 && gpft < 43;
+                else if (gpftRange === 'gt-43' || gpftRange === 'gt-40') ok = gpft >= 43;
+                else if (gpftRange === 'negative' || gpftRange === '0-10' || gpftRange === '10-20') ok = gpft < 20;
+                else if (gpftRange === '40-50' || gpftRange === '50-60' || gpftRange === '50+') ok = gpft > 40;
+                if (!ok) return false;
+            }
+
+            const npftRange = $('.column-filter[data-column="avg_pft"].active')?.data('range') || 'all';
+            if (npftRange !== 'all') {
+                const npft = parseFloat(row.avg_pft) || 0;
+                let ok = true;
+                if (npftRange === 'lt-10' || npftRange === 'lt-30') ok = npft <= 10;
+                else if (npftRange === '10-20' || npftRange === '30-40') ok = npft > 10 && npft < 20;
+                else if (npftRange === '20-33' || npftRange === '40-50') ok = npft >= 20 && npft < 33;
+                else if (npftRange === 'gte-33' || npftRange === 'gt-50') ok = npft >= 33;
+                if (!ok) return false;
+            }
+
+            if (($('#sw-l30-match-filter').val() || 'all') === 'red') {
+                const sw = parseFloat(row.m_l30 ?? 0);
+                const ov = parseFloat(row.overall_l30 ?? 0);
+                if (!(Math.abs(sw - ov) >= 0.01)) return false;
+            }
+
+            if (pushHistoryFilterMode() !== 'all' && !passesPushHistoryFilter(row)) return false;
+
+            const parentVal = String($('#parent-search').val() || '').trim().toLowerCase();
+            if (parentVal && String(row.parent || '').toLowerCase().indexOf(parentVal) === -1) return false;
+            return true;
+        }
+
+        /** Dil play order follows the High / Low switch: off = highest Dil% first, on = lowest Dil% first. */
+        function dilPlayLowestFirst() {
+            return $('#dil-high-low-switch').is(':checked');
+        }
+
+        /**
+         * Parent list for active playback: only parents that pass the toolbar filters.
+         * npft/cvr/groi = lowest metric first; dil = by the High / Low switch.
+         */
         function getPlayParentRows() {
-            const parents = getParentRows();
+            const parents = getParentRows().filter(parentPassesActiveFilters);
             let field = null;
             if (playNavMode === 'npft') field = 'avg_pft';
             else if (playNavMode === 'dil') field = 'dil_percent';
             else if (playNavMode === 'cvr') field = 'avg_cvr';
             else if (playNavMode === 'groi') field = 'avg_roi';
             if (!field) return parents;
+            const highFirst = playNavMode === 'dil' && !dilPlayLowestFirst();
             return parents.slice().sort(function(a, b) {
                 const na = parseFloat(a[field]);
                 const nb = parseFloat(b[field]);
-                const va = isFinite(na) ? na : Number.POSITIVE_INFINITY;
-                const vb = isFinite(nb) ? nb : Number.POSITIVE_INFINITY;
-                if (va !== vb) return va - vb;
+                const va = isFinite(na) ? na : (highFirst ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY);
+                const vb = isFinite(nb) ? nb : (highFirst ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY);
+                if (va !== vb) return highFirst ? (vb - va) : (va - vb);
                 return String(a.parent || '').localeCompare(String(b.parent || ''));
             });
         }
@@ -14316,16 +14397,36 @@
         }
 
         /** Show only current parent's rows (children first, parent row last – like product master). No other filters. */
+        let currentPlayParentName = null; // so a filter / switch change keeps the parent you are on when it is still in the list
         function showCurrentParentPlayView() {
             if (!fullDataset || fullDataset.length === 0) return;
             const parentRows = getPlayParentRows();
-            if (parentRows.length === 0) return;
-            const currentParent = parentRows[currentPlayParentIndex].parent;
-            const childRows = fullDataset.filter(row => row.parent === currentParent && row.is_parent_summary !== true);
-            const parentRow = fullDataset.find(row => row.is_parent_summary === true && row.parent === currentParent);
-            // Children first, then parent row at the end (same order as product master)
-            const displayData = [...childRows];
-            if (parentRow) displayData.push(parentRow);
+            // Stay on the same parent when it still passes the filters, else go back to the first one
+            if (currentPlayParentName != null) {
+                const keep = parentRows.findIndex(p => p.parent === currentPlayParentName);
+                currentPlayParentIndex = keep >= 0 ? keep : 0;
+            }
+            if (currentPlayParentIndex >= parentRows.length) currentPlayParentIndex = Math.max(0, parentRows.length - 1);
+            if (currentPlayParentIndex < 0) currentPlayParentIndex = 0;
+            let displayData = [];
+            if (parentRows.length > 0) {
+                const currentParent = parentRows[currentPlayParentIndex].parent;
+                currentPlayParentName = currentParent;
+                const inventoryFilter = $('#inventory-filter').val();
+                const childRows = fullDataset.filter(row => {
+                    if (row.parent !== currentParent || row.is_parent_summary === true) return false;
+                    const inv = parseFloat(row.inventory) || 0;
+                    if (inventoryFilter === 'zero') return inv === 0;
+                    if (inventoryFilter === 'more') return inv > 0;
+                    return true;
+                });
+                const parentRow = fullDataset.find(row => row.is_parent_summary === true && row.parent === currentParent);
+                // Children first, then parent row at the end (same order as product master)
+                displayData = [...childRows];
+                if (parentRow) displayData.push(parentRow);
+            } else {
+                currentPlayParentName = null; // nothing matches the filters
+            }
             // Filters set by "Both" / "SKU Only" (inventory, history, SKU-only …) stay on the table otherwise and hide every row of the parent
             table.clearFilter();
             suppressDataLoadedHandler = true;
@@ -14345,11 +14446,15 @@
                 playNavMode = prev;
                 return rows;
             })();
-            if (parentRowsPreview.length === 0) return;
+            if (parentRowsPreview.length === 0) {
+                showToast('No parents match the current filters — change the filters to use Play', 'error');
+                return;
+            }
 
             playNavMode = nextMode;
             isPlayNavigationActive = true;
             currentPlayParentIndex = 0;
+            currentPlayParentName = null;
             dotExpandedParent = null;
             expandedParent = null;
             showCurrentParentPlayView();
@@ -14379,6 +14484,7 @@
             isPlayNavigationActive = false;
             playNavMode = null;
             currentPlayParentIndex = 0;
+            currentPlayParentName = null;
             expandedParent = null;
             dotExpandedParent = null;
             resetAllPlayUiButtons();
@@ -14428,10 +14534,13 @@
             $('#play-npft-pause').attr('title', 'Pause: stop NPFT playback and show all rows');
             $('#play-npft-backward').attr('title', 'Previous: lower NPFT% parent');
             $('#play-npft-forward').attr('title', 'Next: next higher NPFT% parent');
-            $('#play-dil-auto').attr('title', 'Play Lowest Dil%: walk parents starting from lowest Dil%');
+            const dilLowFirst = dilPlayLowestFirst();
+            $('#play-dil-auto').attr('title', dilLowFirst
+                ? 'Play Dil%: walk parents from lowest Dil% to highest (High / Low switch is on)'
+                : 'Play Dil%: walk parents from highest Dil% to lowest (High / Low switch is off)');
             $('#play-dil-pause').attr('title', 'Pause: stop Dil% playback and show all rows');
-            $('#play-dil-backward').attr('title', 'Previous: lower Dil% parent');
-            $('#play-dil-forward').attr('title', 'Next: next higher Dil% parent');
+            $('#play-dil-backward').attr('title', dilLowFirst ? 'Previous: lower Dil% parent' : 'Previous: higher Dil% parent');
+            $('#play-dil-forward').attr('title', dilLowFirst ? 'Next: next higher Dil% parent' : 'Next: next lower Dil% parent');
             $('#play-cvr-auto').attr('title', 'Play Lowest CVR%: walk parents starting from lowest Avg CVR%');
             $('#play-cvr-pause').attr('title', 'Pause: stop CVR% playback and show all rows');
             $('#play-cvr-backward').attr('title', 'Previous: lower CVR% parent');
@@ -14448,6 +14557,7 @@
             const parentRows = getPlayParentRows();
             if (currentPlayParentIndex >= parentRows.length - 1) return;
             currentPlayParentIndex++;
+            currentPlayParentName = parentRows[currentPlayParentIndex] ? parentRows[currentPlayParentIndex].parent : null;
             showCurrentParentPlayView();
         }
 
@@ -14455,6 +14565,8 @@
             if (!isPlayNavigationActive) return;
             if (currentPlayParentIndex <= 0) return;
             currentPlayParentIndex--;
+            const prevRows = getPlayParentRows();
+            currentPlayParentName = prevRows[currentPlayParentIndex] ? prevRows[currentPlayParentIndex].parent : null;
             showCurrentParentPlayView();
         }
 
@@ -14661,6 +14773,20 @@
             }
         }
 
+        // The Both / SKU Only / Parent Only choice is remembered: it is the default the next time the page opens
+        const SKU_PARENT_VIEW_STORAGE_KEY = 'price_increase_sku_parent_view_v1';
+        (function restoreSkuParentView() {
+            try {
+                const saved = localStorage.getItem(SKU_PARENT_VIEW_STORAGE_KEY);
+                if (saved && $('#sku-parent-filter option[value="' + saved + '"]').length) {
+                    $('#sku-parent-filter').val(saved);
+                }
+            } catch (e) { /* storage blocked: keep the page default (Parent Only) */ }
+        })();
+        $('#sku-parent-filter').on('change', function() {
+            try { localStorage.setItem(SKU_PARENT_VIEW_STORAGE_KEY, String($(this).val() || 'parent')); } catch (e) { /* ignore */ }
+        });
+
         $('#inventory-filter, #sku-parent-filter, #sw-l30-match-filter').on('change', function() {
             applyFilters();
         });
@@ -14668,6 +14794,7 @@
         $('#remove-filter-btn').on('click', function() {
             $('#inventory-filter').val('more');
             $('#sku-parent-filter').val('parent');
+            try { localStorage.setItem(SKU_PARENT_VIEW_STORAGE_KEY, 'parent'); } catch (e) { /* ignore */ }
             $('#sku-search').val('');
             $('#parent-search').val('');
             // Reset DIL
