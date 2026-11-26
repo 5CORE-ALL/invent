@@ -1,0 +1,62 @@
+name: TikTok GMV Max connectivity test
+
+# TEMPORARY test: runs only on the tiktok-gmv-test branch. Reads the TikTok
+# settings from the server over the existing deploy SSH key, calls the GMV Max
+# report from the GitHub runner (outside India), and reports ONLY status
+# (HTTP/TikTok code, row count) as an annotation. Never prints token or data.
+on:
+  push:
+    branches: [tiktok-gmv-test]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Probe GMV Max report
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set +x
+          loc=$(curl -s -m 10 https://www.cloudflare.com/cdn-cgi/trace | grep '^loc=' | cut -d= -f2)
+
+          lines=$(ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && grep -E '^(TIKTOK_ADS_ACCESS_TOKEN|TIKTOK_ADS_ADVERTISER_ID|TIKTOK_SHOP_ID)=' .env")
+          get() { printf '%s\n' "$lines" | grep "^$1=" | tail -1 | cut -d= -f2- | tr -d '"'; }
+          TOKEN=$(get TIKTOK_ADS_ACCESS_TOKEN); echo "::add-mask::$TOKEN"
+          ADV=$(get TIKTOK_ADS_ADVERTISER_ID);  echo "::add-mask::$ADV"
+          STORE=$(get TIKTOK_SHOP_ID);          echo "::add-mask::$STORE"
+
+          if [ -z "$TOKEN" ] || [ -z "$ADV" ] || [ -z "$STORE" ]; then
+            echo "::error title=probe::could not read TikTok settings from server"
+            exit 1
+          fi
+
+          out="runner_country=$loc"
+          for metrics in '["cost","orders","gross_revenue"]' '["gmv_max_cost","gmv_max_orders","gmv_max_gross_revenue"]'; do
+            code=$(curl -s -m 40 -o /tmp/r.json -w '%{http_code}' -G \
+              'https://business-api.tiktok.com/open_api/v1.3/gmv_max/report/get/' \
+              -H "Access-Token: $TOKEN" \
+              --data-urlencode "advertiser_id=$ADV" \
+              --data-urlencode "store_ids=[\"$STORE\"]" \
+              --data-urlencode 'dimensions=["item_id"]' \
+              --data-urlencode "metrics=$metrics" \
+              --data-urlencode "start_date=$(date -u -d '-30 day' +%F)" \
+              --data-urlencode "end_date=$(date -u -d '-1 day' +%F)" \
+              --data-urlencode 'page_size=5')
+            info=$(jq -r '"tiktok_code=\(.code) msg=\(.message) rows=\((.data.list // []) | length)"' /tmp/r.json 2>/dev/null || head -c 120 /tmp/r.json | tr '\n' ' ')
+            out="$out | http=$code $info"
+          done
+          echo "::notice title=GMV Max probe::$out"
