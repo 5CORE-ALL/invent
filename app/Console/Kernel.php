@@ -2947,6 +2947,16 @@ class Kernel extends ConsoleKernel
         // (after meta-ads:sync at 19:00), so no manual Campaign upload is needed.
         $retryFiveTimesUntil('facebook:sync-sheet-campaigns', 'facebook-sheet-campaigns-sync', '19:15');
 
+        // Daily self-check: sheet vs live Meta API (name, status, spend, impr, clicks).
+        // Any drift is written to the log as "facebook:verify-meta-match mismatches".
+        $ist($schedule->command('facebook:verify-meta-match')
+            ->dailyAt('19:25')
+            ->timezone('Asia/Kolkata')
+            ->name('facebook-verify-meta-match')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('meta-ads:run-automation')
             ->dailyAt('20:30')
             ->timezone('Asia/Kolkata')

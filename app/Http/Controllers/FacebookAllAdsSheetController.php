@@ -2756,6 +2756,9 @@ class FacebookAllAdsSheetController extends Controller
                 // value already contained one — used for Meta exports
                 // that ship "Amount spent (USD)" as a bare number.
                 return '$' . number_format(round($n));
+            case 'usd_2':
+                // Same as usd_int but keeps the cents, so SPEND equals Ads Manager.
+                return '$' . number_format($n, 2);
             default:
                 return (string) $value;
         }
@@ -3564,7 +3567,7 @@ class FacebookAllAdsSheetController extends Controller
         ['title' => 'CLK',           'sources' => ['Clicks (all)']],
         // CTR = CLK / IMPR * 100, rounded to 1 decimal
         ['title' => 'CTR',           'formula' => ['CLK', 'IMPR', 1]],
-        ['title' => 'SPEND',         'sources' => ['Amount spent (USD)'], 'formatter' => 'usd_int'],
+        ['title' => 'SPEND',         'sources' => ['Amount spent (USD)'], 'formatter' => 'usd_2'],
         // New Shopify export headers first ("Total sales (last non-direct
         // click)" / "Orders (last non-direct click)"), legacy ones as fallback.
         ['title' => 'SALES',         'sources' => ['Total sales (last non-direct click)', 'Sales'], 'formatter' => 'int'],
