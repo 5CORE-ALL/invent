@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Services\TikTokGmvMaxCampaignStore;
+use App\Services\TikTokGmvMaxPushService;
 use App\Support\TikTokAdsSkuResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -62,5 +63,33 @@ class TiktokGmvMaxCampaignsController extends Controller
             'period_end' => $first['period_end'] ?? null,
             'fetched_at' => $first['fetched_at'] ?? null,
         ]);
+    }
+
+    /**
+     * Queue a daily-budget change; the GitHub relay job pushes it to TikTok within minutes.
+     */
+    public function pushBudget(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'campaign_id' => ['required', 'string', 'max:40'],
+            'budget' => ['required', 'numeric'],
+        ]);
+
+        try {
+            $row = TikTokGmvMaxPushService::queueBudget(
+                $data['campaign_id'],
+                (float) $data['budget'],
+                optional($request->user())->name ?? optional($request->user())->email
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['success' => true, 'queued' => $row]);
+    }
+
+    public function pushLog(): JsonResponse
+    {
+        return response()->json(['success' => true, 'data' => TikTokGmvMaxPushService::recent(50)]);
     }
 }

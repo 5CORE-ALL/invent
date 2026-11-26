@@ -5,6 +5,7 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        .gmvmax-editable { background: #fffbe6; cursor: text; }
         .gmvmax-badge {
             font-size: 1.15rem !important;
             padding: 0.6rem 1rem !important;
@@ -37,7 +38,10 @@
                     <span class="badge gmvmax-badge" style="background:#f8d7da" id="b-acos">ACOS -</span>
                     <span class="badge gmvmax-badge" style="background:#ffe69c" id="b-roi">ROI -</span>
                     <span class="text-muted small ms-2" id="gmvmax-period"></span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="gmvmax-csv">
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="gmvmax-push-toggle">
+                        <i class="fas fa-upload me-1"></i>Push log
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="gmvmax-csv">
                         <i class="fas fa-download me-1"></i>CSV
                     </button>
                 </div>
@@ -62,6 +66,19 @@
                         </div>
                     </div>
                 </div>
+                <div id="gmvmax-push-panel" class="border-bottom bg-white px-3 py-2" style="display:none;">
+                    <div class="d-flex align-items-center mb-1">
+                        <strong class="small">Budget push log</strong>
+                        <span class="text-muted small ms-2">Changes are applied to TikTok by the relay job (about every 5 minutes).</span>
+                        <button type="button" class="btn btn-sm btn-link ms-auto" id="gmvmax-push-refresh">Refresh</button>
+                    </div>
+                    <div style="max-height:200px;overflow:auto;">
+                        <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                            <thead class="table-light"><tr><th>Time (UTC)</th><th>Campaign</th><th>Budget</th><th>Status</th><th>By</th><th>Message</th></tr></thead>
+                            <tbody id="gmvmax-push-body"><tr><td colspan="6" class="text-muted">No pushes yet.</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
                 <div id="gmvmax-table" style="height: calc(100vh - 300px);"></div>
             </div>
         </div>
@@ -80,6 +97,55 @@
         return { title: title, field: field, width: width, hozAlign: 'right', sorter: 'number',
                  headerSortStartingDir: 'desc', formatter: fmt };
     }
+
+    const PUSH_URL = "{{ route('tiktok.gmv.max.campaigns.push.budget') }}";
+    const PUSH_LOG_URL = "{{ route('tiktok.gmv.max.campaigns.push.log') }}";
+    const CSRF = "{{ csrf_token() }}";
+    let pushPollTimer = null;
+
+    function esc(v) { return $('<div>').text(v == null ? '' : String(v)).html(); }
+
+    function pushBudget(cell) {
+        const row = cell.getRow().getData();
+        const oldV = cell.getOldValue();
+        const newV = cell.getValue();
+        if (newV === '' || newV == null || Number(newV) === Number(oldV)) { return; }
+        const label = (row.campaign_name || row.campaign_id);
+        if (!confirm('Push daily budget to TikTok?\n\n' + label + '\n' + (oldV == null ? '-' : money(oldV)) + '  ->  ' + money(newV))) {
+            cell.restoreOldValue();
+            return;
+        }
+        $.ajax({ url: PUSH_URL, method: 'POST', data: { _token: CSRF, campaign_id: row.campaign_id, budget: newV } })
+            .done(function() {
+                $('#gmvmax-push-panel').show();
+                loadPushLog();
+                startPushPoll();
+            })
+            .fail(function(xhr) {
+                cell.restoreOldValue();
+                const m = (xhr.responseJSON && (xhr.responseJSON.message || (xhr.responseJSON.errors && Object.values(xhr.responseJSON.errors)[0][0]))) || 'Push failed';
+                alert(m);
+            });
+    }
+
+    function loadPushLog() {
+        return $.getJSON(PUSH_LOG_URL).done(function(resp) {
+            const rows = (resp && resp.data) || [];
+            const body = $('#gmvmax-push-body').empty();
+            if (!rows.length) { body.append('<tr><td colspan="6" class="text-muted">No pushes yet.</td></tr>'); return; }
+            const color = { success: 'success', failed: 'danger', pending: 'warning', processing: 'info', cancelled: 'secondary' };
+            let open = false;
+            rows.forEach(function(r) {
+                if (r.status === 'pending' || r.status === 'processing') { open = true; }
+                body.append('<tr><td>' + esc(r.created_at) + '</td><td>' + esc(r.campaign_name || '') + '<div class="text-muted">' + esc(r.campaign_id) + '</div></td><td>' +
+                    (r.old_value == null ? '-' : money(r.old_value)) + ' &rarr; <strong>' + money(r.new_value) + '</strong></td><td><span class="badge bg-' + (color[r.status] || 'secondary') + '">' + esc(r.status) + '</span></td><td>' +
+                    esc(r.requested_by || r.source) + '</td><td>' + esc(r.message || '') + '</td></tr>');
+            });
+            if (!open) { stopPushPoll(); }
+        });
+    }
+    function startPushPoll() { if (!pushPollTimer) { pushPollTimer = setInterval(loadPushLog, 15000); } }
+    function stopPushPoll() { if (pushPollTimer) { clearInterval(pushPollTimer); pushPollTimer = null; } }
 
     $(document).ready(function() {
         let range = 'L30';
@@ -108,7 +174,11 @@
             columns: [
                 { title: 'Campaign ID', field: 'campaign_id', width: 170, sorter: 'string' },
                 { title: 'Campaign name', field: 'campaign_name', minWidth: 240, sorter: 'string' },
-                numCol('Current budget', 'budget', 130, moneyCell),
+                Object.assign(numCol('Current budget', 'budget', 150, moneyCell), {
+                    editor: 'number', editorParams: { min: 0, step: 0.01, selectContents: true },
+                    cssClass: 'gmvmax-editable', headerTooltip: 'Click a budget to change it and push it to TikTok',
+                    cellEdited: function(cell) { pushBudget(cell); },
+                }),
                 numCol('Spend', 'cost', 110, moneyCell),
                 numCol('Sold', 'sku_orders', 110, function(c) { return Number(c.getValue() || 0).toLocaleString('en-US'); }),
                 numCol('CPS', 'cost_per_order', 100, moneyCell),
@@ -148,6 +218,13 @@
             $('#gmvmax-f-name, #gmvmax-f-id, #gmvmax-f-sku').val('');
             table.clearFilter(true);
         });
+
+        $('#gmvmax-push-toggle').on('click', function() {
+            const p = $('#gmvmax-push-panel');
+            p.toggle();
+            if (p.is(':visible')) { loadPushLog().done(function() { startPushPoll(); }); } else { stopPushPoll(); }
+        });
+        $('#gmvmax-push-refresh').on('click', loadPushLog);
 
         $('#gmvmax-csv').on('click', function() { table.download('csv', 'tiktok_gmv_max_campaigns_' + range + '.csv'); });
     });

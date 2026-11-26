@@ -95,6 +95,11 @@ Route::post('/tiktok-gmv-max/ingest', [App\Http\Controllers\Api\TikTokGmvMaxInge
     ->middleware('throttle:30,1');
 Route::post('/tiktok-gmv-max/campaigns', [App\Http\Controllers\Api\TikTokGmvMaxIngestController::class, 'campaigns'])
     ->middleware('throttle:30,1');
+// Budget changes queued in the app, applied to TikTok by the same GitHub Actions relay.
+Route::post('/tiktok-gmv-max/push/pending', [App\Http\Controllers\Api\TikTokGmvMaxIngestController::class, 'pushPending'])
+    ->middleware('throttle:60,1');
+Route::post('/tiktok-gmv-max/push/result', [App\Http\Controllers\Api\TikTokGmvMaxIngestController::class, 'pushResult'])
+    ->middleware('throttle:120,1');
 
 // TikTok Shop Webhook
 // Route::post('/webhooks/tiktok/orders', [App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);

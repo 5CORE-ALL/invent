@@ -1110,6 +1110,11 @@ return [
         'proxy' => env('TIKTOK_ADS_PROXY'),
         // Shared secret for POST /api/tiktok-gmv-max/ingest (GitHub Actions job running outside India).
         'gmv_ingest_key' => env('TIKTOK_GMV_INGEST_KEY'),
+        // Pushing GMV Max budget to TikTok (queue + GitHub relay job). Limits apply to manual and rule pushes.
+        'push_enabled' => env('TIKTOK_GMV_MAX_PUSH_ENABLED', true),
+        'push_min_budget' => (float) env('TIKTOK_GMV_MAX_PUSH_MIN_BUDGET', 1),
+        'push_max_budget' => (float) env('TIKTOK_GMV_MAX_PUSH_MAX_BUDGET', 500),
+        'github_dispatch_token' => env('GITHUB_DISPATCH_TOKEN'),
         'timeout' => (int) env('TIKTOK_ADS_TIMEOUT', 30),
     ],
 

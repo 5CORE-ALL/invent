@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\TikTokGmvAdsSyncService;
 use App\Services\TikTokGmvMaxCampaignStore;
+use App\Services\TikTokGmvMaxPushService;
 use App\Services\TikTokGmvMaxReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -81,5 +82,50 @@ class TikTokGmvMaxIngestController extends Controller
         );
 
         return response()->json(['ok' => true, 'range' => $data['range'], 'campaigns_saved' => $saved]);
+    }
+
+    /**
+     * Relay job: claim the budget changes that wait to be pushed to TikTok.
+     */
+    public function pushPending(Request $request): JsonResponse
+    {
+        if (! $this->authorized($request)) {
+            return response()->json(['ok' => false, 'error' => 'unauthorized'], 401);
+        }
+
+        return response()->json(['ok' => true, 'jobs' => TikTokGmvMaxPushService::claimPending()]);
+    }
+
+    /**
+     * Relay job: result of one push (TikTok accepted it or not, and the budget TikTok reports afterwards).
+     */
+    public function pushResult(Request $request): JsonResponse
+    {
+        if (! $this->authorized($request)) {
+            return response()->json(['ok' => false, 'error' => 'unauthorized'], 401);
+        }
+        $data = $request->validate([
+            'id' => ['required', 'integer'],
+            'ok' => ['required', 'boolean'],
+            'message' => ['nullable', 'string', 'max:500'],
+            'budget' => ['nullable', 'numeric'],
+        ]);
+
+        $found = TikTokGmvMaxPushService::recordResult(
+            (int) $data['id'],
+            (bool) $data['ok'],
+            $data['message'] ?? null,
+            isset($data['budget']) ? (float) $data['budget'] : null
+        );
+
+        return response()->json(['ok' => $found]);
+    }
+
+    private function authorized(Request $request): bool
+    {
+        $expected = trim((string) config('services.tiktok_ads.gmv_ingest_key'));
+        $given = (string) $request->header('X-Ingest-Key', '');
+
+        return $expected !== '' && $given !== '' && hash_equals($expected, $given);
     }
 }
