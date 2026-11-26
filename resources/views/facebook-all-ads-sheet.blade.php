@@ -127,6 +127,11 @@
            headers and frozen-row layers. */
         .faas-sbgt-dropdown .dropdown-menu.show {
             position: fixed !important;
+            /* Popper's transform/inset are replaced by the top/left the page
+               script sets, so the menu sits right under its button. */
+            transform: none !important;
+            inset: auto !important;
+            margin: 0 !important;
             z-index: 1080 !important;
         }
 
@@ -3548,6 +3553,46 @@
             }
             if (err) err.textContent = '';
         });
+
+        // ── Toolbar dropdowns: always open right below their button ──
+        // The toolbar strip scrolls / clips and Popper's position drifted away
+        // from the button. Pin the menu to the button's bottom edge ourselves
+        // (re-checked against the real on-screen rect, so a transformed
+        // ancestor can't shift it) and keep it there on scroll / resize.
+        (function () {
+            let openDd = null;
+            function place() {
+                if (!openDd) return;
+                const btn  = openDd.querySelector('[data-bs-toggle="dropdown"]');
+                const menu = openDd.querySelector('.dropdown-menu.show');
+                if (!btn || !menu) return;
+                const b   = btn.getBoundingClientRect();
+                const gap = 2;
+                const wantTop = b.bottom + gap;
+                menu.style.setProperty('max-height', Math.max(120, Math.min(300, window.innerHeight - wantTop - 8)) + 'px', 'important');
+                const mw = menu.offsetWidth;
+                let wantLeft = menu.classList.contains('dropdown-menu-end') ? b.right - mw : b.left;
+                wantLeft = Math.max(4, Math.min(wantLeft, window.innerWidth - mw - 4));
+                menu.style.setProperty('top', wantTop + 'px', 'important');
+                menu.style.setProperty('left', wantLeft + 'px', 'important');
+                // Correct for any ancestor that shifts position:fixed.
+                const m = menu.getBoundingClientRect();
+                menu.style.setProperty('top', (wantTop + (wantTop - m.top)) + 'px', 'important');
+                menu.style.setProperty('left', (wantLeft + (wantLeft - m.left)) + 'px', 'important');
+            }
+            document.addEventListener('shown.bs.dropdown', function (e) {
+                const dd = e.target && e.target.closest ? e.target.closest('.faas-sbgt-dropdown') : null;
+                if (!dd) return;
+                openDd = dd;
+                place();
+                requestAnimationFrame(place);
+            });
+            document.addEventListener('hidden.bs.dropdown', function (e) {
+                if (openDd && e.target && openDd.contains(e.target)) openDd = null;
+            });
+            window.addEventListener('scroll', place, true);
+            window.addEventListener('resize', place);
+        })();
 
         // ── Status filter ────────────────────────────────────────────
         // Options come from whatever distinct Status values were in
