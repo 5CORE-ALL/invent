@@ -1136,12 +1136,39 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
+     * Internal meta_ad_accounts.id of the single ad account this sheet reads
+     * from (config services.meta.sheet_ad_account_id, default "5 CORE USA").
+     *
+     * Returns null when filtering is disabled (empty config) so every account is
+     * used; returns [] when the account is configured but not synced yet, which
+     * matches nothing (the sheet then keeps its uploaded values).
+     *
+     * @return list<int>|null
+     */
+    private function sheetAdAccountIds(): ?array
+    {
+        $acct = trim((string) config('services.meta.sheet_ad_account_id'));
+        if ($acct === '') {
+            return null;
+        }
+        if (! str_starts_with($acct, 'act_')) {
+            $acct = 'act_' . $acct;
+        }
+        if (! Schema::hasTable('meta_ad_accounts')) {
+            return [];
+        }
+
+        return DB::table('meta_ad_accounts')->where('meta_id', $acct)->pluck('id')->map(fn ($v) => (int) $v)->all();
+    }
+
+    /**
      * Per-campaign spend / impressions / clicks / delivery status from the
      * synced Meta API tables, for the latest 30 synced days.
      *
      * Returns null (caller keeps the uploaded values) when the tables are
      * missing, there is no insight data, or the newest synced day is more
-     * than 3 days old. Campaigns in non-USD ad accounts are left out because
+     * than 3 days old. Only the sheet's ad account is read (see
+     * {@see sheetAdAccountIds()}); non-USD accounts are left out because
      * the sheet's SPEND column is USD.
      *
      * @param  list<string>  $cids  Meta campaign ids on the sheet
@@ -1162,9 +1189,11 @@ class FacebookAllAdsSheetController extends Controller
             }
             $from = \Carbon\Carbon::parse($latest)->subDays(29)->toDateString();
 
+            $accountIds = $this->sheetAdAccountIds();
             $camps = DB::table('meta_campaigns as c')
                 ->leftJoin('meta_ad_accounts as a', 'a.id', '=', 'c.ad_account_id')
                 ->whereIn('c.meta_id', $cids)
+                ->when($accountIds !== null, fn ($q) => $q->whereIn('c.ad_account_id', $accountIds ?: [0]))
                 ->get(['c.id', 'c.meta_id', 'c.effective_status', 'c.status', 'c.synced_at', 'a.currency']);
 
             $internal = [];
@@ -2460,6 +2489,9 @@ class FacebookAllAdsSheetController extends Controller
                     })
                     ->whereBetween('mid.date_start', [$from, $to])
                     ->where('mid.breakdown_hash', md5(json_encode([])));
+                if (($acctIds = $this->sheetAdAccountIds()) !== null) {
+                    $q->whereIn('mc.ad_account_id', $acctIds ?: [0]);
+                }
                 if (! empty($cids)) {
                     $q->whereIn('mc.meta_id', $cids);
                 }
@@ -2609,7 +2641,9 @@ class FacebookAllAdsSheetController extends Controller
                 ->max('date_start');
             $diag['matched_campaigns'] = empty($cids)
                 ? null
-                : DB::table('meta_campaigns')->whereIn('meta_id', $cids)->count();
+                : DB::table('meta_campaigns')->whereIn('meta_id', $cids)
+                    ->when(($acctIds = $this->sheetAdAccountIds()) !== null, fn ($q) => $q->whereIn('ad_account_id', $acctIds ?: [0]))
+                    ->count();
         }
 
         if (Schema::hasTable('meta_insights_daily') && Schema::hasTable('meta_campaigns')) {
@@ -2619,6 +2653,9 @@ class FacebookAllAdsSheetController extends Controller
                 })
                 ->whereBetween('mid.date_start', [$from, $yesterday])
                 ->where('mid.breakdown_hash', md5(json_encode([])));
+            if (($acctIds = $this->sheetAdAccountIds()) !== null) {
+                $ins->whereIn('mc.ad_account_id', $acctIds ?: [0]);
+            }
             if (! empty($cids)) {
                 $ins->whereIn('mc.meta_id', $cids);
             }
@@ -2961,9 +2998,12 @@ class FacebookAllAdsSheetController extends Controller
         }
 
         // One row per Meta campaign id (meta_campaigns can hold copies) — newest sync wins.
+        // Only the sheet's ad account (config services.meta.sheet_ad_account_id).
+        $accountIds = $this->sheetAdAccountIds();
         $camps = [];
         foreach (DB::table('meta_campaigns')
             ->whereNotNull('meta_id')
+            ->when($accountIds !== null, fn ($q) => $q->whereIn('ad_account_id', $accountIds ?: [0]))
             ->orderByDesc('synced_at')
             ->orderByDesc('id')
             ->get(['meta_id', 'name', 'status', 'effective_status']) as $c) {
@@ -2987,6 +3027,18 @@ class FacebookAllAdsSheetController extends Controller
         $prevChByCid     = $this->buildChCarryMap();
         $prevB2bByCid    = $this->buildB2bB2cCarryMap();
 
+        // Campaign ids that belong to OTHER ad accounts: their old sheet rows must
+        // not be re-inserted by the "keep rows the API doesn't have" step below.
+        $otherAccountCids = [];
+        if ($accountIds !== null) {
+            foreach (DB::table('meta_campaigns')
+                ->whereNotNull('meta_id')
+                ->whereNotIn('ad_account_id', $accountIds ?: [0])
+                ->pluck('meta_id') as $mid) {
+                $otherAccountCids[trim((string) $mid)] = true;
+            }
+        }
+
         $linkByCid = [];
         // Rows of the previous Campaign list whose campaign Meta's tables don't
         // have (yet). They are re-inserted untouched so the sync never drops a
@@ -3001,7 +3053,7 @@ class FacebookAllAdsSheetController extends Controller
                 if ($pcid !== null && $pcid !== '' && $link !== '') {
                     $linkByCid[$pcid] = $link;
                 }
-                if (! $fresh && ($pcid === null || $pcid === '' || ! isset($camps[$pcid]))) {
+                if (! $fresh && ($pcid === null || $pcid === '' || (! isset($camps[$pcid]) && ! isset($otherAccountCids[$pcid])))) {
                     $keepRows[] = $pr;
                 }
             }

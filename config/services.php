@@ -1145,6 +1145,9 @@ return [
         'app_secret' => env('META_APP_SECRET'),
         'access_token' => env('META_ACCESS_TOKEN'),
         'ad_account_id' => env('META_AD_ACCOUNT_ID'),
+        // The ONE ad account /facebook-all-ads-sheet reads from ("5 CORE USA").
+        // Set to an empty string to stop filtering and use every synced account.
+        'sheet_ad_account_id' => env('META_SHEET_AD_ACCOUNT_ID', 'act_1136206930246469'),
         'api_version' => env('META_API_VERSION', 'v21.0'),
     ],
 

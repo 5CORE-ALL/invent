@@ -35,7 +35,13 @@ class RebuildFacebookSheetFromApi extends Command
             return 1;
         }
 
-        $apiCount = DB::table('meta_campaigns')->whereNotNull('meta_id')->count();
+        $acct = trim((string) config('services.meta.sheet_ad_account_id'));
+        $apiCount = DB::table('meta_campaigns')->whereNotNull('meta_id')
+            ->when($acct !== '' && Schema::hasTable('meta_ad_accounts'), fn ($q) => $q->whereIn(
+                'ad_account_id',
+                DB::table('meta_ad_accounts')->where('meta_id', str_starts_with($acct, 'act_') ? $acct : 'act_' . $acct)->select('id')
+            ))
+            ->count();
         if ($apiCount === 0) {
             $this->error('meta_campaigns is empty - nothing to refill from. Run meta-ads:sync first. Nothing was changed.');
             return 1;

@@ -40,8 +40,14 @@ class SyncFacebookLifetimeStats extends Command
         $version = (string) (config('services.meta.api_version') ?: 'v21.0');
         $base    = 'https://graph.facebook.com/' . $version;
 
+        // --account wins; otherwise only the sheet's ad account (empty config = all).
+        $only = trim((string) ($this->option('account') ?: config('services.meta.sheet_ad_account_id')));
+        if ($only !== '' && ! str_starts_with($only, 'act_')) {
+            $only = 'act_' . $only;
+        }
+
         $accounts = DB::table('meta_ad_accounts')
-            ->when($this->option('account'), fn ($q, $a) => $q->where('meta_id', $a))
+            ->when($only !== '', fn ($q) => $q->where('meta_id', $only))
             ->pluck('meta_id')
             ->filter()
             ->unique()
