@@ -369,23 +369,27 @@ class Amz1DataController extends Ebay1DataController
     // ---- Title from Title Master, matching columns from eBay 1 Data ----
 
     /**
-     * The Amazon title column is the Title 170 saved in Title Master (product_master.title150), the title the
-     * Title Master page pushes to Amazon. A SKU with none keeps the title of its Amazon listing.
+     * The Amazon title column is the Title 60 saved in Title Master (product_master.title60).
+     * A SKU with none keeps the title of its Amazon listing.
      *
      * @return array<string, string>
      */
     protected function masterTitlesBySku(): array
     {
-        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'title150')) {
+        if (! Schema::hasTable('product_master')) {
             return [];
         }
-        $query = DB::table('product_master')->whereNotNull('sku')->whereNotNull('title150')->where('title150', '!=', '');
+        // The Title 60 saved in Title Master.
+        if (! Schema::hasColumn('product_master', 'title60')) {
+            return [];
+        }
+        $query = DB::table('product_master')->whereNotNull('sku')->whereNotNull('title60')->where('title60', '!=', '');
         if (Schema::hasColumn('product_master', 'deleted_at')) {
             $query->whereNull('deleted_at');
         }
         $out = [];
-        foreach ($query->get(['sku', 'title150']) as $row) {
-            $title = trim((string) $row->title150);
+        foreach ($query->get(['sku', 'title60']) as $row) {
+            $title = trim((string) $row->title60);
             if ($title !== '') {
                 $out[$this->skuKey((string) $row->sku)] = $title;
             }
