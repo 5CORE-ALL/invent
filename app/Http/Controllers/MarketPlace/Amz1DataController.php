@@ -423,9 +423,11 @@ class Amz1DataController extends Ebay1DataController
                 if ($name === '' || str_starts_with($name, '__') || $this->isBlankValue($value)) {
                     continue;
                 }
-                $aspect = $this->aspectKey($name);
-                if ($aspect !== '' && ! isset($values[$aspect])) {
-                    $values[$aspect] = $value;
+                // The value is kept under every key the name can be matched by (Brand = Brand Name, MPN = Part Number ...).
+                foreach ($this->matchKeys($name) as $matchKey) {
+                    if (! isset($values[$matchKey])) {
+                        $values[$matchKey] = $value;
+                    }
                 }
             }
             if ($values !== []) {
@@ -445,27 +447,113 @@ class Amz1DataController extends Ebay1DataController
      * A blank Amazon cell takes the value eBay 1 Data has for the column of the same name. Only the columns the SKU
      * already has are filled (never a second column for the same field), and a value Amazon holds is kept.
      */
-    protected function fillSpecificsFromElsewhere(array $specifics, string $skuKey): array
+    protected function fillSpecificsFromElsewhere(array $specifics, string $skuKey, string $sku = ''): array
     {
         $ebay = $this->ebayValuesBySku()[$skuKey] ?? [];
-        if ($ebay === []) {
+        // eBay 1 Data always shows these for every SKU, whatever eBay holds: MPN and Model are the SKU, the maker is 5 Core.
+        $fixed = $sku !== '' ? ['mpn' => $sku, 'model' => $sku, 'manufacturer' => '5 Core'] : [];
+        if ($ebay === [] && $fixed === []) {
             return $specifics;
         }
-        $filledAspects = [];
+        $filled = [];
         foreach ($specifics as $name => $value) {
             $name = (string) $name;
-            $aspect = $this->aspectKey($name);
-            if ($aspect === '' || str_starts_with($name, '__') || ! isset($ebay[$aspect]) || isset($filledAspects[$aspect])) {
+            if ($name === '' || str_starts_with($name, '__') || ! $this->isBlankValue(is_scalar($value) ? (string) $value : '')) {
                 continue;
             }
+            $keys = $this->matchKeys($name);
             // The first column of a field takes the value; a repeated spelling of it stays as it is.
-            $filledAspects[$aspect] = true;
-            if ($this->isBlankValue(is_scalar($value) ? (string) $value : '')) {
-                $specifics[$name] = $ebay[$aspect];
+            if ($keys === [] || isset($filled[$keys[0]])) {
+                continue;
+            }
+            $found = null;
+            foreach ($keys as $matchKey) {
+                if (isset($ebay[$matchKey])) {
+                    $found = $ebay[$matchKey];
+                    break;
+                }
+            }
+            if ($found === null) {
+                foreach ($keys as $matchKey) {
+                    if (isset($fixed[$matchKey])) {
+                        $found = $fixed[$matchKey];
+                        break;
+                    }
+                }
+            }
+            if ($found !== null) {
+                $filled[$keys[0]] = true;
+                $specifics[$name] = $found;
             }
         }
 
         return $specifics;
+    }
+
+    /** Names the same field goes by on eBay and Amazon: the first of each group is the shared key. */
+    private const FIELD_ALIASES = [
+        'mpn' => ['manufacturerpartnumber', 'partnumber', 'mfrpartnumber', 'manufacturerpart', 'manufacturerpartno'],
+        'model' => ['modelnumber', 'modelname', 'modelno'],
+        'countryoforigin' => ['countryregionofmanufacture', 'countryofmanufacture', 'countryofmanufacturer', 'countryregionoforigin', 'madein'],
+        'numberofitems' => ['numberinpack', 'itempackagequantity', 'unitcount', 'quantityinpack', 'packquantity', 'piececount'],
+        'color' => ['colour', 'colorname', 'colorfamily'],
+        'brand' => ['brandname'],
+        'manufacturer' => ['manufacturername', 'maker'],
+        'material' => ['materialtype', 'materialcomposition'],
+        'itemweight' => ['weight', 'productweight'],
+        'itemlength' => ['length', 'productlength'],
+        'itemwidth' => ['width', 'productwidth'],
+        'itemheight' => ['height', 'productheight'],
+    ];
+
+    /**
+     * The keys a column name can be matched by, best first: its own key, the same without a leading "Item" or a
+     * trailing "Name" / "Number", then the shared key of its alias group.
+     *
+     * @return list<string>
+     */
+    private function matchKeys(string $name): array
+    {
+        $own = $this->aspectKey($name);
+        if ($own === '') {
+            return [];
+        }
+        $keys = [$own];
+        $bare = $own;
+        if (strlen($bare) > 8 && str_starts_with($bare, 'item')) {
+            $bare = substr($bare, 4);
+            $keys[] = $bare;
+        }
+        foreach (['name', 'number'] as $suffix) {
+            if (strlen($bare) > strlen($suffix) + 2 && str_ends_with($bare, $suffix)) {
+                $keys[] = substr($bare, 0, -strlen($suffix));
+            }
+        }
+        foreach ($keys as $candidate) {
+            foreach (self::FIELD_ALIASES as $shared => $aliases) {
+                if ($candidate === $shared || in_array($candidate, $aliases, true)) {
+                    $keys[] = $shared;
+                    break 2;
+                }
+            }
+        }
+
+        // Last resort: the same words in a different form ("Water resistant" = "Water Resistance Level").
+        $words = preg_split('/[^a-z0-9]+/', strtolower($name), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $stems = [];
+        foreach ($words as $word) {
+            if (in_array($word, ['item', 'name', 'number', 'level', 'product', 'the', 'of', 'for', 'and', 'a', 'an'], true)) {
+                continue;
+            }
+            $stems[substr($word, 0, 5)] = true;
+        }
+        if (count($stems) >= 2) {
+            $stemList = array_keys($stems);
+            sort($stemList);
+            $keys[] = 'words:'.implode('+', $stemList);
+        }
+
+        return array_values(array_unique($keys));
     }
 
     /**

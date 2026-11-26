@@ -121,7 +121,7 @@ class Ebay1DataController extends Controller
      * @param  array<string, mixed>  $specifics
      * @return array<string, mixed>
      */
-    protected function fillSpecificsFromElsewhere(array $specifics, string $skuKey): array
+    protected function fillSpecificsFromElsewhere(array $specifics, string $skuKey, string $sku = ''): array
     {
         return $specifics;
     }
@@ -228,7 +228,7 @@ class Ebay1DataController extends Controller
 
                 // Columns added by hand to this category tab: the value comes from Technical Specifications.
                 $specifics = $this->withChannelColumns($live['specifics'] ?? [], $category, $live);
-                $specifics = $this->fillSpecificsFromElsewhere($specifics, $key);
+                $specifics = $this->fillSpecificsFromElsewhere($specifics, $key, $sku);
                 foreach ($extras[$this->categoryHash($category)] ?? [] as $extraKey => $extraName) {
                     $already = false;
                     foreach (array_keys($specifics) as $existingName) {
