@@ -391,6 +391,113 @@ class AliexpressOrderSyncService
         return $this->extractOrderAmount($order);
     }
 
+    /**
+     * AliExpress order that was cancelled / closed (nothing to ship), judged from order.info.get data.
+     * A cancelled order comes back as order_status FINISH with refund_ok / CANCEL_ORDER and
+     * order_end_reason cancel_order_close_trade, so order_status alone is not enough.
+     *
+     * @param  array<string, mixed>  $detail
+     */
+    public static function detailIsCancelled(array $detail): bool
+    {
+        $status = strtoupper(trim((string) ($detail['order_status'] ?? '')));
+        if ($status !== '' && (str_contains($status, 'CANCEL') || str_contains($status, 'CLOSE'))) {
+            return true;
+        }
+        if (str_contains(strtolower((string) ($detail['order_end_reason'] ?? '')), 'cancel')) {
+            return true;
+        }
+
+        $refunds = [];
+        if (is_array($detail['refund_info'] ?? null)) {
+            $refunds[] = $detail['refund_info'];
+        }
+        foreach ((array) ($detail['child_order_list'] ?? []) as $child) {
+            if (is_array($child) && is_array($child['refund_info'] ?? null)) {
+                $refunds[] = $child['refund_info'];
+            }
+        }
+        foreach ($refunds as $refund) {
+            $reason = strtoupper(trim((string) ($refund['refund_reason'] ?? '')));
+            $state = strtoupper(trim((string) ($refund['refund_status'] ?? '')));
+            if (str_contains($reason, 'CANCEL') && in_array($state, ['REFUND_OK', 'REFUND_SUCCESS', 'REFUNDED', 'FULLY_REFUNDED'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The order list API does not bring back orders that were cancelled / closed after we stored them, so a
+     * cancelled order stayed "WAIT_SELLER_SEND_GOODS" (Pending) forever. Re-read every order still marked
+     * as waiting for shipment and fix the stored status: CANCELLED for cancelled orders, otherwise the
+     * current AliExpress order_status (FINISH, WAIT_BUYER_ACCEPT_GOODS, ...).
+     *
+     * @return array{checked: int, updated: int, cancelled: int, failed: int}
+     */
+    public function reconcilePendingOrders(int $limit = 150): array
+    {
+        $out = ['checked' => 0, 'updated' => 0, 'cancelled' => 0, 'failed' => 0];
+        if (! Schema::hasTable('aliexpress_order_metrics') || empty($this->aliExpressApi->getAccessToken())) {
+            return $out;
+        }
+
+        $orderIds = AliexpressOrderMetric::query()
+            ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['WAIT_SELLER_SEND_GOODS'])
+            ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
+            ->groupBy('order_id')
+            ->orderByRaw('MIN(order_date) ASC')
+            ->limit(max(1, $limit))
+            ->pluck('order_id');
+
+        foreach ($orderIds as $orderId) {
+            $orderId = trim((string) $orderId);
+            if ($orderId === '') {
+                continue;
+            }
+            $out['checked']++;
+
+            $info = $this->aliExpressApi->getOrderInfo($orderId);
+            $detail = is_array($info['data'] ?? null) ? $info['data'] : [];
+            if (empty($info['success']) || $detail === [] || trim((string) ($detail['order_status'] ?? '')) === '') {
+                $out['failed']++;
+                usleep(150000);
+
+                continue;
+            }
+
+            $cancelled = self::detailIsCancelled($detail);
+            $newStatus = $cancelled ? 'CANCELLED' : strtoupper(trim((string) $detail['order_status']));
+            if ($newStatus === 'WAIT_SELLER_SEND_GOODS') {
+                usleep(150000);
+
+                continue; // still waiting for shipment on AliExpress
+            }
+
+            $lines = AliexpressOrderMetric::query()->where('order_id', $orderId)->get();
+            foreach ($lines as $line) {
+                $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
+                $existing = is_array($raw['order'] ?? null) ? $raw['order'] : [];
+                $raw['order'] = array_merge($existing, $detail);
+                $raw['status_reconciled_at'] = now()->toIso8601String();
+                $line->update(['status' => $newStatus, 'raw_payload' => $raw]);
+            }
+
+            $out['updated']++;
+            if ($cancelled) {
+                $out['cancelled']++;
+            }
+            usleep(150000);
+        }
+
+        if ($out['updated'] > 0 || $out['failed'] > 0) {
+            Log::info('[AliExpressOrderSync] Reconciled pending orders', $out);
+        }
+
+        return $out;
+    }
+
     public function dispatchImportsForNewOrders(): int
     {
         if (! MarketplaceSyncSettings::canAutoImportToShopify('aliexpress')) {

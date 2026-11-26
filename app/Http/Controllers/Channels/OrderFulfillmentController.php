@@ -172,6 +172,39 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         return $out;
     }
 
+    /**
+     * Order ids behind the pending count of every site (manual orders left out: nothing to ask a marketplace).
+     * Used by order-fulfillment:refresh-pending-status to re-check them with their marketplace.
+     *
+     * @return array<string, array{label: string, orders: list<string>}>
+     */
+    public function pendingOrderIdsBySlug(): array
+    {
+        $rows = $this->collectFulfillmentRows();
+        $rows = $this->attachSavedTracking($rows);
+        $rows = $this->attachCarrierAndTrackingStatus($rows);
+
+        $out = [];
+        foreach ($rows as $row) {
+            if (! $this->fulfillmentRowIsPending($row)) {
+                continue;
+            }
+            $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            if ($slug === '' || $slug === self::MANUAL_SLUG || $orderId === '') {
+                continue;
+            }
+            $out[$slug]['label'] = (string) ($row['channel'] ?? $slug);
+            $out[$slug]['orders'][$orderId] = $orderId;
+        }
+        foreach ($out as $slug => $info) {
+            $out[$slug]['orders'] = array_values($info['orders']);
+        }
+        ksort($out);
+
+        return $out;
+    }
+
     /** History badge / graph on /order-fulfillment/pending: hourly counts and the 3:30 PM Ohio records. */
     public function pendingHistory(Request $request): JsonResponse
     {

@@ -4088,6 +4088,17 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // Once a day, ask every marketplace for the current status of each order still shown on
+        // /order-fulfillment/pending, so cancelled / closed orders stop showing as Pending.
+        // Early morning India time, away from the 06:30 daily catch-up. Lock (120) > --max-minutes (40).
+        $schedule->command('order-fulfillment:refresh-pending-status --max-minutes=40')
+            ->dailyAt('04:30')
+            ->timezone('Asia/Kolkata')
+            ->name('order-fulfillment-refresh-pending-status')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // /order-fulfillment/pending history badge: pending orders per site, saved every hour at :50
         // (after the :45 order refresh above), and once a day at 3:30 PM Ohio time.
         // The first run at or after 3:30 PM Ohio also writes the daily record if it is missing.

@@ -89,6 +89,12 @@ class ChannelOrderDeliveryStatus
         'tiktok2' => [Tiktok2Order::class, ['order_id'], ['order_status', 'line_status']],
     ];
 
+    /** Order detail service of a marketplace (re-reads one order from its API and saves it), if it has one. */
+    public static function detailServiceClass(string $slug): ?string
+    {
+        return self::DETAIL_SERVICES[strtolower(trim($slug))] ?? null;
+    }
+
     /** Live API calls made by this process, so one request or sync run cannot spend minutes on them. */
     protected int $liveCalls = 0;
 

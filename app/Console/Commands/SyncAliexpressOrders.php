@@ -12,6 +12,7 @@ class SyncAliexpressOrders extends Command
                             {--days=0 : Days of order history (0 = all available, up to 2 years)}
                             {--from= : Fetch orders from this date onward (YYYY-MM-DD); overrides --days}
                             {--import : Dispatch import jobs for new orders after fetch}
+                            {--reconcile : Also re-check orders still shown as pending (fixes cancelled / closed orders)}
                             {--force : Run even if Fetch orders setting is Off}';
 
     protected $description = 'Fetch AliExpress orders from API and store in aliexpress_order_metrics.';
@@ -30,6 +31,13 @@ class SyncAliexpressOrders extends Command
             : $sync->fetchAndStore(max(0, (int) $this->option('days')));
 
         $this->info($result['message']);
+
+        // Cancelled / closed orders drop out of the list API; --reconcile re-reads the ones still shown as pending.
+        // (Done once a day by order-fulfillment:refresh-pending-status, not on every 30-minute sync.)
+        if ($this->option('reconcile')) {
+            $rec = $sync->reconcilePendingOrders();
+            $this->info("Pending orders re-checked: {$rec['checked']} | status fixed: {$rec['updated']} (cancelled: {$rec['cancelled']}) | failed: {$rec['failed']}");
+        }
 
         if ($this->option('import')) {
             $dispatched = $sync->dispatchImportsForNewOrders();
