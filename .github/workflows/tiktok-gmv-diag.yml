@@ -32,23 +32,36 @@ jobs:
           keys=$(jq -r '(.data.store_list // .data.list // [])[0] // {} | keys | join(",")' s.json 2>/dev/null | head -c 160)
           out="$out stores=$n matches_configured_id=$match keys=$keys"
 
-          # 2) report call variants - print message, row count and sample field names (no values)
           D30=$(TZ=America/Los_Angeles date -d '30 days ago' +%F); Y=$(TZ=America/Los_Angeles date -d yesterday +%F)
+          # 2) list GMV Max campaigns (PRODUCT + LIVE), all pages
+          : > camps.ndjson; page=1; total=1
+          while [ "$page" -le "$total" ] && [ "$page" -le 20 ]; do
+            curl -sS -m 40 -o c.json -G "$B/gmv_max/campaign/get/" -H "Access-Token: $TT_TOKEN" \
+              --data-urlencode "advertiser_id=$TT_ADV" \
+              --data-urlencode 'filtering={"gmv_max_promotion_types":["PRODUCT","LIVE"]}' \
+              --data-urlencode "page=$page" --data-urlencode 'page_size=100'
+            jq -c '(.data.list // [])[] | {id: (.campaign_id|tostring), st: (.operation_status // ""), t: (.promotion_type // .gmv_max_promotion_type // "")}' c.json >> camps.ndjson
+            total=$(jq -r '.data.page_info.total_page // 1' c.json); page=$((page+1))
+          done
+          out="$out || campaigns=$(wc -l < camps.ndjson) enabled=$(grep -c '"st":"ENABLE"' camps.ndjson) types=$(jq -r '.t' camps.ndjson | sort | uniq -c | tr -s ' ' | tr '\n' ';') campmsg=$(jq -r '.message // ""' c.json | head -c 80)"
+          ALL=$(jq -r '.id' camps.ndjson | jq -R . | jq -sc .)
+          ONE=$(jq -r '.id' camps.ndjson | head -1 | jq -R . | jq -sc .)
+          TWENTY=$(jq -r '.id' camps.ndjson | head -20 | jq -R . | jq -sc .)
           try() {
-            local label="$1" dims="$2" extra="$3"
-            args=(-H "Access-Token: $TT_TOKEN"
-              --data-urlencode "advertiser_id=$TT_ADV"
-              --data-urlencode "store_ids=[\"$TT_STORE\"]"
-              --data-urlencode "dimensions=$dims"
-              --data-urlencode 'metrics=["cost","orders","gross_revenue"]'
-              --data-urlencode "start_date=$D30" --data-urlencode "end_date=$Y"
+            local label="$1" ids="$2" dims="$3"
+            http=$(curl -sS -m 60 -o r.json -w '%{http_code}' -G "$B/gmv_max/report/get/" \
+              -H "Access-Token: $TT_TOKEN" \
+              --data-urlencode "advertiser_id=$TT_ADV" \
+              --data-urlencode "store_ids=[\"$TT_STORE\"]" \
+              --data-urlencode "dimensions=$dims" \
+              --data-urlencode 'metrics=["cost","orders","gross_revenue"]' \
+              --data-urlencode "start_date=$D30" --data-urlencode "end_date=$Y" \
+              --data-urlencode "filtering={\"campaign_ids\":$ids}" \
               --data-urlencode 'page_size=5')
-            if [ -n "$extra" ]; then args+=(--data-urlencode "$extra"); fi
-            http=$(curl -sS -m 40 -o r.json -w '%{http_code}' -G "$B/gmv_max/report/get/" "${args[@]}")
             out="$out || $label http=$http code=$(jq -r '.code // "?"' r.json) msg=$(jq -r '.message // ""' r.json | head -c 150) rows=$(jq -r '(.data.list // []) | length' r.json 2>/dev/null) total=$(jq -r '.data.page_info.total_number // "?"' r.json 2>/dev/null) dimkeys=$(jq -r '(.data.list // [])[0].dimensions // {} | keys | join("+")' r.json 2>/dev/null) metkeys=$(jq -r '(.data.list // [])[0].metrics // {} | keys | join("+")' r.json 2>/dev/null)"
           }
-          try 'A item_group_id'           '["item_group_id"]' ''
-          try 'B campaign+item_group_id'  '["campaign_id","item_group_id"]' ''
-          try 'C item_group_id+PRODUCT'   '["item_group_id"]' 'filtering={"gmv_max_promotion_types":["PRODUCT_GMV_MAX"]}'
-          try 'D campaign+igid+PRODUCT'   '["campaign_id","item_group_id"]' 'filtering={"gmv_max_promotion_types":["PRODUCT_GMV_MAX"]}'
+          try 'one campaign / item_group_id'   "$ONE"     '["item_group_id"]'
+          try '20 campaigns / item_group_id'   "$TWENTY"  '["item_group_id"]'
+          try 'all campaigns / item_group_id'  "$ALL"     '["item_group_id"]'
+          try 'all campaigns / campaign+igid'  "$ALL"     '["campaign_id","item_group_id"]'
           echo "::notice title=GMV diag::$out"
