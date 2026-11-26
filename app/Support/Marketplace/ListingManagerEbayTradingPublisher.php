@@ -782,8 +782,11 @@ class ListingManagerEbayTradingPublisher
         array $existingPictureSets = [],
         string $pictureAspect = '',
         bool $epsHosted = false,
-        array $galleryUrls = []
+        array $galleryUrls = [],
+        bool $forcedEps = false
     ): array {
+        // Kept for the retry below: the checks that follow may change the photo lists.
+        $originalNew = $newVariations;
         $itemId = trim($itemId);
         if ($itemId === '' || $aspect === '' || $newVariations === []) {
             return ['success' => false, 'message' => 'Missing eBay item, variation aspect or new variations.'];
@@ -799,7 +802,7 @@ class ListingManagerEbayTradingPublisher
         // this revise (the gallery, the existing variation photos, and the new ones) is copied first.
         $photoNotes = [];
         $hostedGallery = [];
-        $mustHost = $epsHosted || (($ctx['channel'] ?? '') === 'ebaythree');
+        $mustHost = $epsHosted || $forcedEps || (($ctx['channel'] ?? '') === 'ebaythree');
 
         // What the live listing already uses decides which kind the new photos must be.
         $liveUrls = array_values(array_filter(array_map('strval', $galleryUrls)));
@@ -848,6 +851,15 @@ class ListingManagerEbayTradingPublisher
             }
             $existingPictureSets = array_values(array_filter($existingPictureSets, static fn ($set) => ($set['urls'] ?? []) !== []));
             $hostedGallery = self::hostPictureList($ctx, $galleryUrls)['urls'];
+            // The retry replaces every photo, so the gallery must be sent too (it may still hold self-hosted links).
+            if ($forcedEps && $hostedGallery === []) {
+                foreach (array_merge($existingPictureSets, $newVariations) as $source) {
+                    foreach ((array) ($source['urls'] ?? $source['images'] ?? []) as $photo) {
+                        $hostedGallery[] = (string) $photo;
+                    }
+                }
+                $hostedGallery = array_slice(array_values(array_unique($hostedGallery)), 0, 12);
+            }
         }
 
         try {
@@ -941,7 +953,23 @@ class ListingManagerEbayTradingPublisher
                 $messages[] = trim((string) ($error['LongMessage'] ?? $error['ShortMessage'] ?? ''));
             }
             $message = trim(implode(' ', array_filter($messages))) ?: 'eBay rejected ReviseFixedPriceItem.';
-            Log::warning(($ctx['label'] ?? 'eBay').' ReviseFixedPriceItem (add variations): '.$message, ['item_id' => $itemId]);
+            $sentUrls = [];
+            foreach ($xml->xpath('//*[local-name()="PictureURL"]') ?: [] as $node) {
+                $sentUrls[] = (string) $node;
+            }
+            Log::warning(($ctx['label'] ?? 'eBay').' ReviseFixedPriceItem (add variations): '.$message, [
+                'item_id' => $itemId,
+                'forced_eps' => $forcedEps,
+                'eps_hosted' => $mustHost,
+                'live_urls' => $liveUrls,
+                'sent_urls' => $sentUrls,
+            ]);
+
+            // eBay saw both kinds of photo whatever the check above decided: send every photo of the listing
+            // (gallery, existing and new variation photos) from eBay's own servers, which is always consistent.
+            if (! $forcedEps && preg_match('/mixture of self.?hosted and eps/i', $message)) {
+                return self::addVariationsToItem($channelKey, $itemId, $aspect, $existingValues, $originalNew, $existingPictureSets, $pictureAspect, true, $galleryUrls, true);
+            }
 
             return ['success' => false, 'message' => $message];
         } catch (\Throwable $e) {
