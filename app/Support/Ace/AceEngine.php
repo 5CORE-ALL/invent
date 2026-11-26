@@ -166,6 +166,10 @@ class AceEngine
         $created = 0;
         foreach ($q->get() as $ace) {
             try {
+                // Max once a day: a rule that already made tasks today (Pacific day) waits for tomorrow.
+                if (self::createdToday($ace)) {
+                    continue;
+                }
                 // One run per rule per day; if the per-run cap was hit, keep going until every matching row has its task.
                 for ($i = 0; $i < 10; $i++) {
                     $n = self::fireForRows($ace, self::matchingRows($ace), 'column', null);
@@ -278,6 +282,9 @@ class AceEngine
             if (! self::keywordHit($ace->chat_keyword, $body)) {
                 continue;
             }
+            if (self::createdToday($ace)) {
+                continue; // max once a day
+            }
             try {
                 $ctx = ['message' => $body, 'message_id' => (int) $message->id, 'sender_id' => (int) $message->user_id,
                     'channel' => (string) (ChatChannel::query()->whereKey($message->channel_id)->value('name') ?? ''),
@@ -347,9 +354,28 @@ class AceEngine
         return $periods === [] ? ['badge:once'] : array_map(fn ($p) => 'badge:'.$p, $periods);
     }
 
+    /**
+     * Has this rule already created task(s) today (Pacific day, the same day the daily check uses)?
+     * Every ATE rule, on every page and trigger, creates tasks at most once a day: the first run of the day
+     * makes all of that day's tasks, later runs / "Run now" clicks / chat messages wait for tomorrow.
+     */
+    public static function createdToday(AutoChatEvent $ace): bool
+    {
+        $start = now(self::CHECK_TZ)->startOfDay()->setTimezone(config('app.timezone'));
+
+        return AutoChatEventRun::query()
+            ->where('ace_id', $ace->id)
+            ->where('status', 'created')
+            ->where('created_at', '>=', $start)
+            ->exists();
+    }
+
     /** Does this badge rule still have a period without a task? */
     public static function badgeDue(AutoChatEvent $ace): bool
     {
+        if (self::createdToday($ace)) {
+            return false;
+        }
         $keys = self::badgeKeys($ace);
         $done = AutoChatEventRun::query()->where('ace_id', $ace->id)->whereIn('subject_key', $keys)->count();
 
@@ -364,6 +390,9 @@ class AceEngine
      */
     public static function fireBadge(AutoChatEvent $ace, array $values): int
     {
+        if (self::createdToday($ace)) {
+            return 0; // max once a day
+        }
         $keys = self::badgeKeys($ace);
         $done = AutoChatEventRun::query()->where('ace_id', $ace->id)->whereIn('subject_key', $keys)->pluck('subject_key')->all();
         $due = array_values(array_diff($keys, $done));

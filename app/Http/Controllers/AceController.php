@@ -569,13 +569,15 @@ class AceController extends Controller
             return response()->json(['ok' => false, 'message' => 'Badge rules fire by themselves when someone has this page open and the badge condition is met.'], 422);
         }
 
+        $already = AceEngine::createdToday($ace);
+
         try {
             $created = AceEngine::runNow($ace);
         } catch (\Throwable $e) {
             return response()->json(['ok' => false, 'message' => 'Run failed: '.$e->getMessage()], 422);
         }
 
-        return response()->json(['ok' => true, 'created' => $created]);
+        return response()->json(['ok' => true, 'created' => $created, 'already_today' => $already]);
     }
 
     /**

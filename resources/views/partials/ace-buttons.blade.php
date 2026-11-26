@@ -1000,7 +1000,7 @@
         req.then(function (d) {
             if (!d.ok) { alert(d.message || 'Action failed.'); return; }
             lastFetch = 0;
-            if (act === 'run') alert(d.created + ' task(s) created.');
+            if (act === 'run') alert(d.already_today ? 'This rule already created its task(s) today. An Auto Task Event creates tasks at most once a day, so it will run again tomorrow.' : d.created + ' task(s) created.');
             openList();
         }).catch(function () { alert('Action failed.'); }).finally(function () { b.disabled = false; });
     });
