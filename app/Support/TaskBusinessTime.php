@@ -151,6 +151,52 @@ class TaskBusinessTime
         return strtolower(trim((string) $scheduleType)) === 'daily';
     }
 
+    public const LONG_OVERDUE_DAYS = 15;
+
+    /** Days a task in a long-overdue group (Sourcing / Purchase) is allowed before it is overdue. */
+    public static function longOverdueDays(): int
+    {
+        $fromConfig = static::configValue('tasks.long_overdue_days');
+        if ($fromConfig !== null && $fromConfig !== '') {
+            return (int) $fromConfig;
+        }
+
+        return self::LONG_OVERDUE_DAYS;
+    }
+
+    /** @return list<string> lowercase group names that get the long overdue window */
+    public static function longOverdueGroups(): array
+    {
+        $fromConfig = static::configValue('tasks.long_overdue_groups');
+        $groups = is_array($fromConfig) ? $fromConfig : ['purchase', 'sourcing'];
+
+        return array_values(array_filter(array_map(
+            fn ($g) => strtolower(trim((string) $g)),
+            $groups
+        ), fn ($g) => $g !== ''));
+    }
+
+    public static function isLongOverdueGroup(mixed $group): bool
+    {
+        $g = strtolower(trim((string) $group));
+
+        return $g !== '' && in_array($g, static::longOverdueGroups(), true);
+    }
+
+    /** Quoted, comma-separated group list for SQL IN (...) (values come from config, quotes escaped). */
+    public static function longOverdueGroupsSql(): string
+    {
+        $groups = static::longOverdueGroups();
+        if ($groups === []) {
+            return "''";
+        }
+
+        return implode(',', array_map(
+            fn ($g) => "'".str_replace(["\\", "'"], ["\\\\", "''"], $g)."'",
+            $groups
+        ));
+    }
+
     /** due_date / completion_date window when an automated instance is created. */
     public static function completionWindowDays(?string $scheduleType): int
     {
@@ -193,24 +239,77 @@ class TaskBusinessTime
     }
 
     /**
-     * Same overdue rule as the /tasks list: Done and Archived are never overdue.
-     * Weekly/monthly automated tasks are overdue on created date + 6 days.
-     * Daily automated tasks are overdue the day after TID (business date > TID).
-     * Every other task is overdue once the business date is after TID + 1 day.
+     * Overdue rule for an OPEN task (assignee side): Done and Archived are never overdue here.
+     * See {@see isOverdueByTiming()} for the timing, and {@see isDoneUncheckedOverdue()} for Done tasks
+     * the assignor has not checked/deleted (those count against the assignor).
      */
     public static function isTaskOverdue(
         mixed $status,
         mixed $startDate,
         mixed $createdAt = null,
         mixed $scheduleType = null,
-        bool $isAutomateTask = false
+        bool $isAutomateTask = false,
+        mixed $group = null
     ): bool {
         $status = (string) $status;
         if ($status === 'Done' || $status === 'Archived') {
             return false;
         }
 
+        return static::isOverdueByTiming($startDate, $createdAt, $scheduleType, $isAutomateTask, $group);
+    }
+
+    /**
+     * A task marked Done that is still in the task list (the assignor has not checked it and deleted it)
+     * is overdue by the same timing as any other task - and it counts against the ASSIGNOR.
+     * Archived tasks are excluded.
+     */
+    public static function isDoneUncheckedOverdue(
+        mixed $status,
+        mixed $startDate,
+        mixed $createdAt = null,
+        mixed $scheduleType = null,
+        bool $isAutomateTask = false,
+        mixed $group = null
+    ): bool {
+        if ((string) $status !== 'Done') {
+            return false;
+        }
+
+        return static::isOverdueByTiming($startDate, $createdAt, $scheduleType, $isAutomateTask, $group);
+    }
+
+    /**
+     * Timing only (status is checked by the callers).
+     * Weekly/monthly automated tasks are overdue on created date + 6 days.
+     * Daily automated tasks are overdue the day after TID (business date > TID).
+     * Every other task is overdue once the business date is after TID + 1 day.
+     * Tasks in a long-overdue group (Sourcing / Purchase) are overdue on TID + 15 days
+     * (created date + 15 days for weekly/monthly automated tasks), whatever their type.
+     */
+    public static function isOverdueByTiming(
+        mixed $startDate,
+        mixed $createdAt = null,
+        mixed $scheduleType = null,
+        bool $isAutomateTask = false,
+        mixed $group = null
+    ): bool {
         $today = static::today()->toDateString();
+        if (static::isLongOverdueGroup($group)) {
+            $anchorRaw = ($isAutomateTask && static::isWeeklyOrMonthly((string) $scheduleType) && $createdAt)
+                ? $createdAt
+                : $startDate;
+            $anchor = static::businessDateFromStart($anchorRaw);
+            if ($anchor === null) {
+                return false;
+            }
+            try {
+                return $today >= static::parse($anchor)->addDays(static::longOverdueDays())->toDateString();
+            } catch (\Throwable) {
+                return false;
+            }
+        }
+
         if ($isAutomateTask && static::isWeeklyOrMonthly((string) $scheduleType)) {
             $overdueOn = static::weeklyMonthlyOverdueOnDate($createdAt, $startDate);
 

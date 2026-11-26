@@ -35,7 +35,7 @@ class TaskOverdueHistoryService
             ->where(function ($q) {
                 $q->whereNull('status')->orWhereNotIn('status', ['Done', 'Archived']);
             })
-            ->select(['id', 'assign_to', 'status', 'start_date', 'created_at', 'schedule_type', 'is_automate_task'])
+            ->select(['id', 'assign_to', 'status', 'start_date', 'created_at', 'schedule_type', 'is_automate_task', 'group'])
             ->orderBy('id')
             ->chunkById(2000, function ($tasks) use (&$byEmail) {
                 foreach ($tasks as $task) {
@@ -44,7 +44,8 @@ class TaskOverdueHistoryService
                         $task->getRawOriginal('start_date') ?? $task->start_date,
                         $task->getRawOriginal('created_at') ?? $task->created_at,
                         $task->schedule_type ?? '',
-                        ! empty($task->is_automate_task)
+                        ! empty($task->is_automate_task),
+                        $task->group ?? null
                     );
                     if (! $overdue) {
                         continue;
@@ -53,6 +54,30 @@ class TaskOverdueHistoryService
                         if ($email !== '') {
                             $byEmail[$email] = ($byEmail[$email] ?? 0) + 1;
                         }
+                    }
+                }
+            });
+
+        // Done tasks the assignor has not checked and deleted are overdue for the ASSIGNOR.
+        Task::query()
+            ->where('status', 'Done')
+            ->whereNotNull('assignor')
+            ->where('assignor', '!=', '')
+            ->select(['id', 'assignor', 'status', 'start_date', 'created_at', 'schedule_type', 'is_automate_task', 'group'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($tasks) use (&$byEmail) {
+                foreach ($tasks as $task) {
+                    $overdue = TaskBusinessTime::isDoneUncheckedOverdue(
+                        $task->status ?? '',
+                        $task->getRawOriginal('start_date') ?? $task->start_date,
+                        $task->getRawOriginal('created_at') ?? $task->created_at,
+                        $task->schedule_type ?? '',
+                        ! empty($task->is_automate_task),
+                        $task->group ?? null
+                    );
+                    $assignor = trim((string) $task->assignor);
+                    if ($overdue && $assignor !== '') {
+                        $byEmail[$assignor] = ($byEmail[$assignor] ?? 0) + 1;
                     }
                 }
             });

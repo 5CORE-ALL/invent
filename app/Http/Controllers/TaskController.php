@@ -416,15 +416,27 @@ class TaskController extends Controller
      * Overdue when office-calendar TID day + 1 full day has passed (matches UI grace).
      * Daily automated tasks are overdue the day after TID.
      * Weekly/monthly automated tasks are overdue 6 days after created_at.
+     * Sourcing / Purchase group tasks are overdue 15 days after TID (created_at for weekly/monthly).
      */
     protected function whereOverdueByBusinessTid(Builder $query): Builder
     {
         TaskBusinessTime::applyDatabaseSession();
         $weeklyMonthlyDays = (int) TaskBusinessTime::weeklyMonthlyOverdueDays();
+        $longDays = (int) TaskBusinessTime::longOverdueDays();
+        $longGroups = TaskBusinessTime::longOverdueGroupsSql();
 
         return $query->whereNotNull('start_date')
             ->whereRaw(
                 "(CASE
+                    WHEN LOWER(TRIM(COALESCE(`group`, ''))) IN ({$longGroups})
+                    THEN DATE_ADD(
+                        DATE(CASE
+                            WHEN COALESCE(is_automate_task, 0) = 1
+                                 AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly')
+                            THEN COALESCE(created_at, start_date)
+                            ELSE start_date
+                        END),
+                        INTERVAL {$longDays} DAY) <= CURDATE()
                     WHEN COALESCE(is_automate_task, 0) = 1
                          AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly')
                     THEN DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$weeklyMonthlyDays} DAY) <= CURDATE()
@@ -500,7 +512,7 @@ class TaskController extends Controller
     {
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
-        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'created_at', 'updated_at', 'completion_date', 'is_automate_task', 'is_missed', 'eta_time', 'etc_done', 'schedule_type']);
+        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'created_at', 'updated_at', 'completion_date', 'is_automate_task', 'is_missed', 'eta_time', 'etc_done', 'schedule_type', 'group']);
 
         // tat_sum_days + tat_count are used to compute the average L30 TAT
         // (Turn-Around Time, in calendar days) for tasks the user closed
@@ -543,6 +555,21 @@ class TaskController extends Controller
                     }
                     $byEmail[$assignorEmail]['assignor_task']++;
                 }
+
+                // A Done task the assignor has not checked and deleted is overdue for the ASSIGNOR.
+                if (TaskBusinessTime::isDoneUncheckedOverdue(
+                    $task->status ?? '',
+                    $task->getRawOriginal('start_date') ?? $task->start_date,
+                    $task->getRawOriginal('created_at') ?? $task->created_at,
+                    $task->schedule_type ?? '',
+                    ! empty($task->is_automate_task),
+                    $task->group ?? null
+                )) {
+                    if (!isset($byEmail[$assignorEmail])) {
+                        $byEmail[$assignorEmail] = $defaultCounts;
+                    }
+                    $byEmail[$assignorEmail]['overdue']++;
+                }
             }
 
             if (!$task->assign_to || trim((string) $task->assign_to) === '') {
@@ -571,7 +598,8 @@ class TaskController extends Controller
                     $task->getRawOriginal('start_date') ?? $task->start_date,
                     $task->getRawOriginal('created_at') ?? $task->created_at,
                     $task->schedule_type ?? '',
-                    ! empty($task->is_automate_task)
+                    ! empty($task->is_automate_task),
+                    $task->group ?? null
                 )) {
                     $byEmail[$email]['overdue']++;
                 }
@@ -2007,6 +2035,16 @@ class TaskController extends Controller
 
         $overdue = $this->whereOverdueByBusinessTid(clone $q)
             ->whereNotIn('status', ['Done', 'Archived'])
+            ->count();
+
+        // Done tasks these people assigned that they have not checked and deleted: overdue for the assignor.
+        $overdue += $this->whereOverdueByBusinessTid($this->taskManagerVisibilityQuery())
+            ->where('status', 'Done')
+            ->where(function ($query) use ($emails) {
+                foreach ($emails as $email) {
+                    $query->orWhereRaw('LOWER(TRIM(assignor)) = ?', [$email]);
+                }
+            })
             ->count();
 
         $deleted = DeletedTask::query()

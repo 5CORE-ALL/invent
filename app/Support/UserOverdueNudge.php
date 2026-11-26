@@ -36,11 +36,18 @@ final class UserOverdueNudge
         }
 
         $minOverdueDays = max(0, $minOverdueDays);
-        $cacheKey = 'overdue_nudge_count_v3_'.$user->id.'_'.$minOverdueDays.'_'.TaskBusinessTime::today()->toDateString();
+        $cacheKey = 'overdue_nudge_count_v5_'.$user->id.'_'.$minOverdueDays.'_'.TaskBusinessTime::today()->toDateString();
 
         return (int) Cache::remember($cacheKey, now()->addMinutes(2), function () use ($email, $minOverdueDays) {
             TaskBusinessTime::applyDatabaseSession();
             $days = (int) TaskBusinessTime::weeklyMonthlyOverdueDays();
+            $longDays = (int) TaskBusinessTime::longOverdueDays();
+            $longGroups = TaskBusinessTime::longOverdueGroupsSql();
+            // Sourcing / Purchase group: TID + 15 days (created_at + 15 for weekly/monthly automated).
+            $longDue = "DATE_ADD(DATE(CASE WHEN COALESCE(is_automate_task, 0) = 1 AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly') THEN COALESCE(created_at, start_date) ELSE start_date END), INTERVAL {$longDays} DAY)";
+            $long = $minOverdueDays > 0
+                ? "{$longDue} < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)"
+                : "{$longDue} <= CURDATE()";
             if ($minOverdueDays > 0) {
                 $weekly = "DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$days} DAY) < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)";
                 $regular = "DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)";
@@ -51,7 +58,20 @@ final class UserOverdueNudge
                 $daily = "DATE(start_date) < CURDATE()";
             }
 
-            return (int) Task::query()
+            $overdueCase = "(CASE
+                        WHEN LOWER(TRIM(COALESCE(`group`, ''))) IN ({$longGroups})
+                        THEN {$long}
+                        WHEN COALESCE(is_automate_task, 0) = 1
+                             AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly')
+                        THEN {$weekly}
+                        WHEN COALESCE(is_automate_task, 0) = 1
+                             AND LOWER(COALESCE(schedule_type, '')) = 'daily'
+                        THEN {$daily}
+                        ELSE {$regular}
+                    END)";
+
+            // Open tasks assigned to this user.
+            $assigneeOverdue = (int) Task::query()
                 ->whereNotIn('status', ['Done', 'Archived'])
                 ->whereNotNull('start_date')
                 ->where(function ($q) use ($email) {
@@ -60,18 +80,18 @@ final class UserOverdueNudge
                         ->orWhereRaw('LOWER(assign_to) LIKE ?', ['%,'.$email])
                         ->orWhereRaw('LOWER(assign_to) LIKE ?', ['%,'.$email.',%']);
                 })
-                ->whereRaw(
-                    "(CASE
-                        WHEN COALESCE(is_automate_task, 0) = 1
-                             AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly')
-                        THEN {$weekly}
-                        WHEN COALESCE(is_automate_task, 0) = 1
-                             AND LOWER(COALESCE(schedule_type, '')) = 'daily'
-                        THEN {$daily}
-                        ELSE {$regular}
-                    END)"
-                )
+                ->whereRaw($overdueCase)
                 ->count();
+
+            // Done tasks this user assigned and has not checked and deleted: overdue for the assignor.
+            $assignorOverdue = (int) Task::query()
+                ->where('status', 'Done')
+                ->whereNotNull('start_date')
+                ->whereRaw('LOWER(TRIM(assignor)) = ?', [$email])
+                ->whereRaw($overdueCase)
+                ->count();
+
+            return $assigneeOverdue + $assignorOverdue;
         });
     }
 

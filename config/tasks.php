@@ -47,6 +47,17 @@ return [
     /** Calendar days after created_at when weekly/monthly auto tasks become overdue. */
     'weekly_monthly_overdue_days' => (int) env('TASK_WEEKLY_MONTHLY_OVERDUE_DAYS', 6),
 
+    /**
+     * Task groups that get a longer overdue window (default: Sourcing and Purchase, 15 days).
+     * A task in one of these groups becomes overdue on TID + days (created_at + days for
+     * weekly/monthly automated tasks). Group names are matched case-insensitively, exactly.
+     */
+    'long_overdue_days' => (int) env('TASK_LONG_OVERDUE_DAYS', 15),
+    'long_overdue_groups' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('TASK_LONG_OVERDUE_GROUPS', 'purchase,sourcing'))
+    ))),
+
     /*
     |--------------------------------------------------------------------------
     | Missed-task deletion timezone and cutoff time

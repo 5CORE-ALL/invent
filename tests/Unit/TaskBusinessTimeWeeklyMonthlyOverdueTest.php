@@ -46,6 +46,77 @@ class TaskBusinessTimeWeeklyMonthlyOverdueTest extends TestCase
         }
     }
 
+    public function test_done_task_not_deleted_by_assignor_becomes_overdue_with_same_timing(): void
+    {
+        $tz = TaskBusinessTime::tz();
+        $start = '2026-09-01 10:00:00';
+
+        try {
+            // TID day: nothing is overdue yet.
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-01 20:00:00', $tz));
+            $this->assertFalse(TaskBusinessTime::isDoneUncheckedOverdue('Done', $start, $start, 'daily', true));
+
+            // Next day: Done daily automated is overdue, a normal Done task is still in its grace day.
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-02 09:00:00', $tz));
+            $this->assertTrue(TaskBusinessTime::isDoneUncheckedOverdue('Done', $start, $start, 'daily', true));
+            $this->assertFalse(TaskBusinessTime::isDoneUncheckedOverdue('Done', $start, $start, null, false));
+
+            // Two days later the normal Done task is overdue too.
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-03 09:00:00', $tz));
+            $this->assertTrue(TaskBusinessTime::isDoneUncheckedOverdue('Done', $start, $start, null, false));
+
+            // Only Done counts; open and archived tasks are handled elsewhere / never.
+            $this->assertFalse(TaskBusinessTime::isDoneUncheckedOverdue('Todo', $start, $start, null, false));
+            $this->assertFalse(TaskBusinessTime::isDoneUncheckedOverdue('Archived', $start, $start, null, false));
+
+            // The assignee side still never sees a Done task as overdue.
+            $this->assertFalse(TaskBusinessTime::isTaskOverdue('Done', $start, $start, null, false));
+
+            // Sourcing / Purchase get 15 days.
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-15 09:00:00', $tz));
+            $this->assertFalse(TaskBusinessTime::isDoneUncheckedOverdue('Done', $start, $start, null, false, 'PURCHASE'));
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-16 09:00:00', $tz));
+            $this->assertTrue(TaskBusinessTime::isDoneUncheckedOverdue('Done', $start, $start, null, false, 'PURCHASE'));
+        } finally {
+            \Carbon\Carbon::setTestNow();
+        }
+    }
+
+    public function test_sourcing_and_purchase_groups_get_fifteen_days(): void
+    {
+        $tz = TaskBusinessTime::tz();
+        $start = '2026-09-01 10:00:00';
+
+        $this->assertSame(15, TaskBusinessTime::longOverdueDays());
+        $this->assertTrue(TaskBusinessTime::isLongOverdueGroup('PURCHASE'));
+        $this->assertTrue(TaskBusinessTime::isLongOverdueGroup(' Sourcing '));
+        $this->assertFalse(TaskBusinessTime::isLongOverdueGroup('Purchasing Power'));
+        $this->assertFalse(TaskBusinessTime::isLongOverdueGroup(''));
+
+        try {
+            // Day 14 after TID: still allowed (a normal task would be overdue long ago).
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-15 09:00:00', $tz));
+            $this->assertFalse(TaskBusinessTime::isTaskOverdue('Todo', $start, $start, null, false, 'PURCHASE'));
+            $this->assertFalse(TaskBusinessTime::isTaskOverdue('Todo', $start, $start, 'daily', true, 'Sourcing'));
+            $this->assertTrue(TaskBusinessTime::isTaskOverdue('Todo', $start, $start, null, false, 'Amazon'));
+
+            // Day 15: overdue.
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-16 09:00:00', $tz));
+            $this->assertTrue(TaskBusinessTime::isTaskOverdue('Todo', $start, $start, null, false, 'PURCHASE'));
+            $this->assertTrue(TaskBusinessTime::isTaskOverdue('Todo', $start, $start, 'daily', true, 'Sourcing'));
+
+            // Done is never overdue.
+            $this->assertFalse(TaskBusinessTime::isTaskOverdue('Done', $start, $start, null, false, 'PURCHASE'));
+
+            // Weekly automated task in a long group counts 15 days from created_at, not 6.
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-10 09:00:00', $tz));
+            $this->assertFalse(TaskBusinessTime::isTaskOverdue('Todo', '2026-09-08 10:00:00', $start, 'weekly', true, 'Sourcing'));
+            $this->assertTrue(TaskBusinessTime::isTaskOverdue('Todo', '2026-09-08 10:00:00', $start, 'weekly', true, 'Amazon'));
+        } finally {
+            \Carbon\Carbon::setTestNow();
+        }
+    }
+
     public function test_weekly_and_monthly_due_window_is_six_days(): void
     {
         $this->assertSame(6, TaskBusinessTime::completionWindowDays('weekly'));

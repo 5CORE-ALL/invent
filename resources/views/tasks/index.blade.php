@@ -3408,6 +3408,9 @@
             /** Set from session (e.g. Task Summary dot); OR filter assignor/assignee; cleared when assignee dropdown changes away from this name */
             var taskManagerSessionUserFocus = @json(trim((string) ($selectedUserName ?? '')));
             var taskBusinessToday = @json($taskBusinessToday ?? '');
+            /** Groups (Sourcing / Purchase) that get a longer overdue window, and how many days */
+            var taskLongOverdueGroups = @json(\App\Support\TaskBusinessTime::longOverdueGroups());
+            var taskLongOverdueDays = {{ (int) \App\Support\TaskBusinessTime::longOverdueDays() }};
             var taskBusinessTzShort = @json($taskBusinessTzShort ?? 'PT');
             var taskBusinessTzLabel = @json($taskBusinessTzLabel ?? 'California (PT)');
 
@@ -3750,13 +3753,33 @@
                 return rowData.tid_business_date || null;
             }
 
+            function overdueIconTitle(rowData) {
+                return rowData && rowData.status === 'Done'
+                    ? 'Overdue - Done, waiting for the assignor to check and delete'
+                    : 'Overdue';
+            }
+
             function isOverdueByBusinessTid(rowData) {
-                if (!rowData || rowData.status === 'Archived' || rowData.status === 'Done') {
+                // A Done task still in the list = the assignor has not checked and deleted it,
+                // so it is overdue by the same timing as any other task (it counts against the assignor).
+                if (!rowData || rowData.status === 'Archived') {
                     return false;
                 }
                 if (!taskBusinessToday) {
                     return false;
                 }
+                // Sourcing / Purchase group: overdue 15 days after TID (created date for weekly/monthly auto).
+                var grpName = String(rowData.group || '').trim().toLowerCase();
+                if (grpName && taskLongOverdueGroups.indexOf(grpName) !== -1) {
+                    var longAnchor = isWeeklyOrMonthlyAutoTask(rowData)
+                        ? createdBusinessDate(rowData)
+                        : (rowData.tid_business_date || (rowData.start_date ? String(rowData.start_date).slice(0, 10) : null));
+                    if (!longAnchor || !/^\d{4}-\d{2}-\d{2}$/.test(longAnchor)) {
+                        return false;
+                    }
+                    return taskBusinessToday >= addDaysYmd(longAnchor, taskLongOverdueDays);
+                }
+
                 // Weekly/monthly automated tasks: overdue 6 days after created_at.
                 if (isWeeklyOrMonthlyAutoTask(rowData)) {
                     var created = createdBusinessDate(rowData);
@@ -4005,7 +4028,7 @@
                     }
                     
                     const overdueAlert = isOverdueByBusinessTid(task)
-                        ? '<i class="mdi mdi-alert" title="Overdue" style="color:#dc3545;font-size:16px;margin-right:4px;vertical-align:middle;"></i>'
+                        ? '<i class="mdi mdi-alert" title="' + overdueIconTitle(task) + '" style="color:#dc3545;font-size:16px;margin-right:4px;vertical-align:middle;"></i>'
                         : '';
 
                     html += `
@@ -4594,7 +4617,7 @@
                                 var overdue = isOverdueByBusinessTid(rowData);
                                 var textColor = overdue ? '#dc3545' : '#0d6efd';
                                 var overdueIcon = overdue
-                                    ? '<i class="mdi mdi-alert" title="Overdue" style="color:#dc3545;font-size:12px;margin-right:2px;vertical-align:middle;"></i>'
+                                    ? '<i class="mdi mdi-alert" title="' + overdueIconTitle(rowData) + '" style="color:#dc3545;font-size:12px;margin-right:2px;vertical-align:middle;"></i>'
                                     : '';
                                 return overdueIcon + '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + titleFull + '">' + label + '</span>';
                             }

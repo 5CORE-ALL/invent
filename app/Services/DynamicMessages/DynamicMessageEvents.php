@@ -140,7 +140,7 @@ class DynamicMessageEvents
                 ->where(function ($q) {
                     $q->whereNull('status')->orWhereNotIn('status', ['Done', 'Archived']);
                 })
-                ->select(['id', 'assign_to', 'status', 'start_date', 'created_at', 'schedule_type', 'is_automate_task'])
+                ->select(['id', 'assign_to', 'status', 'start_date', 'created_at', 'schedule_type', 'is_automate_task', 'group'])
                 ->cursor();
 
             foreach ($tasks as $task) {
@@ -165,11 +165,37 @@ class DynamicMessageEvents
                         $task->getRawOriginal('start_date') ?? $task->start_date,
                         $task->getRawOriginal('created_at') ?? $task->created_at,
                         $task->schedule_type ?? '',
-                        ! empty($task->is_automate_task)
+                        ! empty($task->is_automate_task),
+                        $task->group ?? null
                     );
                     if ($overdue) {
                         $byEmail[$email]['overdue_count']++;
                     }
+                }
+            }
+
+            // Done tasks the assignor has not checked and deleted are overdue for the ASSIGNOR.
+            $doneTasks = Task::query()
+                ->where('status', 'Done')
+                ->whereNotNull('assignor')
+                ->where('assignor', '!=', '')
+                ->select(['id', 'assignor', 'status', 'start_date', 'created_at', 'schedule_type', 'is_automate_task', 'group'])
+                ->cursor();
+
+            foreach ($doneTasks as $task) {
+                $assignor = strtolower(trim((string) $task->assignor));
+                if (! isset($byEmail[$assignor])) {
+                    continue;
+                }
+                if (TaskBusinessTime::isDoneUncheckedOverdue(
+                    $task->status,
+                    $task->getRawOriginal('start_date') ?? $task->start_date,
+                    $task->getRawOriginal('created_at') ?? $task->created_at,
+                    $task->schedule_type ?? '',
+                    ! empty($task->is_automate_task),
+                    $task->group ?? null
+                )) {
+                    $byEmail[$assignor]['overdue_count']++;
                 }
             }
         }
