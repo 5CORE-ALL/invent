@@ -56,6 +56,16 @@ class ReverbTrackingSyncService
             return ['success' => false, 'message' => 'Reverb order id missing.'];
         }
 
+        $localStatus = strtolower(trim((string) ($line->status ?? '')));
+        if ($localStatus !== '' && (str_contains($localStatus, 'refund') || str_contains($localStatus, 'cancel'))) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'action' => 'closed',
+                'message' => 'Reverb order is '.$localStatus.' — tracking not pushed.',
+            ];
+        }
+
         $shopifyOrderId = trim((string) (
             $line->shopify_order_id
             ?: ReverbOrderMetric::query()
@@ -189,6 +199,25 @@ class ReverbTrackingSyncService
                 'provider' => $provider,
                 'message' => $result['message'] ?? null,
             ]);
+
+            // Reverb refuses tracking on refunded / cancelled orders: remember it so it is never retried.
+            $failText = strtolower((string) ($result['message'] ?? ''));
+            if (str_contains($failText, 'refunded order') || str_contains($failText, 'cancelled order') || str_contains($failText, 'canceled order')) {
+                $closed = str_contains($failText, 'refunded') ? 'refunded' : 'cancelled';
+                try {
+                    $line->status = $closed;
+                    $line->save();
+                } catch (\Throwable) {
+                    // The push result below is still reported.
+                }
+
+                return [
+                    'success' => false,
+                    'skipped' => true,
+                    'action' => 'closed',
+                    'message' => 'Reverb order is '.$closed.' — tracking not pushed.',
+                ];
+            }
 
             return [
                 'success' => false,

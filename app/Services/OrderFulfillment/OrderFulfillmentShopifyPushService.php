@@ -411,6 +411,11 @@ class OrderFulfillmentShopifyPushService
             } elseif (self::isTransientChannelFailure($message)) {
                 $row->channel_next_try_at = now()->addMinutes(self::RATE_LIMIT_RETRY_MINUTES);
                 $state = 'failed';
+            } elseif ((string) ($result['action'] ?? '') === 'closed') {
+                // Cancelled / refunded / voided on the marketplace: it can never take tracking, so stop.
+                $attempts = self::MAX_CHANNEL_ATTEMPTS;
+                $row->channel_next_try_at = null;
+                $state = 'skipped';
             } else {
                 $attempts = min(self::MAX_CHANNEL_ATTEMPTS, $attempts + 1);
                 $row->channel_next_try_at = now()->addMinutes(self::retryDelayMinutes($attempts));
