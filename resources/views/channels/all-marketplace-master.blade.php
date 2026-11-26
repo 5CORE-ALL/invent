@@ -7451,8 +7451,20 @@
                     const val = Math.round(totalTodaySales);
                     const $el = $('#total-today-sales');
                     $el.text('$' + val.toLocaleString('en-US'));
+                    // Between 9:00 PM and 9:00 AM Pacific the Today refresh is paused on purpose
+                    // (a run after Eastern midnight would overwrite the day's saved metrics that the
+                    // history snapshot stores), so the badge holds the previous Eastern day's final total.
+                    let todayPausedNote = '';
+                    try {
+                        const ptHour = parseInt(new Intl.DateTimeFormat('en-US', {
+                            timeZone: 'America/Los_Angeles', hour: '2-digit', hour12: false
+                        }).format(new Date()), 10) % 24;
+                        if (ptHour >= 21 || ptHour < 9) {
+                            todayPausedNote = ' Refresh is paused 9 PM–9 AM Pacific, so this is the previous Eastern day\'s final total until the 9 AM PT refresh starts the new day.';
+                        }
+                    } catch (e) {}
                     $el.closest('.badge').attr('title',
-                        'Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT through now. $' + val.toLocaleString('en-US') + '. Dot compares today with yesterday.');
+                        'Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT through now. $' + val.toLocaleString('en-US') + '. Dot compares today with yesterday.' + todayPausedNote);
                     setBadgeExact($el, val);
                     if (!chartDotSynced['today_sales']) {
                         lastDotPairByKey['all_today_sales'] = [totalYSales, totalTodaySales];

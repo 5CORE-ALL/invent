@@ -2137,11 +2137,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // pef:dil-prmt-auto-apply (eBay1 only, once a day, per-SKU Dil) is no longer scheduled: it set PRMT% from
-        // each SKU's own Dil every midnight and fought the listing-level Dil→PRMT of ebay:dil-prmt-auto-apply
-        // (every 10 min, eBay 1/2/3), so listings flipped between two PRMT% values. Run it by hand only if needed.
-
-        // Pull business5core.com price / sold / views into store_listing_prices.
         $schedule->command('store:sync-prices')
             ->dailyAt('16:30')
             ->timezone('Asia/Kolkata')
