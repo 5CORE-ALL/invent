@@ -406,6 +406,7 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
 
         return [
             'id' => $slug.'-'.$rowKey,
+            'ship_rule' => $fields['ship_rule'] ?? null,
             'row_id' => $sourceId,
             'channel_id' => null,
             'mm_slug' => $slug,
@@ -522,6 +523,8 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
                 'title' => (string) ($r->item_title ?? ''),
                 'quantity' => 1,
                 'amount' => $r->item_price ?? null,
+                // Seller paid the label -> default ship; buyer paid / prepaid label -> no ship.
+                'ship_rule' => (float) ($r->seller_shipping_fee ?? 0) > 0 ? 'seller' : 'prepaid',
                 'cancelled' => $r->canceled_date !== null || stripos($status, 'cancel') !== false,
             ]);
         }

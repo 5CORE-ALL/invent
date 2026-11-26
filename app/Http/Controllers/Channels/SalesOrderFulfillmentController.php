@@ -77,11 +77,17 @@ class SalesOrderFulfillmentController extends Controller
     public const TOP_BADGE_KEYS = ['gofo', 'veeqo', 'shopify', 'others'];
 
     /**
-     * Channels whose GPFT/GROI/NPFT/NROI ignore ship: gross profit per unit = (Price × Margin) − LP.
-     * Prepaid-label channels plus Alibaba and Business5Core. Best Buy and Purchasing Power
-     * subtract Ship BB instead.
+     * Channels whose GPFT/GROI/NPFT/NROI always ignore ship: gross profit per unit = (Price × Margin) − LP.
+     * Business5Core and B5C B2B are the same channel. Best Buy and Purchasing Power use Ship BB;
+     * Temu, Temu2 and Temu3 use Ship Temu.
      */
-    protected const SITE_PROFIT_NO_SHIP_SLUGS = ['faire', 'topdawg', 'wayfair', 'doba', 'alibaba', 'business5core'];
+    protected const SITE_PROFIT_NO_SHIP_SLUGS = ['faire', 'topdawg', 'wayfair', 'alibaba', 'business5core', 'b5cb2b', 'depop', 'vinted'];
+
+    /**
+     * Channels that ignore ship only when the order uses a prepaid label (row ship_rule = 'prepaid');
+     * when the seller delivers (ship_rule = 'seller') they subtract the default ship.
+     */
+    protected const SITE_PROFIT_PREPAID_AWARE_SLUGS = ['doba', 'mercari'];
 
     /** Max orders per HTTP Pull Tracking request (keep under nginx/proxy gateway timeout). */
     protected const HTTP_PULL_MAX = 8;
@@ -2319,6 +2325,10 @@ class SalesOrderFulfillmentController extends Controller
                     'display_title' => (string) ($n['display_title'] ?? ''),
                     'INV' => 0,
                     'label' => null,
+                    // Doba: prepaid label orders carry no seller ship cost; seller-delivered ones do.
+                    'ship_rule' => $slug === 'doba'
+                        ? ($this->dobaOrderTypeIsPrepaid((string) ($order->order_type ?? '')) ? 'prepaid' : 'seller')
+                        : null,
                     'quantity' => (int) ($n['quantity'] ?? 1),
                     'amount' => $this->resolveNormalizedAmount($slug, $order, $n['amount'] ?? null),
                     'groi_pct' => null,
@@ -9013,6 +9023,9 @@ class SalesOrderFulfillmentController extends Controller
             $price = $listing > 0 ? $listing : $orderUnit;
 
             $lp = is_numeric($row['lp'] ?? null) ? (float) $row['lp'] : 0.0;
+            if (in_array($slug, self::SITE_PROFIT_PREPAID_AWARE_SLUGS, true) && ($row['ship_rule'] ?? null) === 'prepaid') {
+                $ctx['ship_key'] = 'none';
+            }
             $ship = $this->shipForSiteRow($row, $ctx);
 
             $metrics = $this->computeSkuSiteProfitPct($slug, $price, $lp, $ship, $ctx);
@@ -9113,7 +9126,7 @@ class SalesOrderFulfillmentController extends Controller
                 'ads' => in_array($slug, $noAds, true) ? 0.0 : $ads,
                 'ship_key' => match (true) {
                     in_array($slug, $noShip, true) => 'none',
-                    in_array($slug, ['temu', 'temu2'], true) => 'ship_temu',
+                    in_array($slug, ['temu', 'temu2', 'temu3'], true) => 'ship_temu',
                     in_array($slug, ['bestbuy', 'purchasingpower'], true) => 'ship_bb',
                     default => 'ship',
                 },
@@ -9121,6 +9134,11 @@ class SalesOrderFulfillmentController extends Controller
                 'is_temu2' => $slug === 'temu2',
                 'no_ads' => in_array($slug, $noAds, true),
             ];
+        }
+
+        // Business5Core and B5C B2B are the same channel: always use the B5C B2B settings.
+        if (isset($out['b5cb2b'])) {
+            $out['business5core'] = $out['b5cb2b'];
         }
 
         return $out;
