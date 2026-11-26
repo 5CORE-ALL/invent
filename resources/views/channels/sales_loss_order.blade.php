@@ -1155,7 +1155,8 @@
         } else if (n > band.purpleAbove) {
             color = '#7030a0';
         }
-        return '<span style="color:' + color + ';font-weight:700">' + n.toFixed(1) + '%</span>';
+        const rounded = Math.round(n) || 0; // whole number; "|| 0" avoids "-0"
+        return '<span style="color:' + color + ';font-weight:700">' + rounded + '%</span>';
     }
 
     function sloStatusFilterValue() {
@@ -1566,7 +1567,7 @@
                 },
             },
             {
-                title: 'Groi$',
+                title: 'Groi%',
                 field: 'groi_pct',
                 minWidth: 70,
                 hozAlign: 'center',
