@@ -53,6 +53,12 @@ class OrderFulfillmentShopifyPushService
     /** Only rows resolved by the page from these sources are pushed. */
     public const PUSHABLE_SOURCES = ['veeqo', 'gofo', '4seller', 'channel', 'shopify', 'manual'];
 
+    /**
+     * Marketplaces that get the page's tracking number directly, as soon as the page has it
+     * (label bought / synced), without waiting for the Shopify order to be fulfilled.
+     */
+    public const DIRECT_CHANNEL_SLUGS = ['newegg', 'aliexpress'];
+
     public function __construct(
         protected VeeqoShopifyFulfillmentService $labels,
         protected MarketplaceChannelFulfillmentHub $hub
@@ -88,6 +94,22 @@ class OrderFulfillmentShopifyPushService
             return $stats;
         }
         self::ensureColumns();
+
+        // Newegg / AliExpress: the number on the page goes to the marketplace first — it must not wait for
+        // (or depend on) the Shopify copy being linked, open and fulfilled.
+        foreach ($this->pendingDirectChannelRows($limit, $onlySlug, $onlyOrderId) as $row) {
+            if (microtime(true) >= $deadline) {
+                break;
+            }
+            $outcome = $this->pushDirectToChannel($row, $dryRun);
+            $stats['rows'][] = $outcome;
+            match ($outcome['channel']) {
+                'pushed' => $stats['channel_pushed']++,
+                'failed' => $stats['channel_failed']++,
+                default => $stats['channel_skipped']++,
+            };
+            usleep(250000);
+        }
 
         $rateLimitedInARow = 0;
         foreach ($this->pendingShopifyRows($limit, $onlySlug, $onlyOrderId) as $row) {
@@ -275,6 +297,7 @@ class OrderFulfillmentShopifyPushService
             ->whereNotNull('shopify_fulfilled_at')
             ->whereNull('channel_pushed_at')
             ->whereNotIn('mm_slug', self::EXCLUDED_SLUGS)
+            ->whereNotIn('mm_slug', self::DIRECT_CHANNEL_SLUGS)
             ->where('created_at', '>=', now()->subDays(self::MAX_ROW_AGE_DAYS))
             // Rows with 0 attempts count too: order-fulfillment:reconcile-shopify fulfils the Shopify order and marks the
             // row done without ever pushing to the marketplace, so these rows were never pushed at all.
@@ -286,6 +309,122 @@ class OrderFulfillmentShopifyPushService
         $this->applyTargetFilters($query, $onlySlug, $onlyOrderId);
 
         return $query->orderBy('shopify_push_checked_at')->orderBy('id')->limit(max(1, $limit))->get();
+    }
+
+    /**
+     * Newegg / AliExpress rows that have a number on the page but not on the marketplace yet.
+     *
+     * @return \Illuminate\Support\Collection<int, OrderFulfillmentTracking>
+     */
+    protected function pendingDirectChannelRows(int $limit, ?string $onlySlug, ?string $onlyOrderId)
+    {
+        $query = OrderFulfillmentTracking::query()
+            ->whereIn('mm_slug', self::DIRECT_CHANNEL_SLUGS)
+            ->whereNotNull('tracking_number')
+            ->where('tracking_number', '!=', '')
+            ->whereIn('source', self::PUSHABLE_SOURCES)
+            ->whereNull('channel_pushed_at')
+            ->where('channel_push_attempts', '<', self::MAX_CHANNEL_ATTEMPTS)
+            ->where('created_at', '>=', now()->subDays(self::MAX_ROW_AGE_DAYS));
+        if ($onlyOrderId === null || trim($onlyOrderId) === '') {
+            $query->where(function ($q) {
+                $q->whereNull('channel_next_try_at')->orWhere('channel_next_try_at', '<=', now());
+            });
+        }
+        $this->applyTargetFilters($query, $onlySlug, $onlyOrderId);
+
+        return $query->orderByRaw('channel_next_try_at IS NULL DESC')
+            ->orderBy('channel_next_try_at')
+            ->orderByDesc('id')
+            ->limit(max(1, $limit))
+            ->get();
+    }
+
+    /**
+     * Push the page's number straight to the marketplace (no Shopify copy needed).
+     * Transient errors wait and retry without using an attempt.
+     *
+     * @return array<string, mixed>
+     */
+    protected function pushDirectToChannel(OrderFulfillmentTracking $row, bool $dryRun): array
+    {
+        $slug = strtolower(trim((string) $row->mm_slug));
+        $tracking = strtoupper(trim((string) $row->tracking_number));
+        $out = [
+            'row_key' => (string) $row->row_key,
+            'marketplace' => $slug,
+            'order_id' => (string) $row->order_id,
+            'sku' => (string) $row->sku,
+            'tracking' => $tracking,
+            'shopify' => 'skipped',
+            'shopify_order_id' => (string) $row->shopify_order_id,
+            'channel' => 'skipped',
+            'message' => 'direct marketplace push',
+        ];
+
+        $localId = $this->localIdFromRowKey($slug, (string) $row->row_key);
+        if ($localId === null) {
+            return $out;
+        }
+        if ($dryRun) {
+            $out['channel'] = 'dry-run';
+
+            return $out;
+        }
+        if (! $this->hub->supportsChannel($slug)) {
+            return $out;
+        }
+        if (! $this->hub->channelPushEnabled($slug)) {
+            $row->channel_push_message = 'Tracking push is turned off for '.$slug.' in Marketplace Manager settings.';
+            $row->channel_next_try_at = now()->addMinutes(self::RETRY_COOLDOWN_MINUTES);
+            $row->save();
+            $out['channel_message'] = $row->channel_push_message;
+
+            return $out;
+        }
+
+        try {
+            $result = $this->hub->pushAfterShopifyTracking($slug, $localId, [
+                'tracking' => $tracking,
+                'carrier' => trim((string) ($row->carrier ?? '')),
+                'sku' => (string) $row->sku,
+                'action' => 'order_fulfillment_page',
+                'success' => true,
+            ]);
+        } catch (\Throwable $e) {
+            $result = ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $attempts = (int) $row->channel_push_attempts;
+        if ($result === null) {
+            $attempts = min(self::MAX_CHANNEL_ATTEMPTS, $attempts + 1);
+            $message = 'Marketplace order row not found for '.$slug.'.';
+            $row->channel_next_try_at = now()->addMinutes(self::retryDelayMinutes($attempts));
+            $state = 'failed';
+        } else {
+            $message = trim((string) ($result['message'] ?? ''));
+            if (! empty($result['success'])) {
+                $row->channel_pushed_at = now();
+                $row->channel_next_try_at = null;
+                $message = $message !== '' ? $message : 'Pushed.';
+                $state = 'pushed';
+            } elseif (self::isTransientChannelFailure($message)) {
+                $row->channel_next_try_at = now()->addMinutes(self::RATE_LIMIT_RETRY_MINUTES);
+                $state = 'failed';
+            } else {
+                $attempts = min(self::MAX_CHANNEL_ATTEMPTS, $attempts + 1);
+                $row->channel_next_try_at = now()->addMinutes(self::retryDelayMinutes($attempts));
+                $state = 'failed';
+            }
+        }
+        $row->channel_push_attempts = $attempts;
+        $row->channel_push_message = mb_substr($message !== '' ? $message : 'Marketplace push failed.', 0, 255);
+        $row->save();
+
+        $out['channel'] = $state;
+        $out['channel_message'] = $row->channel_push_message;
+
+        return $out;
     }
 
     protected function applyTargetFilters($query, ?string $onlySlug, ?string $onlyOrderId): void
@@ -490,6 +629,14 @@ class OrderFulfillmentShopifyPushService
      */
     protected function pushToChannel(OrderFulfillmentTracking $row, string $slug, int $localId, array $known): array
     {
+        if (in_array($slug, self::DIRECT_CHANNEL_SLUGS, true)) {
+            // Pushed by pushDirectToChannel() from the page's number, independent of Shopify.
+            return [
+                'state' => $row->channel_pushed_at !== null ? 'pushed' : 'skipped',
+                'message' => (string) ($row->channel_push_message ?? 'Handled by the direct marketplace push.'),
+            ];
+        }
+
         $row->shopify_push_checked_at = now();
 
         if ($slug === 'pls') {
@@ -673,6 +820,11 @@ class OrderFulfillmentShopifyPushService
             Schema::table('order_fulfillment_trackings', function ($table) {
                 $table->timestamp('shopify_next_try_at')->nullable()->after('shopify_push_checked_at');
                 $table->index('shopify_next_try_at', 'of_tracking_next_try_idx');
+            });
+        }
+        if (! Schema::hasColumn('order_fulfillment_trackings', 'channel_next_try_at')) {
+            Schema::table('order_fulfillment_trackings', function ($table) {
+                $table->timestamp('channel_next_try_at')->nullable()->after('channel_push_message');
             });
         }
     }

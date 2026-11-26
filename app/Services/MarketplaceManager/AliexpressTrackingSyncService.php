@@ -156,7 +156,12 @@ class AliexpressTrackingSyncService
         ];
     }
 
-    public function pushTrackingForOrder(AliexpressOrderMetric $line): array
+    /**
+     * @param  array<string, mixed>  $known  Tracking the Order Fulfillment page already has for this order
+     *                                       (tracking, carrier). When given it is pushed as it is and the
+     *                                       order does not need a Shopify copy or Shopify tracking first.
+     */
+    public function pushTrackingForOrder(AliexpressOrderMetric $line, array $known = []): array
     {
         if (empty($this->aliExpressApi->getAccessToken())) {
             return ['success' => false, 'message' => 'ALIEXPRESS_ACCESS_TOKEN missing.'];
@@ -167,6 +172,9 @@ class AliexpressTrackingSyncService
             return ['success' => false, 'message' => 'AliExpress order id missing.'];
         }
 
+        $knownTracking = trim((string) ($known['tracking'] ?? ''));
+        $useKnown = $knownTracking !== '';
+
         $shopifyOrderId = trim((string) (
             $line->shopify_order_id
             ?: AliexpressOrderMetric::query()
@@ -175,7 +183,7 @@ class AliexpressTrackingSyncService
                 ->value('shopify_order_id')
         ));
 
-        if ($shopifyOrderId === '') {
+        if ($shopifyOrderId === '' && ! $useKnown) {
             return [
                 'success' => false,
                 'skipped' => true,
@@ -192,26 +200,35 @@ class AliexpressTrackingSyncService
             trim((string) ($line->order_number ?? '')),
         ], static fn ($id) => $id !== '' && $id !== $orderId));
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku, $extraIds);
-        if (empty($shopifyFulfillment['tracking'])) {
-            $copied = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('aliexpress', (int) $line->id);
-            $copiedTn = trim((string) ($copied['tracking'] ?? ''));
-            if ($copiedTn !== '') {
-                $shopifyFulfillment['tracking'] = $copiedTn;
-                $shopifyFulfillment['carrier'] = $copied['carrier'] ?? ($shopifyFulfillment['carrier'] ?? null);
-            } elseif (! empty($copied['success'])) {
-                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku, $extraIds);
-            }
-        }
-        if (empty($shopifyFulfillment['tracking'])) {
-            return [
-                'success' => false,
-                'skipped' => true,
-                'message' => $shopifyFulfillment['error']
-                    ?: 'No tracking number on Shopify yet. Buy/download a shipping label in Shopify first.',
-                'shopify_tracking' => null,
-                'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
+        if ($useKnown) {
+            // Number from the Order Fulfillment page: no Shopify lookup needed.
+            $shopifyFulfillment = [
+                'tracking' => $knownTracking,
+                'carrier' => trim((string) ($known['carrier'] ?? '')),
+                'tracking_url' => '',
             ];
+        } else {
+            $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku, $extraIds);
+            if (empty($shopifyFulfillment['tracking'])) {
+                $copied = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('aliexpress', (int) $line->id);
+                $copiedTn = trim((string) ($copied['tracking'] ?? ''));
+                if ($copiedTn !== '') {
+                    $shopifyFulfillment['tracking'] = $copiedTn;
+                    $shopifyFulfillment['carrier'] = $copied['carrier'] ?? ($shopifyFulfillment['carrier'] ?? null);
+                } elseif (! empty($copied['success'])) {
+                    $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku, $extraIds);
+                }
+            }
+            if (empty($shopifyFulfillment['tracking'])) {
+                return [
+                    'success' => false,
+                    'skipped' => true,
+                    'message' => $shopifyFulfillment['error']
+                        ?: 'No tracking number on Shopify yet. Buy/download a shipping label in Shopify first.',
+                    'shopify_tracking' => null,
+                    'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
+                ];
+            }
         }
 
         $shopifyTracking = (string) $shopifyFulfillment['tracking'];

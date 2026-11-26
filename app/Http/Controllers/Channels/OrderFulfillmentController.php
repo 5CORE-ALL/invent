@@ -3211,6 +3211,16 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'shopify_push_checked_at' => null,
                 'shopify_next_try_at' => null,
             ];
+            // Newegg / AliExpress are pushed straight from the page's number (before Shopify):
+            // a new number must reach them again.
+            if ($existing->channel_pushed_at !== null || (int) $existing->channel_push_attempts > 0) {
+                $values += [
+                    'channel_pushed_at' => null,
+                    'channel_push_attempts' => 0,
+                    'channel_push_message' => null,
+                    'channel_next_try_at' => null,
+                ];
+            }
         }
         // A different number than the one already copied to Shopify / the
         // marketplace must be pushed again by order-fulfillment:push-tracking.
@@ -3224,6 +3234,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'channel_pushed_at' => null,
                 'channel_push_attempts' => 0,
                 'channel_push_message' => null,
+                'channel_next_try_at' => null,
             ];
         }
 

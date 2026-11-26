@@ -27,6 +27,7 @@ class OrderFulfillmentTracking extends Model
         'channel_pushed_at',
         'channel_push_attempts',
         'channel_push_message',
+        'channel_next_try_at',
     ];
 
     protected $casts = [
@@ -35,6 +36,7 @@ class OrderFulfillmentTracking extends Model
         'shopify_push_checked_at' => 'datetime',
         'shopify_next_try_at' => 'datetime',
         'channel_pushed_at' => 'datetime',
+        'channel_next_try_at' => 'datetime',
         'shopify_push_attempts' => 'integer',
         'channel_push_attempts' => 'integer',
     ];

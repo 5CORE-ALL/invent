@@ -249,9 +249,22 @@ class MarketplaceChannelFulfillmentHub
             $takesKnown = $second !== null
                 && $secondType instanceof \ReflectionNamedType
                 && $secondType->getName() === 'array';
-            $result = $takesKnown
-                ? $service->pushTrackingForOrder($line, $known)
-                : $service->pushTrackingForOrder($line);
+            // Services that accept the page's tracking in a trailing `array $known` (Newegg: after the bool).
+            $namedKnown = false;
+            foreach ($method->getParameters() as $p) {
+                $t = $p->getType();
+                if ($p->getName() === 'known' && $t instanceof \ReflectionNamedType && $t->getName() === 'array') {
+                    $namedKnown = true;
+                    break;
+                }
+            }
+            if ($takesKnown) {
+                $result = $service->pushTrackingForOrder($line, $known);
+            } elseif ($namedKnown) {
+                $result = $service->pushTrackingForOrder($line, known: $known);
+            } else {
+                $result = $service->pushTrackingForOrder($line);
+            }
 
             return is_array($result) ? $result : ['success' => true, 'message' => 'Pushed.'];
         } catch (\Throwable $e) {
