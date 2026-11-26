@@ -5702,6 +5702,7 @@
                             { f: 'macy_lmp_price',    mp: 'macy',    label: 'Macy',  short: 'M',   style: 'background:#e21a2c;color:#fff;' },
                             { f: 'reverb_lmp_price',  mp: 'reverb',  label: 'Reverb', short: 'R',   style: 'background:#d9281d;color:#fff;' },
                             { f: 'temu_lmp_price',    mp: 'temu',    label: 'Temu',  short: 'T',   style: 'background:#fb7701;color:#fff;' },
+                            { f: 'aliexpress_lmp_price', mp: 'aliexpress', label: 'AliExpress', short: 'AE', style: 'background:#ff4747;color:#fff;' },
                             { f: 'tiktok_lmp_price',  mp: 'tiktok',  label: 'TikTok', short: 'TK',  style: 'background:#111;color:#fff;' }
                         ];
                         // Every channel LMP is shown, LOWEST first (then ascending)
@@ -6317,7 +6318,7 @@
         function piBoxLowestLmp(d) {
             let low = 0;
             ['amazon_lmp_price', 'ebay_lmp_price', 'google_lmp_price', 'bestbuy_lmp_price', 'macy_lmp_price',
-             'reverb_lmp_price', 'temu_lmp_price', 'tiktok_lmp_price'].forEach(function(f) {
+             'reverb_lmp_price', 'temu_lmp_price', 'aliexpress_lmp_price', 'tiktok_lmp_price'].forEach(function(f) {
                 const v = parseFloat(d && d[f]);
                 if (isFinite(v) && v > 0 && (low === 0 || v < low)) low = v;
             });
@@ -11524,7 +11525,7 @@
             (ovlAliases[ch] || [ch]).forEach(function(mp) { patchOvl30LmpCell(mp, value); });
 
             // Main grid column (only channels that have an *_lmp_price column)
-            if (['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu', 'tiktok'].indexOf(ch) !== -1) {
+            if (['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu', 'aliexpress', 'tiktok'].indexOf(ch) !== -1) {
                 patchPriceIncreaseLmpField(sku, ch + '_lmp_price', value);
             }
         }

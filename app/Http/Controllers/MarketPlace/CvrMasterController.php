@@ -1807,15 +1807,15 @@ class CvrMasterController extends Controller
                 Log::warning('Could not fetch eBay LMP: ' . $e->getMessage());
             }
 
-            // Temu / Temu 2 LMP — L1 columns only for list view (skip heavy lmp_entries JSON blobs;
-            // drawer loads full entries via /cvr-master-temu-lmp on demand)
+            // Temu / Temu 2 LMP — lmp_entries IS loaded: it is what the LMP drawer lists (edits / deletes / ignores live there),
+            // the legacy lmp / lmp_2 columns can be stale, which made the column differ from the drawer
             $temuLmpByNormalizedSku = [];
             $temuLmpSkuGroupService = null;
             try {
                 if (Schema::hasTable('temu_lmp')) {
                     foreach (
                         TemuLmp::query()
-                            ->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2'])
+                            ->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2', 'lmp_entries'])
                             ->get() as $temuLmpRow
                     ) {
                         $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
@@ -1859,6 +1859,53 @@ class CvrMasterController extends Controller
                 } catch (\Throwable $e) {
                     Log::warning('Could not fetch '.$lmpMp.' LMP: '.$e->getMessage());
                 }
+            }
+
+            // AliExpress LMP (aliexpress_lmp_data_sheet, same store + landed price = price + ship as the LMP drawer)
+            $extraLmpLookups['aliexpress'] = [];
+            try {
+                if (Schema::hasTable('aliexpress_lmp_data_sheet')) {
+                    $aeNorm = static function ($v) {
+                        $v = strtoupper(trim((string) $v));
+                        $v = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $v);
+
+                        return preg_replace('/\s+/', ' ', $v);
+                    };
+                    foreach (\App\Models\AliexpressLmpDataSheet::query()->select(['sku', 'lmp', 'lmp_2', 'lmp_entries'])->get() as $aeRow) {
+                        $entries = is_array($aeRow->lmp_entries) ? $aeRow->lmp_entries : null;
+                        $prices = [];
+                        if (is_array($entries)) {
+                            foreach ($entries as $e) {
+                                if (! is_array($e) || ! empty($e['ignored'])) {
+                                    continue;
+                                }
+                                $pp = isset($e['price']) && is_numeric($e['price']) ? (float) $e['price'] : 0;
+                                if ($pp > 0) {
+                                    $shipRaw = $e['ship'] ?? $e['delivery'] ?? 0;
+                                    $prices[] = $pp + (is_numeric($shipRaw) ? max(0, (float) $shipRaw) : 0);
+                                }
+                            }
+                        } else {
+                            if ($aeRow->lmp !== null && (float) $aeRow->lmp > 0) {
+                                $prices[] = (float) $aeRow->lmp;
+                            }
+                            if ($aeRow->lmp_2 !== null && (float) $aeRow->lmp_2 > 0) {
+                                $prices[] = (float) $aeRow->lmp_2;
+                            }
+                        }
+                        if (! count($prices)) {
+                            continue;
+                        }
+                        $val = round(min($prices), 2);
+                        foreach ([strtoupper(preg_replace('/\s+/', ' ', trim((string) $aeRow->sku))), $aeNorm($aeRow->sku)] as $aeKey) {
+                            if (! isset($extraLmpLookups['aliexpress'][$aeKey]) || $val < $extraLmpLookups['aliexpress'][$aeKey]) {
+                                $extraLmpLookups['aliexpress'][$aeKey] = $val;
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Could not fetch AliExpress LMP: '.$e->getMessage());
             }
 
             // Fetch latest remarks for all SKUs in one query
@@ -3241,6 +3288,9 @@ class CvrMasterController extends Controller
                     "macy_lmp_price" => $extraLmpLookups['macy'][$skuLookupKey] ?? null,
                     "reverb_lmp_price" => $extraLmpLookups['reverb'][$skuLookupKey] ?? null,
                     "tiktok_lmp_price" => $extraLmpLookups['tiktok'][$skuLookupKey] ?? null,
+                    "aliexpress_lmp_price" => $extraLmpLookups['aliexpress'][$skuLookupKey]
+                        ?? $extraLmpLookups['aliexpress'][preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $skuLookupKey)]
+                        ?? null,
                     "amazon_lmp_link" => $amazonLmpLink,
                     "ebay_lmp_link" => $ebayLmpLink,
                     "google_lmp_link" => $googleLmpLink,
@@ -3334,7 +3384,7 @@ class CvrMasterController extends Controller
                 $googleLmpVals = $rows->pluck('google_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $temuLmpVals = $rows->pluck('temu_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $extraParentLmp = [];
-                foreach (['bestbuy', 'macy', 'reverb', 'tiktok'] as $lmpMp) {
+                foreach (['bestbuy', 'macy', 'reverb', 'tiktok', 'aliexpress'] as $lmpMp) {
                     $vals = $rows->pluck($lmpMp.'_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                     $extraParentLmp[$lmpMp.'_lmp_price'] = $vals->isNotEmpty() ? round($vals->avg(), 2) : null;
                 }
@@ -3432,6 +3482,7 @@ class CvrMasterController extends Controller
                     'macy_lmp_price' => $extraParentLmp['macy_lmp_price'],
                     'reverb_lmp_price' => $extraParentLmp['reverb_lmp_price'],
                     'tiktok_lmp_price' => $extraParentLmp['tiktok_lmp_price'],
+                    'aliexpress_lmp_price' => $extraParentLmp['aliexpress_lmp_price'],
                     'amazon_lmp_link' => null,
                     'ebay_lmp_link' => null,
                     'temu_lmp_link' => null,
