@@ -3084,12 +3084,23 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Once a day: the /missing-listing page serves this cached table all day (opening the page never recounts).
+        // Every 30 minutes: the /missing-listing page serves this cached table (opening the page never recounts),
+        // so the Missing L = 0 / Missing L > 0 badges follow the data at most half an hour behind.
         $ist($schedule->command('missing-listing:warm-page')
-            ->dailyAt('06:00')
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('missing-listing-warm-page')
             ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // Every 30 minutes (5 minutes after the page rebuild): the same recount as "Refresh all Missing L now",
+        // one queued job per marketplace, from the data already in the app (nothing is fetched from the marketplaces).
+        $ist($schedule->command('listing:refresh all --queue --counts-only')
+            ->cron('5,35 * * * *')
+            ->timezone('Asia/Kolkata')
+            ->name('listing-refresh-counts-only')
+            ->withoutOverlapping(25)
             ->runInBackground()
             ->appendOutputTo($log));
 
