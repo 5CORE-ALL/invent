@@ -120,6 +120,13 @@
             background: linear-gradient(135deg, #34ce57 0%, #198754 100%);
         }
 
+        .stat-card-l30 {
+            border-left-color: #6f42c1;
+        }
+        .stat-card-l30 .stat-icon {
+            background: linear-gradient(135deg, #a78bfa 0%, #6f42c1 100%);
+        }
+
         /* Table styling */
         .tabulator {
             border: 1px solid #e9ecef !important;
@@ -507,6 +514,19 @@
                         <div class="stat-label">TOTAL ATC</div>
                         <div class="stat-value" id="badge-stat-atc">{{ number_format((int) round((float) (($stats['atc_total_minutes'] ?? 0) / 60))) }}</div>
                         <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;">Hours (sum) · updates with filters</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card-wrap">
+                <div class="stat-card stat-card-l30">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-briefcase-clock-outline"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">L30 ACTIVE WORKING HRS</div>
+                        <div class="stat-value" id="badge-stat-l30-hrs">{{ isset($stats['l30_active_hours']) && $stats['l30_active_hours'] !== null ? number_format((float) $stats['l30_active_hours'], 1) : '-' }}</div>
+                        <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;" title="Active working hours over the last 30 days, same as Att L30 on the Task Summary">{{ $stats['l30_active_who'] ?? '' }}@if(($stats['l30_active_people'] ?? 1) > 1) · {{ $stats['l30_active_people'] }} people @endif · last 30 days</div>
                     </div>
                 </div>
             </div>

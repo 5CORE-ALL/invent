@@ -6691,6 +6691,29 @@ class TaskController extends Controller
         $stats['etc_total_minutes'] = (int) round((float) ((clone $deletedQuery)->sum(\DB::raw('COALESCE(eta_time, 0)')) ?? 0));
         $stats['atc_total_minutes'] = (int) round((float) ((clone $deletedQuery)->sum(\DB::raw('COALESCE(etc_done, 0)')) ?? 0));
 
+        // L30 Active Working Hours badge: same figure as "Att L30" on the Task Summary (in-app attendance active hours,
+        // Team Logger for the people tracked there). A selected user -> that person; admins -> every active user; others -> themselves.
+        $l30Who = 'You';
+        $l30People = 1;
+        if ($selectedUserName !== '' && ($pickedUser = User::query()->where('name', $selectedUserName)->first())) {
+            $l30Ids = [(int) $pickedUser->id];
+            $l30Who = $pickedUser->name;
+        } elseif ($isAdmin) {
+            $l30Ids = User::query()->active()->pluck('id')->map(fn ($v) => (int) $v)->all();
+            $l30Who = 'Team';
+            $l30People = count($l30Ids);
+        } else {
+            $l30Ids = [(int) $user->id];
+        }
+        try {
+            $stats['l30_active_hours'] = round((float) array_sum($this->getTaskSummaryAttendanceHours($l30Ids)), 1);
+        } catch (\Throwable $e) {
+            \Log::warning('Deleted tasks L30 active hours failed: '.$e->getMessage());
+            $stats['l30_active_hours'] = null;
+        }
+        $stats['l30_active_who'] = $l30Who;
+        $stats['l30_active_people'] = $l30People;
+
         // TAT badge: average TAT (days from start_date to deleted_at) for deleted tasks in last 30 days
         $last30Query = (clone $deletedQuery)
             ->where('deleted_at', '>=', now()->subDays(30))
