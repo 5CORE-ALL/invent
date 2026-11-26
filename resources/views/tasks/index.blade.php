@@ -3680,6 +3680,26 @@
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             }
 
+            // Round type badge shown before the task title (table + mobile cards):
+            // ATE = created by an Auto Task Event rule; D / W / M = daily / weekly / monthly automated task.
+            function taskTypeBadgeHtml(rowData) {
+                if (!rowData) return '';
+                var label = '', title = '', bg = '';
+                if (rowData.is_ate_task == 1) {
+                    label = 'ATE'; title = 'ATE - created by an Auto Task Event rule'; bg = '#ec4899';
+                } else if (rowData.is_automate_task == 1) {
+                    var freq = String(rowData.schedule_type || '').toLowerCase();
+                    if (freq === 'daily') { label = 'D'; title = 'Daily task'; bg = '#0d6efd'; }
+                    else if (freq === 'weekly') { label = 'W'; title = 'Weekly task'; bg = '#6f42c1'; }
+                    else if (freq === 'monthly') { label = 'M'; title = 'Monthly task'; bg = '#0f766e'; }
+                }
+                if (!label) return '';
+                return '<span title="' + title + '" style="display:inline-flex;align-items:center;justify-content:center;' +
+                    'width:24px;height:24px;border-radius:50%;background:' + bg + ';color:#fff;font-weight:700;' +
+                    'font-size:' + (label.length > 1 ? '8px' : '11px') + ';line-height:1;margin-right:6px;vertical-align:middle;flex-shrink:0;">' +
+                    label + '</span>';
+            }
+
             function isWeeklyOrMonthlyAutoTask(rowData) {
                 if (!rowData) {
                     return false;
@@ -3957,7 +3977,7 @@
                         <div class="mobile-task-card ${statusClass}">
                             <div class="mobile-task-header">
                                 <div style="flex: 1;">
-                                    <div class="mobile-task-title">${overdueAlert}${task.title || 'No Title'}</div>
+                                    <div class="mobile-task-title">${overdueAlert}${taskTypeBadgeHtml(task)}${task.title || 'No Title'}</div>
                                     <div class="mobile-task-meta">
                                         <span class="badge ${statusBadge} mobile-task-badge">${statusText}</span>
                                         <span class="badge ${priorityClass} mobile-task-badge">${priorityLabel}</span>
@@ -4424,24 +4444,8 @@
                                 ? '<span class="badge bg-secondary ms-1" style="font-size:9px; vertical-align:middle;">Subtask</span>'
                                 : '';
 
-                            // Round type badge: ATE (Auto Task Event) or D / W / M for
-                            // daily / weekly / monthly automated tasks.
-                            var typeBadge = '';
-                            var typeLabel = '', typeTitle = '', typeBg = '';
-                            if (rowData.is_ate_task == 1) {
-                                typeLabel = 'ATE'; typeTitle = 'ATE - created by an Auto Task Event rule'; typeBg = '#ec4899';
-                            } else if (rowData.is_automate_task == 1) {
-                                var freqType = String(rowData.schedule_type || '').toLowerCase();
-                                if (freqType === 'daily') { typeLabel = 'D'; typeTitle = 'Daily task'; typeBg = '#0d6efd'; }
-                                else if (freqType === 'weekly') { typeLabel = 'W'; typeTitle = 'Weekly task'; typeBg = '#6f42c1'; }
-                                else if (freqType === 'monthly') { typeLabel = 'M'; typeTitle = 'Monthly task'; typeBg = '#0f766e'; }
-                            }
-                            if (typeLabel) {
-                                typeBadge = '<span title="' + typeTitle + '" style="display:inline-flex;align-items:center;justify-content:center;' +
-                                    'width:24px;height:24px;border-radius:50%;background:' + typeBg + ';color:#fff;font-weight:700;' +
-                                    'font-size:' + (typeLabel.length > 1 ? '8px' : '11px') + ';line-height:1;margin-right:6px;vertical-align:middle;flex-shrink:0;">' +
-                                    typeLabel + '</span>';
-                            }
+                            // Round type badge: ATE / D / W / M
+                            var typeBadge = taskTypeBadgeHtml(rowData);
 
                             // Show full text with auto wrapping (no line limit)
                             return '<div style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.4; text-align: left;">' +
