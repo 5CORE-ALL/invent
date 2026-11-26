@@ -645,8 +645,8 @@ class ChannelListingRegistry
             return [];
         }
 
-        $index = app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class)->get('macy', false);
-        if (is_array($index) && ($index['offers'] ?? []) !== []) {
+        $index = self::miraklOfferIndex('macy');
+        if (is_array($index)) {
             return self::overlayConnectCreated('macy', $skus, self::listedFromMiraklOfferIndex($skus, $index));
         }
 
@@ -691,8 +691,8 @@ class ChannelListingRegistry
      */
     public static function listedBestBuy(array $skus): array
     {
-        $index = $skus === [] ? null : app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class)->get('bestbuy', false);
-        if (is_array($index) && ($index['offers'] ?? []) !== []) {
+        $index = $skus === [] ? null : self::miraklOfferIndex('bestbuy');
+        if (is_array($index)) {
             return self::overlayConnectCreated('bestbuy', $skus, self::listedFromMiraklOfferIndex($skus, $index));
         }
 
@@ -708,8 +708,8 @@ class ChannelListingRegistry
      */
     public static function listedPurchasingPower(array $skus): array
     {
-        $index = $skus === [] ? null : app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class)->get('purchasingpower', false);
-        if (is_array($index) && ($index['offers'] ?? []) !== []) {
+        $index = $skus === [] ? null : self::miraklOfferIndex('purchasingpower');
+        if (is_array($index)) {
             return self::overlayConnectCreated('purchasingpower', $skus, self::listedFromMiraklOfferIndex($skus, $index));
         }
 
@@ -718,7 +718,9 @@ class ChannelListingRegistry
 
     /**
      * Listed = active MCM offer whose shop SKU, Mirakl product SKU or UPC matches the
-     * Product Master SKU. A matching inactive offer is a page created (neither Listed nor Missing L).
+     * Product Master SKU. A matching inactive offer is a page created (neither Listed nor Missing L),
+     * except when the marketplace rejected the product (PRODUCT_STATUS_REJECTED): nothing sellable
+     * exists, so it is Missing L and can be published again.
      *
      * @param  list<string>  $skus
      * @param  array{offers: list<array<string, mixed>>}  $index
@@ -730,9 +732,16 @@ class ChannelListingRegistry
         $upcMap = \App\Services\MarketplaceManager\MiraklMcmOfferIndex::upcMap($index);
         $upcBySku = $upcMap === [] ? [] : self::productMasterUpcs($skus);
         $activeShopSkus = [];
+        $rejectedShopSkus = [];
         foreach ($index['offers'] ?? [] as $offer) {
-            if (! empty($offer['active']) && (string) ($offer['shop_sku'] ?? '') !== '') {
-                $activeShopSkus[strtoupper((string) $offer['shop_sku'])] = true;
+            $shopSku = strtoupper((string) ($offer['shop_sku'] ?? ''));
+            if ($shopSku === '') {
+                continue;
+            }
+            if (! empty($offer['active'])) {
+                $activeShopSkus[$shopSku] = true;
+            } elseif (in_array('PRODUCT_STATUS_REJECTED', (array) ($offer['reasons'] ?? []), true)) {
+                $rejectedShopSkus[$shopSku] = true;
             }
         }
 
@@ -756,7 +765,11 @@ class ChannelListingRegistry
                 }
             }
             if ($hit !== '') {
-                $map[strtolower($sku)] = isset($activeShopSkus[strtoupper($hit)])
+                $hitKey = strtoupper($hit);
+                if (! isset($activeShopSkus[$hitKey]) && isset($rejectedShopSkus[$hitKey])) {
+                    continue;
+                }
+                $map[strtolower($sku)] = isset($activeShopSkus[$hitKey])
                     ? $hit
                     : ListingCountsEngine::pageCreatedId($hit);
             }
@@ -1587,31 +1600,45 @@ class ChannelListingRegistry
      * @param  array<string, string>  $map
      * @return array<string, string>
      */
+    /**
+     * Mirakl offer index for the Listed / Missing L maps. When no usable index is cached (expired, or the
+     * last OF21 read failed) it is read live once per 5 minutes, so the page never falls back to local
+     * tables such as purchasing_power_products that hold every SKU and made all of them look Listed.
+     *
+     * @return array{offers: list<array<string, mixed>>}|null
+     */
+    private static function miraklOfferIndex(string $channel): ?array
+    {
+        $svc = app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class);
+        $index = $svc->get($channel, false);
+        if (is_array($index) && ($index['offers'] ?? []) !== []) {
+            return $index;
+        }
+
+        try {
+            if (\Illuminate\Support\Facades\Cache::add('ml.mirakl_index_live_read.'.$channel, 1, 300)) {
+                @set_time_limit(180);
+                $fresh = $svc->refresh($channel);
+                if (is_array($fresh) && ($fresh['offers'] ?? []) !== []) {
+                    return $fresh;
+                }
+            }
+        } catch (\Throwable $e) {
+            // fall through to the local-table fallback
+        }
+
+        return null;
+    }
+
+    /**
+     * Mirakl Connect cannot say whether a product was created on one marketplace: its /products feed
+     * ignores channel_code and returns the seller's whole catalog (same 1,311 products for Macy's,
+     * Purchasing Power and a made-up channel). Treating those as "page created" hid every SKU without
+     * an offer from Missing L, so the Connect overlay no longer changes the map. The MCM offer index
+     * is the source of truth.
+     */
     private static function overlayConnectCreated(string $channel, array $skus, array $map): array
     {
-        if ($skus === []) {
-            return $map;
-        }
-
-        $index = app(\App\Services\MarketplaceManager\MiraklConnectProductIndex::class)->get($channel, true);
-        if (! is_array($index)) {
-            return $map;
-        }
-
-        foreach ($skus as $raw) {
-            $sku = trim((string) $raw);
-            if ($sku === '' || ! \App\Services\MarketplaceManager\MiraklConnectProductIndex::contains($index, $sku)) {
-                continue;
-            }
-            $existing = ListingCountsEngine::listingIdFromMap($map, $sku);
-            if ($existing !== '' && ! ListingCountsEngine::isPageCreatedId($existing)) {
-                continue;
-            }
-            if ($existing === '') {
-                $map[strtolower($sku)] = ListingCountsEngine::pageCreatedId($sku);
-            }
-        }
-
         return $map;
     }
 

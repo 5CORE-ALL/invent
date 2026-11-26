@@ -203,7 +203,8 @@ class WayfairListingPublishService
         if ($questions === []) {
             return [
                 'success' => false,
-                'message' => 'Wayfair did not accept the previous class for this SKU. The app looks up the listing class from your catalog family. Publish again in a moment.',
+                'message' => trim((string) ($publishSkus[0] ?? '')).': no Wayfair class could be found for this SKU. No SKU in its family is listed on Wayfair yet, so there is no class to copy. '
+                    .'In the publish window, type the Wayfair class ID (CLID from Partner Home → Product Addition → Classes) in the Category box, then publish again.',
             ];
         }
 

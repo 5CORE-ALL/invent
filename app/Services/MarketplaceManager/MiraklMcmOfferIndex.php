@@ -43,7 +43,7 @@ class MiraklMcmOfferIndex
     }
 
     /**
-     * @return array{fetched_at: string, offers: list<array{shop_sku: string, product_sku: string, upc: string, active: bool, state: string}>}|null
+     * @return array{fetched_at: string, offers: list<array{shop_sku: string, product_sku: string, upc: string, active: bool, state: string, reasons?: list<string>}>}|null
      */
     public function get(string $channel, bool $refreshIfStale = true): ?array
     {
@@ -123,12 +123,21 @@ class MiraklMcmOfferIndex
                             break;
                         }
                     }
+                    $reasons = [];
+                    foreach (is_array($offer['inactivity_reasons'] ?? null) ? $offer['inactivity_reasons'] : [] as $reason) {
+                        $reason = strtoupper(trim((string) $reason));
+                        if ($reason !== '') {
+                            $reasons[] = $reason;
+                        }
+                    }
                     $offers[] = [
                         'shop_sku' => trim((string) ($offer['shop_sku'] ?? '')),
                         'product_sku' => trim((string) ($offer['product_sku'] ?? '')),
                         'upc' => $upc,
                         'active' => filter_var($offer['active'] ?? false, FILTER_VALIDATE_BOOLEAN),
                         'state' => trim((string) ($offer['state_code'] ?? '')),
+                        // Why an inactive offer is inactive (PRODUCT_STATUS_REJECTED, ZERO_QUANTITY, ...).
+                        'reasons' => $reasons,
                     ];
                 }
 
