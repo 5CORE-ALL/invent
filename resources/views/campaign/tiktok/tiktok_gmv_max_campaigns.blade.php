@@ -31,9 +31,10 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" data-range="L1">L1</button>
                     </div>
                     <span class="badge gmvmax-badge" style="background:#cfe2ff" id="b-campaigns">Campaigns 0</span>
-                    <span class="badge gmvmax-badge" style="background:#a5d6e8" id="b-cost">Cost $0.00</span>
-                    <span class="badge gmvmax-badge" style="background:#d7e3fc" id="b-orders">SKU orders 0</span>
-                    <span class="badge gmvmax-badge" style="background:#9ec5fe" id="b-rev">Gross revenue $0.00</span>
+                    <span class="badge gmvmax-badge" style="background:#a5d6e8" id="b-cost">Spend $0.00</span>
+                    <span class="badge gmvmax-badge" style="background:#d7e3fc" id="b-orders">Sold 0</span>
+                    <span class="badge gmvmax-badge" style="background:#9ec5fe" id="b-rev">Sales $0.00</span>
+                    <span class="badge gmvmax-badge" style="background:#f8d7da" id="b-acos">ACOS -</span>
                     <span class="badge gmvmax-badge" style="background:#ffe69c" id="b-roi">ROI -</span>
                     <span class="text-muted small ms-2" id="gmvmax-period"></span>
                     <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="gmvmax-csv">
@@ -88,9 +89,10 @@
             ajaxResponse: function(_u, _p, resp) {
                 const s = (resp && resp.sums) || {};
                 $('#b-campaigns').text('Campaigns ' + Number(s.campaigns || 0).toLocaleString('en-US'));
-                $('#b-cost').text('Cost ' + money(s.cost));
-                $('#b-orders').text('SKU orders ' + Number(s.sku_orders || 0).toLocaleString('en-US'));
-                $('#b-rev').text('Gross revenue ' + money(s.gross_revenue));
+                $('#b-cost').text('Spend ' + money(s.cost));
+                $('#b-orders').text('Sold ' + Number(s.sku_orders || 0).toLocaleString('en-US'));
+                $('#b-rev').text('Sales ' + money(s.gross_revenue));
+                $('#b-acos').text('ACOS ' + (Number(s.gross_revenue) > 0 ? (Number(s.cost) / Number(s.gross_revenue) * 100).toFixed(2) + '%' : '-'));
                 $('#b-roi').text('ROI ' + (s.roi == null ? '-' : Number(s.roi).toFixed(2)));
                 const p = (resp && resp.period_start) ? (resp.period_start + ' → ' + resp.period_end) : '';
                 const f = (resp && resp.fetched_at) ? ('  ·  fetched ' + resp.fetched_at + ' UTC') : '';
@@ -107,10 +109,12 @@
                 { title: 'Campaign ID', field: 'campaign_id', width: 170, sorter: 'string' },
                 { title: 'Campaign name', field: 'campaign_name', minWidth: 240, sorter: 'string' },
                 numCol('Current budget', 'budget', 130, moneyCell),
-                numCol('Cost', 'cost', 110, moneyCell),
-                numCol('SKU orders', 'sku_orders', 110, function(c) { return Number(c.getValue() || 0).toLocaleString('en-US'); }),
-                numCol('Cost per order', 'cost_per_order', 130, moneyCell),
-                numCol('Gross revenue', 'gross_revenue', 130, moneyCell),
+                numCol('Spend', 'cost', 110, moneyCell),
+                numCol('Sold', 'sku_orders', 110, function(c) { return Number(c.getValue() || 0).toLocaleString('en-US'); }),
+                numCol('CPS', 'cost_per_order', 100, moneyCell),
+                numCol('Sales', 'gross_revenue', 120, moneyCell),
+                { title: 'ACOS', field: 'acos', width: 100, hozAlign: 'right', sorter: 'number', headerSortStartingDir: 'asc',
+                  formatter: function(c) { const v = c.getValue(); return (v == null) ? '' : Number(v).toFixed(2) + '%'; } },
                 numCol('ROI', 'roi', 90, function(c) { const v = c.getValue(); return (v == null || v === '') ? '' : Number(v).toFixed(2); }),
                 { title: 'SKUs', field: 'skus', minWidth: 220, sorter: 'string', tooltip: true,
                   formatter: function(c) { const v = c.getValue() || ''; return v.length > 60 ? v.substring(0, 57) + '… (' + (c.getRow().getData().products || 0) + ')' : v; } },

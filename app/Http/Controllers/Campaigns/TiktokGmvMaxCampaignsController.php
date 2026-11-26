@@ -36,6 +36,7 @@ class TiktokGmvMaxCampaignsController extends Controller
                 }
             }
             $row['skus'] = implode(', ', array_keys($skus));
+            $row['acos'] = (float) $row['gross_revenue'] > 0 ? round((float) $row['cost'] / (float) $row['gross_revenue'] * 100, 2) : null;
             $row['products'] = is_array($ids) ? count($ids) : 0;
             unset($row['item_group_ids']);
         }
