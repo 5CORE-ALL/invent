@@ -69,9 +69,11 @@ class TikTokGmvMaxReportService
         for ($page = 1; $page <= 40; $page++) {
             $pages++;
             try {
+                $proxy = trim((string) config('services.tiktok_ads.proxy'));
                 $resp = Http::timeout(45)
                     ->acceptJson()
                     ->withHeaders(['Access-Token' => $token])
+                    ->withOptions($proxy !== '' ? ['proxy' => $proxy] : [])
                     ->get('https://business-api.tiktok.com/open_api/v1.3/gmv_max/report/get/', [
                         'advertiser_id' => $advertiserId,
                         'store_ids' => json_encode([$storeId]),
