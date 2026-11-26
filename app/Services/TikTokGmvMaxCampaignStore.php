@@ -19,6 +19,12 @@ class TikTokGmvMaxCampaignStore
     public static function ensureTable(): void
     {
         if (Schema::hasTable(self::TABLE)) {
+            if (! Schema::hasColumn(self::TABLE, 'item_group_ids')) {
+                Schema::table(self::TABLE, function ($t) {
+                    $t->mediumText('item_group_ids')->nullable();
+                });
+            }
+
             return;
         }
         Schema::create(self::TABLE, function ($t) {
@@ -37,6 +43,7 @@ class TikTokGmvMaxCampaignStore
             $t->string('currency', 8)->default('USD');
             $t->date('period_start')->nullable();
             $t->date('period_end')->nullable();
+            $t->mediumText('item_group_ids')->nullable();
             $t->timestamp('fetched_at')->nullable();
             $t->timestamps();
             $t->unique(['campaign_id', 'report_range']);
@@ -78,6 +85,7 @@ class TikTokGmvMaxCampaignStore
                 'gross_revenue' => $revenue,
                 'roi' => $roi,
                 'currency' => 'USD',
+                'item_group_ids' => self::encodeIds($c['item_group_ids'] ?? null),
                 'period_start' => $start,
                 'period_end' => $end,
                 'fetched_at' => $now,
@@ -94,6 +102,25 @@ class TikTokGmvMaxCampaignStore
         });
 
         return count($rows);
+    }
+
+    /**
+     * @param  mixed  $ids
+     */
+    private static function encodeIds($ids): ?string
+    {
+        if (! is_array($ids)) {
+            return null;
+        }
+        $clean = [];
+        foreach ($ids as $id) {
+            $id = trim((string) $id);
+            if ($id !== '' && preg_match('/^\d{5,25}$/', $id)) {
+                $clean[$id] = $id;
+            }
+        }
+
+        return $clean ? json_encode(array_values($clean)) : null;
     }
 
     /**

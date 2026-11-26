@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Services\TikTokGmvMaxCampaignStore;
+use App\Support\TikTokAdsSkuResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,6 +26,20 @@ class TiktokGmvMaxCampaignsController extends Controller
         }
 
         $rows = TikTokGmvMaxCampaignStore::rows($range);
+        $skuMap = TikTokAdsSkuResolver::productIdToSkuMap();
+        foreach ($rows as &$row) {
+            $ids = json_decode((string) ($row['item_group_ids'] ?? ''), true);
+            $skus = [];
+            foreach (is_array($ids) ? $ids : [] as $id) {
+                if (isset($skuMap[(string) $id])) {
+                    $skus[$skuMap[(string) $id]] = true;
+                }
+            }
+            $row['skus'] = implode(', ', array_keys($skus));
+            $row['products'] = is_array($ids) ? count($ids) : 0;
+            unset($row['item_group_ids']);
+        }
+        unset($row);
         $cost = array_sum(array_map(fn ($r) => (float) $r['cost'], $rows));
         $orders = array_sum(array_map(fn ($r) => (int) $r['sku_orders'], $rows));
         $revenue = array_sum(array_map(fn ($r) => (float) $r['gross_revenue'], $rows));

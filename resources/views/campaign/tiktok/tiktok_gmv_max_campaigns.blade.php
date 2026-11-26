@@ -43,8 +43,23 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div class="p-2 bg-light border-bottom">
-                    <input type="text" id="gmvmax-search" class="form-control form-control-sm"
-                           placeholder="Search campaign name or ID…">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-4">
+                            <input type="text" id="gmvmax-f-name" class="form-control form-control-sm"
+                                   placeholder="Filter by campaign name…" autocomplete="off">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" id="gmvmax-f-id" class="form-control form-control-sm"
+                                   placeholder="Filter by campaign ID…" autocomplete="off">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" id="gmvmax-f-sku" class="form-control form-control-sm"
+                                   placeholder="Filter by SKU (campaigns selling it)…" autocomplete="off">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="gmvmax-f-clear">Clear filters</button>
+                        </div>
+                    </div>
                 </div>
                 <div id="gmvmax-table" style="height: calc(100vh - 300px);"></div>
             </div>
@@ -97,6 +112,8 @@
                 numCol('Cost per order', 'cost_per_order', 130, moneyCell),
                 numCol('Gross revenue', 'gross_revenue', 130, moneyCell),
                 numCol('ROI', 'roi', 90, function(c) { const v = c.getValue(); return (v == null || v === '') ? '' : Number(v).toFixed(2); }),
+                { title: 'SKUs', field: 'skus', minWidth: 220, sorter: 'string', tooltip: true,
+                  formatter: function(c) { const v = c.getValue() || ''; return v.length > 60 ? v.substring(0, 57) + '… (' + (c.getRow().getData().products || 0) + ')' : v; } },
                 { title: 'Status', field: 'status', width: 110, hozAlign: 'center', sorter: 'string' },
                 { title: 'Type', field: 'promotion_type', width: 110, hozAlign: 'center', sorter: 'string' },
                 { title: 'Currency', field: 'currency', width: 90, hozAlign: 'center' },
@@ -110,13 +127,22 @@
             table.setData("{{ route('tiktok.gmv.max.campaigns.data') }}", { range: range });
         });
 
-        $('#gmvmax-search').on('input', function() {
-            const q = $(this).val().trim().toLowerCase();
-            if (!q) { table.clearFilter(true); return; }
+        function applyFilters() {
+            const name = $('#gmvmax-f-name').val().trim().toLowerCase();
+            const id = $('#gmvmax-f-id').val().trim();
+            const sku = $('#gmvmax-f-sku').val().trim().toLowerCase();
+            if (!name && !id && !sku) { table.clearFilter(true); return; }
             table.setFilter(function(row) {
-                return String(row.campaign_name || '').toLowerCase().includes(q) ||
-                       String(row.campaign_id || '').includes(q);
+                if (name && !String(row.campaign_name || '').toLowerCase().includes(name)) return false;
+                if (id && !String(row.campaign_id || '').includes(id)) return false;
+                if (sku && !String(row.skus || '').toLowerCase().includes(sku)) return false;
+                return true;
             });
+        }
+        $('#gmvmax-f-name, #gmvmax-f-id, #gmvmax-f-sku').on('input', applyFilters);
+        $('#gmvmax-f-clear').on('click', function() {
+            $('#gmvmax-f-name, #gmvmax-f-id, #gmvmax-f-sku').val('');
+            table.clearFilter(true);
         });
 
         $('#gmvmax-csv').on('click', function() { table.download('csv', 'tiktok_gmv_max_campaigns_' + range + '.csv'); });
