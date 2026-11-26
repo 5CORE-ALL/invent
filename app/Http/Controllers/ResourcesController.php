@@ -38,17 +38,14 @@ class ResourcesController extends Controller
     {
         $folderId = (int) $request->query('folder', 0);
         $search = trim((string) $request->query('search', ''));
+        $words = $this->searchWords($search);
 
         $query = DriverData::query()
-            ->with(['creator:id,name', 'department:id,slug,name'])
-            ->where('folder_id', $folderId);
+            ->with(['creator:id,name', 'department:id,slug,name']);
 
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('title', 'like', '%'.$search.'%')
-                    ->orWhere('file_name', 'like', '%'.$search.'%')
-                    ->orWhere('location_url', 'like', '%'.$search.'%');
-            });
+        // Typing in the search box looks in every folder; without a search only the open folder is listed.
+        if ($words === []) {
+            $query->where('folder_id', $folderId);
         }
 
         $type = $request->query('type');
@@ -71,10 +68,17 @@ class ResourcesController extends Controller
             $query->where('resource', $resource);
         }
 
-        $items = $query->latest('updated_at')->paginate((int) $request->query('per_page', 24));
+        $perPage = max(1, min(100, (int) $request->query('per_page', 24)));
+
+        if ($words !== []) {
+            return $this->searchResponse($request, $query, $words, $perPage);
+        }
+
+        $items = $query->latest('updated_at')->paginate($perPage);
 
         return response()->json([
             'data' => $items->items(),
+            'folders' => [],
             'meta' => [
                 'current_page' => $items->currentPage(),
                 'last_page' => $items->lastPage(),
@@ -82,6 +86,179 @@ class ResourcesController extends Controller
                 'per_page' => $items->perPage(),
             ],
         ]);
+    }
+
+    /**
+     * Search across every folder. A name matches when every typed word is found in the title, file
+     * name, link, tag or resource (separators such as _ - . are ignored), or is within a typo of a word there.
+     */
+    protected function searchResponse(Request $request, $query, array $words, int $perPage)
+    {
+        $page = max(1, (int) $request->query('page', 1));
+
+        $scored = [];
+        $rows = (clone $query)->toBase()
+            ->select(['id', 'title', 'file_name', 'location_url', 'tag', 'resource'])
+            ->cursor();
+        foreach ($rows as $row) {
+            $hay = $this->normalizeSearch(implode(' ', [$row->title, $row->file_name, $row->location_url, $row->tag, $row->resource]));
+            $score = $this->fuzzyScore($hay, $words);
+            if ($score > 0) {
+                // A title match outranks a match found only in the file name or URL.
+                $score += $this->fuzzyScore($this->normalizeSearch((string) $row->title), $words) > 0 ? 5 : 0;
+                $scored[(int) $row->id] = $score;
+            }
+        }
+        arsort($scored);
+        $total = count($scored);
+        $ids = array_slice(array_keys($scored), ($page - 1) * $perPage, $perPage);
+
+        $folderPaths = $this->folderPaths();
+        $found = $ids === [] ? collect() : $query->whereIn('id', $ids)->get()->keyBy('id');
+        $data = [];
+        foreach ($ids as $id) {
+            if ($item = $found->get($id)) {
+                $item->setAttribute('folder_path', $folderPaths[(int) $item->folder_id] ?? 'All Resources');
+                $data[] = $item;
+            }
+        }
+
+        return response()->json([
+            'data' => $data,
+            'folders' => $this->matchingFolders($words, $folderPaths),
+            'meta' => [
+                'current_page' => $page,
+                'last_page' => max(1, (int) ceil($total / $perPage)),
+                'total' => $total,
+                'per_page' => $perPage,
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    protected function matchingFolders(array $words, array $folderPaths): array
+    {
+        $counts = DriverData::query()
+            ->selectRaw('folder_id, COUNT(*) as total')
+            ->groupBy('folder_id')
+            ->pluck('total', 'folder_id');
+
+        $scored = [];
+        foreach (DriverFolder::query()->get(['id', 'name', 'parent_id']) as $folder) {
+            $score = $this->fuzzyScore($this->normalizeSearch((string) $folder->name), $words);
+            if ($score > 0) {
+                $scored[(int) $folder->id] = ['score' => $score, 'folder' => $folder];
+            }
+        }
+        uasort($scored, fn ($a, $b) => $b['score'] <=> $a['score'] ?: strcasecmp($a['folder']->name, $b['folder']->name));
+
+        $out = [];
+        foreach (array_slice($scored, 0, 30, true) as $entry) {
+            $folder = $entry['folder'];
+            $path = $folderPaths[(int) $folder->id] ?? $folder->name;
+            $parent = trim(substr($path, 0, max(0, strlen($path) - strlen($folder->name))), ' /');
+            $out[] = [
+                'id' => (int) $folder->id,
+                'name' => $folder->name,
+                'parent_path' => $parent !== '' ? $parent : 'All Resources',
+                'count' => (int) ($counts[$folder->id] ?? 0),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<int, string> folder id => "Parent / Child"
+     */
+    protected function folderPaths(): array
+    {
+        $all = DriverFolder::query()->get(['id', 'name', 'parent_id'])->keyBy('id');
+        $paths = [];
+        foreach ($all as $folder) {
+            $parts = [];
+            $current = $folder;
+            $guard = 0;
+            while ($current && $guard < 20) {
+                array_unshift($parts, $current->name);
+                $current = $all->get((int) $current->parent_id);
+                $guard++;
+            }
+            $paths[(int) $folder->id] = implode(' / ', $parts);
+        }
+
+        return $paths;
+    }
+
+    protected function normalizeSearch(string $value): string
+    {
+        $value = mb_strtolower($value);
+        $value = (string) preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value);
+
+        return trim($value);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function searchWords(string $search): array
+    {
+        $words = array_filter(explode(' ', $this->normalizeSearch($search)), fn ($w) => $w !== '');
+
+        return array_values(array_map(fn ($w) => mb_substr($w, 0, 60), $words));
+    }
+
+    /** 0 = no match; higher = better. Every word must match, exactly or within a small typo. */
+    protected function fuzzyScore(string $hay, array $words): int
+    {
+        if ($hay === '') {
+            return 0;
+        }
+
+        $compact = str_replace(' ', '', $hay);
+        $tokens = null;
+        $score = 0;
+        foreach ($words as $word) {
+            if (str_contains($hay, $word)) {
+                $score += str_contains(' '.$hay, ' '.$word) ? 5 : 3;
+
+                continue;
+            }
+            if (str_contains($compact, $word)) {
+                $score += 2;
+
+                continue;
+            }
+
+            $len = strlen($word);
+            $tolerance = $len >= 7 ? 2 : ($len >= 4 ? 1 : 0);
+            if ($tolerance === 0) {
+                return 0;
+            }
+
+            $tokens ??= explode(' ', $hay);
+            $matched = false;
+            foreach ($tokens as $token) {
+                if ($token === '') {
+                    continue;
+                }
+                $token = substr($token, 0, 60);
+                // Compare with the whole word and with its start (so a half-typed word with a typo still matches).
+                $distance = min(levenshtein($word, $token), levenshtein($word, substr($token, 0, $len)));
+                if ($distance <= $tolerance) {
+                    $matched = true;
+                    break;
+                }
+            }
+            if (! $matched) {
+                return 0;
+            }
+            $score += 1;
+        }
+
+        return $score;
     }
 
     public function storeLink(Request $request)

@@ -222,9 +222,9 @@
         </div>
 
         <div class="row g-2 align-items-end">
-            <div class="col-md-3">
-                <label class="form-label small text-muted mb-1">Search</label>
-                <input type="search" id="resSearch" class="form-control form-control-sm" placeholder="Search title, file name, or URL">
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Search <span class="fw-normal">(all folders)</span></label>
+                <input type="search" id="resSearch" class="form-control form-control-sm" placeholder="Type to search files and folders in every folder" autocomplete="off">
             </div>
             <div class="col-md-2">
                 <label class="form-label small text-muted mb-1">Type</label>
@@ -257,7 +257,7 @@
                     @endforeach
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label small text-muted mb-1">Resources</label>
                 <select id="resResourceFilter" class="form-select form-select-sm" title="Resources">
                     <option value="all">All</option>
@@ -265,10 +265,6 @@
                         <option value="{{ $resourceOption }}">{{ $resourceOption }}</option>
                     @endforeach
                 </select>
-            </div>
-            <div class="col-md-3 d-flex gap-2">
-                <button type="button" class="btn btn-primary btn-sm flex-fill" id="resApplyFilters">Apply</button>
-                <button type="button" class="btn btn-light btn-sm flex-fill" id="resClearFilters">Clear</button>
             </div>
         </div>
     </div>
@@ -285,6 +281,7 @@
                 </div>
             </div>
         </div>
+        <div id="resFolderResults" class="mb-3 d-none"></div>
         <div id="resItemsGrid" class="row g-3"></div>
         <div id="resItemsTable" class="res-table-wrap d-none">
             <table class="table table-hover align-middle mb-0 res-table">
@@ -306,8 +303,8 @@
         </div>
         <div id="resEmpty" class="res-empty d-none">
             <i class="ri-folder-open-line fs-1 d-block mb-2"></i>
-            <div>No resources in this folder yet.</div>
-            <div class="small mt-1">Add a link or upload a file to get started.</div>
+            <div id="resEmptyTitle">No resources in this folder yet.</div>
+            <div class="small mt-1" id="resEmptyHint">Add a link or upload a file to get started.</div>
         </div>
         <nav id="resPagination" class="mt-3 d-none"></nav>
     </div>
@@ -522,6 +519,11 @@
     let currentPage = 1;
     let currentItems = [];
     let viewMode = localStorage.getItem('resViewMode') === 'table' ? 'table' : 'grid';
+    let searchAbort = null;
+    let searchSeq = 0;
+    let currentSearch = '';
+    let currentFolderMatches = 0;
+    const folderResults = document.getElementById('resFolderResults');
 
     const grid = document.getElementById('resItemsGrid');
     const tableWrap = document.getElementById('resItemsTable');
@@ -581,11 +583,55 @@
         if (tag && tag !== 'all') params.set('tag', tag);
         if (resource && resource !== 'all') params.set('resource', resource);
 
-        const res = await fetch(`{{ route('resources.data') }}?${params}`, { headers: { 'Accept': 'application/json' } });
-        const json = await res.json();
+        // Only the newest request counts: typing fast cancels the one still in flight.
+        if (searchAbort) searchAbort.abort();
+        searchAbort = new AbortController();
+        const seq = ++searchSeq;
+        let json;
+        try {
+            const res = await fetch(`{{ route('resources.data') }}?${params}`, {
+                headers: { 'Accept': 'application/json' },
+                signal: searchAbort.signal,
+            });
+            json = await res.json();
+        } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            throw err;
+        }
+        if (seq !== searchSeq) return;
+
+        const folders = json.folders || [];
+        currentSearch = search;
+        currentFolderMatches = folders.length;
+        renderFolderResults(folders);
         renderItems(json.data || []);
         renderPagination(json.meta || {});
-        countEl.textContent = `${json.meta?.total ?? 0} item(s)`;
+        const total = json.meta?.total ?? 0;
+        countEl.textContent = search
+            ? `${folders.length} folder(s), ${total} item(s) found`
+            : `${total} item(s)`;
+    }
+
+    // Folders whose name matches the search (any level); click to open one.
+    function renderFolderResults(folders) {
+        if (!folders.length) {
+            folderResults.classList.add('d-none');
+            folderResults.innerHTML = '';
+            return;
+        }
+        folderResults.classList.remove('d-none');
+        folderResults.innerHTML = '<h6 class="text-muted text-uppercase small mb-2">Folders</h6><div class="row g-2">'
+            + folders.map(f => `
+                <div class="col-12 col-md-6 col-xl-4">
+                    <a href="{{ route('resources.index') }}?folder=${f.id}" class="res-folder-card d-flex align-items-center gap-3 p-2 text-decoration-none text-body">
+                        <div class="res-icon-wrap res-icon-folder"><i class="ri-folder-3-line"></i></div>
+                        <div class="res-card-body">
+                            <div class="res-item-title" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+                            <div class="res-meta text-truncate">in ${escapeHtml(f.parent_path)} &middot; ${f.count} item(s)</div>
+                        </div>
+                    </a>
+                </div>`).join('')
+            + '</div>';
     }
 
     function openItem(url, isLink) {
@@ -602,7 +648,15 @@
         tableBody.innerHTML = '';
 
         if (!items.length) {
-            empty.classList.remove('d-none');
+            // A search that found only folders does not need the "nothing here" box.
+            const showEmpty = !(currentSearch && currentFolderMatches > 0);
+            empty.classList.toggle('d-none', !showEmpty);
+            document.getElementById('resEmptyTitle').textContent = currentSearch
+                ? `Nothing matches "${currentSearch}".`
+                : 'No resources in this folder yet.';
+            document.getElementById('resEmptyHint').textContent = currentSearch
+                ? 'Check the spelling or try fewer words. Search looks in every folder.'
+                : 'Add a link or upload a file to get started.';
             grid.classList.add('d-none');
             tableWrap.classList.add('d-none');
             return;
@@ -632,6 +686,7 @@
                         <div class="res-icon-wrap ${iconClass(item.file_type)}"><i class="${item.icon || 'ri-file-line'}"></i></div>
                         <div class="flex-grow-1 min-w-0 res-card-body">
                             <div class="res-item-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
+                            ${item.folder_path ? `<div class="res-meta text-truncate" title="${escapeHtml(item.folder_path)}"><i class="ri-folder-3-line"></i> ${escapeHtml(item.folder_path)}</div>` : ''}
                             <div class="res-meta mt-1 text-capitalize">${escapeHtml(typeLabel(item.file_type))}</div>
                             <div class="res-meta">${formatDate(item.updated_at)}</div>
                         </div>
@@ -662,7 +717,10 @@
                 <td>
                     <div class="d-flex align-items-center gap-2 res-row-name" data-open="${escapeHtml(openUrl)}" data-link="${isLink ? '1' : '0'}">
                         <div class="res-icon-wrap ${iconClass(item.file_type)}"><i class="${item.icon || 'ri-file-line'}"></i></div>
-                        <span class="res-row-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+                        <div class="min-w-0">
+                            <span class="res-row-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+                            ${item.folder_path ? `<div class="res-meta"><i class="ri-folder-3-line"></i> ${escapeHtml(item.folder_path)}</div>` : ''}
+                        </div>
                     </div>
                 </td>
                 <td class="text-capitalize">${escapeHtml(typeLabel(item.file_type))}</td>
@@ -756,21 +814,31 @@
         return json;
     }
 
-    document.getElementById('resApplyFilters').addEventListener('click', () => loadItems(1));
-    document.getElementById('resClearFilters').addEventListener('click', () => {
-        document.getElementById('resSearch').value = '';
-        document.getElementById('resTypeFilter').value = 'all';
-        document.getElementById('resDeptFilter').value = 'all';
-        document.getElementById('resTagFilter').value = 'all';
-        document.getElementById('resResourceFilter').value = 'all';
-        loadItems(1);
-    });
+    // No Apply / Clear buttons: every change reloads the list; typing waits a moment so it is not sent per key.
+    document.getElementById('resTypeFilter').addEventListener('change', () => loadItems(1));
     document.getElementById('resDeptFilter').addEventListener('change', () => loadItems(1));
     document.getElementById('resTagFilter').addEventListener('change', () => loadItems(1));
     document.getElementById('resResourceFilter').addEventListener('change', () => loadItems(1));
-    document.getElementById('resSearch').addEventListener('keydown', e => {
-        if (e.key === 'Enter') loadItems(1);
-    });
+    (function () {
+        const input = document.getElementById('resSearch');
+        let timer = null;
+        // "input" also fires when the little x of the search box clears it, which brings back the open folder.
+        input.addEventListener('input', () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => loadItems(1), 250);
+        });
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(timer);
+                loadItems(1);
+            } else if (e.key === 'Escape' && input.value !== '') {
+                input.value = '';
+                clearTimeout(timer);
+                loadItems(1);
+            }
+        });
+    })();
 
     document.getElementById('resFolderForm').addEventListener('submit', async e => {
         e.preventDefault();
