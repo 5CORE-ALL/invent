@@ -783,10 +783,12 @@ class ListingManagerEbayTradingPublisher
         string $pictureAspect = '',
         bool $epsHosted = false,
         array $galleryUrls = [],
-        bool $forcedEps = false
+        bool $forcedEps = false,
+        bool $forcedSelf = false
     ): array {
         // Kept for the retry below: the checks that follow may change the photo lists.
         $originalNew = $newVariations;
+        $originalSets = $existingPictureSets;
         $itemId = trim($itemId);
         if ($itemId === '' || $aspect === '' || $newVariations === []) {
             return ['success' => false, 'message' => 'Missing eBay item, variation aspect or new variations.'];
@@ -802,15 +804,20 @@ class ListingManagerEbayTradingPublisher
         // this revise (the gallery, the existing variation photos, and the new ones) is copied first.
         $photoNotes = [];
         $hostedGallery = [];
-        $mustHost = $epsHosted || $forcedEps || (($ctx['channel'] ?? '') === 'ebaythree');
-
-        // What the live listing already uses decides which kind the new photos must be.
+        // What the live listing already uses decides which kind the new photos must be. The variation photos
+        // say it best: eBay shows the gallery photo of a self-hosted listing as an eBay copy, so a gallery link
+        // on i.ebayimg.com does not make the listing EPS when its variation photos are self-hosted.
         $liveUrls = array_values(array_filter(array_map('strval', $galleryUrls)));
+        $liveSetUrls = [];
         foreach ($existingPictureSets as $set) {
             foreach ((array) ($set['urls'] ?? []) as $liveUrl) {
                 $liveUrls[] = (string) $liveUrl;
+                $liveSetUrls[] = (string) $liveUrl;
             }
         }
+        $classUrls = $liveSetUrls !== [] ? $liveSetUrls : $liveUrls;
+        $liveIsEps = $classUrls !== [] ? array_filter($classUrls, static fn ($u) => self::isEpsUrl($u)) !== [] : $epsHosted;
+        $mustHost = $forcedEps || (! $forcedSelf && ($liveIsEps || ($ctx['channel'] ?? '') === 'ebaythree'));
         $newUrls = [];
         foreach ($newVariations as $row) {
             foreach ((array) ($row['images'] ?? []) as $photo) {
@@ -818,8 +825,14 @@ class ListingManagerEbayTradingPublisher
             }
         }
         if (! $mustHost) {
-            $liveSelfHosted = $liveUrls !== [] && ! self::mixesPictureHosts($liveUrls) && ! self::isEpsUrl($liveUrls[0]);
+            $liveSelfHosted = $forcedSelf || ($classUrls !== [] && ! $liveIsEps);
             if ($liveSelfHosted) {
+                // Existing variation photos that are eBay copies cannot stay next to self-hosted ones.
+                $existingPictureSets = array_values(array_filter(array_map(static function ($set) {
+                    $set['urls'] = array_values(array_filter((array) ($set['urls'] ?? []), static fn ($u) => ! self::isEpsUrl((string) $u)));
+
+                    return $set;
+                }, $existingPictureSets), static fn ($set) => ($set['urls'] ?? []) !== []));
                 // The live listing keeps its own links: a photo that is already on eBay's servers cannot be sent to it.
                 foreach ($newVariations as $i => $row) {
                     $kept = array_values(array_filter((array) ($row['images'] ?? []), static fn ($u) => ! self::isEpsUrl((string) $u)));
@@ -967,8 +980,12 @@ class ListingManagerEbayTradingPublisher
 
             // eBay saw both kinds of photo whatever the check above decided: send every photo of the listing
             // (gallery, existing and new variation photos) from eBay's own servers, which is always consistent.
-            if (! $forcedEps && preg_match('/mixture of self.?hosted and eps/i', $message)) {
-                return self::addVariationsToItem($channelKey, $itemId, $aspect, $existingValues, $originalNew, $existingPictureSets, $pictureAspect, true, $galleryUrls, true);
+            // The listing's real kind was misjudged, so try the other kind once.
+            if (! $forcedEps && ! $forcedSelf && preg_match('/mixture of self.?hosted and eps/i', $message)) {
+                return self::addVariationsToItem(
+                    $channelKey, $itemId, $aspect, $existingValues, $originalNew, $originalSets, $pictureAspect,
+                    ! $mustHost, $galleryUrls, ! $mustHost, $mustHost
+                );
             }
 
             return ['success' => false, 'message' => $message];
