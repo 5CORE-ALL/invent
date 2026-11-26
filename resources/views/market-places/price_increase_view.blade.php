@@ -677,52 +677,7 @@
             box-shadow: inset 0 0 0 2px #e83e8c;
         }
 
-        /* Columns dropdown – 6-column layout (flows top to bottom, in table order) */
-        #column-dropdown-menu.column-visibility-menu {
-            column-count: 6;
-            column-gap: 10px;
-            min-width: 1080px;
-            max-width: 96vw;
-            max-height: 480px;
-            overflow-y: auto;
-            padding: 10px 12px;
-        }
-        #column-dropdown-menu.column-visibility-menu .dropdown-item {
-            break-inside: avoid;
-            -webkit-column-break-inside: avoid;
-            page-break-inside: avoid;
-            padding: 4px 8px;
-            white-space: nowrap;
-            font-size: 12px;
-        }
-        #column-dropdown-menu.column-visibility-menu .dropdown-item label {
-            margin-bottom: 0;
-            width: 100%;
-        }
-        #column-dropdown-menu .col-menu-toolbar {
-            column-span: all;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 0 0 8px;
-            margin-bottom: 6px;
-            border-bottom: 1px solid #dee2e6;
-            font-size: 12px;
-            color: #6c757d;
-        }
-        #column-dropdown-menu .col-menu-item { cursor: grab; }
-        #column-dropdown-menu .col-menu-item .col-grip { color: #adb5bd; margin-right: 2px; }
-        #column-dropdown-menu .col-menu-item.is-fixed { cursor: default; }
-        #column-dropdown-menu .col-menu-item.is-fixed .col-grip { visibility: hidden; }
-        #column-dropdown-menu .col-menu-item.dragging { opacity: .4; }
-        #column-dropdown-menu .col-menu-item.drop-before { box-shadow: inset 0 2px 0 #0d6efd; }
-        #column-dropdown-menu .col-menu-item.drop-after { box-shadow: inset 0 -2px 0 #0d6efd; }
-        @media (max-width: 1200px) {
-            #column-dropdown-menu.column-visibility-menu {
-                column-count: 3;
-                min-width: 560px;
-            }
-        }
+        /* Columns panel: styled by resources/views/partials/tabulator-column-manager.blade.php (same as /amazon-tabulator-view) */
         
         /* Totals row – light background, dark text; same font size as body rows */
         #ovl30DetailsModal .modal-totals-row {
@@ -2715,7 +2670,7 @@
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                             <i class="fa fa-eye"></i> Columns
                         </button>
-                        <ul class="dropdown-menu column-visibility-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
@@ -14895,243 +14850,47 @@
             'ebay_lmp_price', 'google_lmp_price', 'temu_lmp_price',
             'shein_l30', 'faire_l30', 'ae_l30', 'pp_l30'
         ];
-        
-        const COLUMN_ORDER_STORAGE_KEY = 'pi_column_order_v1';
-        let applyingColumnOrder = false;
 
-        /** Fields shown in the Columns menu, in the table's current order. Built from the live table, so a new column appears by itself. */
-        function menuColumns() {
-            return table.getColumns().filter(function(col) {
-                const field = col.getField();
-                const title = col.getDefinition().title;
-                if (!field || !title || field === '_select') return false;
-                return CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(field) === -1;
-            });
-        }
-
-        function buildColumnDropdown() {
-            let html = '<li class="col-menu-toolbar" onclick="event.stopPropagation()">'
-                + '<span><i class="fas fa-grip-vertical"></i> Drag to reorder</span>'
-                + '<span class="ms-auto"></span>'
-                + '<button type="button" class="btn btn-sm btn-outline-secondary py-0" id="col-layout-copy" title="Copy the column order + which are shown">Copy layout</button>'
-                + '<button type="button" class="btn btn-sm btn-outline-secondary py-0" id="col-layout-paste" title="Apply a copied column layout">Paste layout</button>'
-                + '<button type="button" class="btn btn-sm btn-outline-secondary py-0" id="col-layout-reset" title="Back to the default order">Reset order</button>'
-                + '</li>';
-
-            menuColumns().forEach(col => {
-                const field = col.getField();
-                const title = col.getDefinition().title;
-                const fixed = !!col.getDefinition().frozen;
-                const isVisible = col.isVisible();
-                const label = field === 'price_mismatch' ? 'Price ≠ SPRICE (blue triangle)' : String(title).replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, '').trim();
-                html += `<li class="dropdown-item col-menu-item${fixed ? ' is-fixed' : ''}" data-field="${field}" draggable="${fixed ? 'false' : 'true'}">
-                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                        <i class="fas fa-grip-vertical col-grip"></i>
-                        <input type="checkbox" class="column-toggle" data-field="${field}" ${isVisible ? 'checked' : ''}>
-                        ${label}
-                    </label>
-                </li>`;
-            });
-
-            $('#column-dropdown-menu').html(html);
-        }
-
-        function currentColumnOrder() {
-            return table.getColumns().map(function(c) { return c.getField(); }).filter(Boolean);
-        }
-        function saveColumnOrder() {
-            try { localStorage.setItem(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(currentColumnOrder())); } catch (e) {}
-        }
-        /** Put the table columns in `fields` order (fields the table does not have are ignored, columns not listed keep their place). */
-        function applyColumnOrder(fields) {
-            const known = {};
-            table.getColumns().forEach(function(c) { if (c.getField()) known[c.getField()] = c; });
-            const list = (fields || []).filter(function(f) { return known[f] && !known[f].getDefinition().frozen; });
-            applyingColumnOrder = true;
-            for (let i = 1; i < list.length; i++) {
-                try { table.moveColumn(list[i], list[i - 1], true); } catch (e) {}
+        // Columns panel: the same shared panel as /amazon-tabulator-view (resources/views/partials/tabulator-column-manager.blade.php):
+        // headers (groups) you can add / rename / delete, quick search, search & add, drag between headers, Ctrl+C / Ctrl+V, Save & Close.
+        const tcmConfig = {
+            channel: 'price_increase',
+            // Same saved visibility as before (channel pricing_master_cvr), so everyone's shown / hidden columns are kept
+            visibilityUrl: '/cvr-master-column-visibility',
+            groups: [
+                { key: 'basic', label: 'Basic' },
+                { key: 'inventory', label: 'Inventory & Sales' },
+                { key: 'price', label: 'Price' },
+                { key: 'other', label: 'Temu & Other' }
+            ],
+            fallbackGroup: 'other',
+            showAll: true,
+            skipFields: ['_select'].concat(CVR_HIDDEN_FROM_COLUMN_MENU)
+        };
+        const tcmHooks = {
+            classify: function(field, title) {
+                const t = String(title || '').toLowerCase();
+                if (/temu/.test(t)) return 'other';
+                if (t === 'p' || t === '#' || /\b(sku|parent|image|details|hist|push pending|label|audit|missing)\b/.test(t)) return 'basic';
+                if (/\b(inv|ov l30|sw l30|dil|cvr|views|rating|lqs)\b/.test(t)) return 'inventory';
+                if (/\b(prc|price|nroi|groi|gpft|npft|lmp|sprice)\b/.test(t)) return 'price';
+                return 'other';
+            },
+            skip: function(field, title) { return !String(title || '').trim(); },
+            // Applied after the saved layout loads (the panel can still change them afterwards, as before)
+            forceVisible: function(field) {
+                if (CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(field) !== -1) return false;
+                if (field === 'image_path' || field === 'parent_display') return false; // text columns stay hidden by default
+                if (field === 'label' || field === 'audit' || field === 'amazon_lmp_price' || field === 'box_sprice') return true;
+                return undefined;
             }
-            setTimeout(function() { applyingColumnOrder = false; }, 0);
-        }
-        function restoreSavedColumnOrder() {
-            try {
-                const saved = JSON.parse(localStorage.getItem(COLUMN_ORDER_STORAGE_KEY) || 'null');
-                if (Array.isArray(saved) && saved.length) applyColumnOrder(saved);
-            } catch (e) {}
-        }
-
-        // Drag & drop inside the Columns menu → moves the table column
-        (function() {
-            let dragField = null;
-            const menu = document.getElementById('column-dropdown-menu');
-            const clearMarks = function() {
-                menu.querySelectorAll('.drop-before,.drop-after,.dragging').forEach(function(el) {
-                    el.classList.remove('drop-before', 'drop-after', 'dragging');
-                });
-            };
-            menu.addEventListener('dragstart', function(e) {
-                const li = e.target.closest ? e.target.closest('.col-menu-item') : null;
-                if (!li || li.classList.contains('is-fixed')) { e.preventDefault(); return; }
-                dragField = li.dataset.field;
-                li.classList.add('dragging');
-                e.dataTransfer.effectAllowed = 'move';
-                try { e.dataTransfer.setData('text/plain', dragField); } catch (err) {}
-            });
-            menu.addEventListener('dragover', function(e) {
-                const li = e.target.closest ? e.target.closest('.col-menu-item') : null;
-                if (!dragField || !li || li.classList.contains('is-fixed') || li.dataset.field === dragField) return;
-                e.preventDefault();
-                const r = li.getBoundingClientRect();
-                const before = (e.clientY - r.top) < r.height / 2;
-                menu.querySelectorAll('.drop-before,.drop-after').forEach(function(el) { el.classList.remove('drop-before', 'drop-after'); });
-                li.classList.add(before ? 'drop-before' : 'drop-after');
-            });
-            menu.addEventListener('drop', function(e) {
-                const li = e.target.closest ? e.target.closest('.col-menu-item') : null;
-                if (!dragField || !li || li.dataset.field === dragField) { clearMarks(); dragField = null; return; }
-                e.preventDefault();
-                const before = li.classList.contains('drop-before');
-                const from = dragField, to = li.dataset.field;
-                clearMarks(); dragField = null;
-                try { table.moveColumn(from, to, before); } catch (err) { return; }
-                saveColumnOrder();
-                buildColumnDropdown();
-            });
-            menu.addEventListener('dragend', function() { clearMarks(); dragField = null; });
-        })();
-
-        // Moving a header in the table keeps the menu + saved order in sync
-        table.on('columnMoved', function() {
-            if (applyingColumnOrder) return;
-            saveColumnOrder();
-            buildColumnDropdown();
-        });
-
-        // Copy / paste the layout (order + shown / hidden) as text
-        $(document).on('click', '#col-layout-copy', function(e) {
-            e.stopPropagation();
-            const layout = { v: 1, columns: table.getColumns().filter(function(c) { return c.getField() && c.getField() !== '_select'; })
-                .map(function(c) { return { field: c.getField(), visible: c.isVisible() }; }) };
-            const text = JSON.stringify(layout);
-            const done = function() { showToast('Column layout copied — paste it with "Paste layout"', 'success'); };
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(done, function() { window.prompt('Copy this column layout:', text); });
-            } else {
-                window.prompt('Copy this column layout:', text);
-            }
-        });
-        function applyColumnLayoutText(text) {
-            let layout = null;
-            try { layout = JSON.parse(String(text || '').trim()); } catch (e) {}
-            const cols = layout && Array.isArray(layout.columns) ? layout.columns : null;
-            if (!cols || !cols.length) { showToast('That is not a column layout', 'error'); return; }
-            applyColumnOrder(cols.map(function(c) { return c.field; }));
-            cols.forEach(function(c) {
-                const col = c.field ? table.getColumn(c.field) : null;
-                if (!col || CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(c.field) !== -1) return;
-                c.visible ? col.show() : col.hide();
-            });
-            saveColumnOrder();
-            saveColumnVisibilityToServer();
-            buildColumnDropdown();
-            showToast('Column layout applied', 'success');
-        }
-        $(document).on('click', '#col-layout-paste', function(e) {
-            e.stopPropagation();
-            if (navigator.clipboard && navigator.clipboard.readText) {
-                navigator.clipboard.readText().then(applyColumnLayoutText, function() {
-                    applyColumnLayoutText(window.prompt('Paste the column layout here:') || '');
-                });
-            } else {
-                applyColumnLayoutText(window.prompt('Paste the column layout here:') || '');
-            }
-        });
-        $(document).on('click', '#col-layout-reset', function(e) {
-            e.stopPropagation();
-            try { localStorage.removeItem(COLUMN_ORDER_STORAGE_KEY); } catch (err) {}
-            showToast('Default column order returns after you reload the page', 'success');
-        });
-
-        function forceHideRemovedCvrColumns() {
-            CVR_HIDDEN_FROM_COLUMN_MENU.forEach(field => {
-                const col = table.getColumn(field);
-                if (col) col.hide();
-            });
-        }
-
-        function saveColumnVisibilityToServer() {
-            const visibility = {};
-            table.getColumns().forEach(col => {
-                const field = col.getField();
-                if (field && field !== '_select') {
-                    visibility[field] = col.isVisible();
-                }
-            });
-
-            // Persists to channel_tabulator_column_settings (channel_name = pricing_master_cvr)
-            $.ajax({
-                url: '/cvr-master-column-visibility',
-                method: 'POST',
-                data: { visibility: visibility, _token: '{{ csrf_token() }}' }
-            });
-        }
-
-        function hidePriceIncreaseDefaultColumns() {
-            ['image_path', 'parent_display'].forEach(field => {
-                const col = table.getColumn(field);
-                if (col) col.hide();
-            });
-            // Always show Label (Shipping Master) column after Dil %
-            const labelCol = table.getColumn('label');
-            if (labelCol) labelCol.show();
-            // Always show Audit (same as /amz-cvr-issues)
-            const auditCol = table.getColumn('audit');
-            if (auditCol) auditCol.show();
-            // Always show Avg LMP (parent = average of child Amz LMPs)
-            const avgLmpCol = table.getColumn('amazon_lmp_price');
-            if (avgLmpCol) avgLmpCol.show();
-            // Always show the SPRICE $ column (input + ✓ + GPFT / GROI / NPFT / NROI, same as the Sprice modal)
-            ['box_sprice'].forEach(function(field) {
-                const col = table.getColumn(field);
-                if (col) col.show();
-            });
-        }
-
-        function applyColumnVisibilityFromServer() {
-            $.ajax({
-                url: '/cvr-master-column-visibility',
-                method: 'GET',
-                success: function(visibility) {
-                    if (visibility && typeof visibility === 'object' && !Array.isArray(visibility)
-                        && Object.keys(visibility).length > 0) {
-                        Object.keys(visibility).forEach(field => {
-                            if (CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(field) !== -1) return;
-                            // Price Increase: keep Image / Parent text columns hidden by default
-                            if (field === 'image_path' || field === 'parent_display' || field === 'parent') return;
-                            const col = table.getColumn(field);
-                            if (col) {
-                                visibility[field] ? col.show() : col.hide();
-                            }
-                        });
-                    }
-                    forceHideRemovedCvrColumns();
-                    hidePriceIncreaseDefaultColumns();
-                    buildColumnDropdown();
-                },
-                error: function() {
-                    forceHideRemovedCvrColumns();
-                    hidePriceIncreaseDefaultColumns();
-                    buildColumnDropdown();
-                }
-            });
-        }
+        };
+        @include('partials.tabulator-column-manager')
 
         // ==================== TABLE EVENTS ====================
         
         table.on('tableBuilt', function() {
-            restoreSavedColumnOrder();
-            buildColumnDropdown();
-            applyColumnVisibilityFromServer();
+            applyColumnVisibilityFromServer(); // saved columns + order, then builds the Columns panel
         });
 
         table.on('dataLoaded', function(data) {
@@ -15159,19 +14918,11 @@
             setTimeout(() => updateSummary(), 100);
         });
 
-        document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-            if (e.target.classList.contains('column-toggle')) {
-                const field = e.target.dataset.field;
-                const col = table.getColumn(field);
-                if (col) {
-                    e.target.checked ? col.show() : col.hide();
-                    saveColumnVisibilityToServer();
-                }
-            }
-        });
-
         document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-            table.getColumns().forEach(col => col.show());
+            table.getColumns().forEach(col => {
+                const f = col.getField();
+                if (f && CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(f) === -1) col.show();
+            });
             buildColumnDropdown();
             saveColumnVisibilityToServer();
         });
