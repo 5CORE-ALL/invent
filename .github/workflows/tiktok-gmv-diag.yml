@@ -32,21 +32,23 @@ jobs:
           keys=$(jq -r '(.data.store_list // .data.list // [])[0] // {} | keys | join(",")' s.json 2>/dev/null | head -c 160)
           out="$out stores=$n matches_configured_id=$match keys=$keys"
 
-          # 2) report call variants - print the full TikTok message for each
+          # 2) report call variants - print message, row count and sample field names (no values)
+          D30=$(TZ=America/Los_Angeles date -d '30 days ago' +%F); Y=$(TZ=America/Los_Angeles date -d yesterday +%F)
           try() {
-            local label="$1" sparam="$2"
-            http=$(curl -sS -m 40 -o r.json -w '%{http_code}' -G "$B/gmv_max/report/get/" \
-              -H "Access-Token: $TT_TOKEN" \
-              --data-urlencode "advertiser_id=$TT_ADV" \
-              --data-urlencode "$sparam" \
-              --data-urlencode 'dimensions=["item_id"]' \
-              --data-urlencode 'metrics=["cost","orders","gross_revenue"]' \
-              --data-urlencode "start_date=$(TZ=America/Los_Angeles date -d '30 days ago' +%F)" \
-              --data-urlencode "end_date=$(TZ=America/Los_Angeles date -d yesterday +%F)" \
+            local label="$1" dims="$2" extra="$3"
+            args=(-H "Access-Token: $TT_TOKEN"
+              --data-urlencode "advertiser_id=$TT_ADV"
+              --data-urlencode "store_ids=[\"$TT_STORE\"]"
+              --data-urlencode "dimensions=$dims"
+              --data-urlencode 'metrics=["cost","orders","gross_revenue"]'
+              --data-urlencode "start_date=$D30" --data-urlencode "end_date=$Y"
               --data-urlencode 'page_size=5')
-            out="$out || $label http=$http code=$(jq -r '.code // "?"' r.json) msg=$(jq -r '.message // ""' r.json | head -c 160) rows=$(jq -r '(.data.list // []) | length' r.json 2>/dev/null)"
+            if [ -n "$extra" ]; then args+=(--data-urlencode "$extra"); fi
+            http=$(curl -sS -m 40 -o r.json -w '%{http_code}' -G "$B/gmv_max/report/get/" "${args[@]}")
+            out="$out || $label http=$http code=$(jq -r '.code // "?"' r.json) msg=$(jq -r '.message // ""' r.json | head -c 150) rows=$(jq -r '(.data.list // []) | length' r.json 2>/dev/null) total=$(jq -r '.data.page_info.total_number // "?"' r.json 2>/dev/null) dimkeys=$(jq -r '(.data.list // [])[0].dimensions // {} | keys | join("+")' r.json 2>/dev/null) metkeys=$(jq -r '(.data.list // [])[0].metrics // {} | keys | join("+")' r.json 2>/dev/null)"
           }
-          try 'quoted'   "store_ids=[\"$TT_STORE\"]"
-          try 'single'   "store_ids=$TT_STORE"
-          try 'store_id' "store_id=$TT_STORE"
+          try 'A item_group_id'           '["item_group_id"]' ''
+          try 'B campaign+item_group_id'  '["campaign_id","item_group_id"]' ''
+          try 'C item_group_id+PRODUCT'   '["item_group_id"]' 'filtering={"gmv_max_promotion_types":["PRODUCT_GMV_MAX"]}'
+          try 'D campaign+igid+PRODUCT'   '["campaign_id","item_group_id"]' 'filtering={"gmv_max_promotion_types":["PRODUCT_GMV_MAX"]}'
           echo "::notice title=GMV diag::$out"
