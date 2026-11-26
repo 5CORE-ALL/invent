@@ -106,13 +106,16 @@ class TaskPolicyDeletePermissionTest extends TestCase
                 continue;
             }
 
-            $this->assertFalse(TaskPolicy::userCanDeleteAnyTask($user), $email);
             $this->assertFalse(TaskPolicy::userCanEditAnyTask($user), $email);
             $this->assertFalse(TaskPolicy::userCanEditTask($user, $this->task('someone@5core.com')), $email);
             $this->assertTrue(TaskPolicy::userCanEditTask($user, $this->task($email)), $email);
-            $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com')), $email);
-            $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com', true)), $email);
             $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task($email)), $email);
+
+            // Ritu may delete anyone's task (delete only); everyone else only their own.
+            $isRitu = in_array($email, ['inventory@5core.com', 'ritu.kaur013@gmail.com'], true);
+            $this->assertSame($isRitu, TaskPolicy::userCanDeleteAnyTask($user), $email);
+            $this->assertSame($isRitu, TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com')), $email);
+            $this->assertSame($isRitu, TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com', true)), $email);
         }
     }
 
@@ -136,23 +139,42 @@ class TaskPolicyDeletePermissionTest extends TestCase
         }
     }
 
-    public function test_hr_and_ritu_cannot_edit_or_delete_someone_elses_task(): void
+    public function test_hr_cannot_edit_or_delete_someone_elses_task(): void
     {
         TaskPolicy::resetFullAccessEmailCache();
 
         $someoneElses = $this->task('hritiksha@5core.com', false, 'shebha@5core.com');
         $corrective = $this->task('hritiksha@5core.com', true, 'shebha@5core.com');
 
-        foreach (['hr@5core.com', 'inventory@5core.com', 'ritu.kaur013@gmail.com'] as $email) {
-            $user = $this->user($email, 'Other');
-            $this->assertFalse(TaskPolicy::userCanDeleteAnyTask($user), $email);
-            $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $someoneElses), $email);
-            $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $corrective), $email);
-            $this->assertFalse(TaskPolicy::userCanEditTask($user, $someoneElses), $email);
-            $this->assertFalse(TaskPolicy::userCanChangeTaskAssignor($user), $email);
-        }
+        $user = $this->user('hr@5core.com', 'Other');
+        $this->assertFalse(TaskPolicy::userCanDeleteAnyTask($user));
+        $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $someoneElses));
+        $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $corrective));
+        $this->assertFalse(TaskPolicy::userCanEditTask($user, $someoneElses));
+        $this->assertFalse(TaskPolicy::userCanChangeTaskAssignor($user));
 
         $this->assertTrue(TaskPolicy::userCanChangeTaskAssignor($this->user('president@5core.com', 'President')));
+    }
+
+    public function test_ritu_can_delete_anyones_task_but_not_edit_it(): void
+    {
+        TaskPolicy::resetFullAccessEmailCache();
+
+        $someoneElses = $this->task('hritiksha@5core.com', false, 'shebha@5core.com');
+        $corrective = $this->task('hritiksha@5core.com', true, 'shebha@5core.com');
+
+        foreach (['inventory@5core.com', 'ritu.kaur013@gmail.com'] as $email) {
+            $user = $this->user($email, 'Ritu');
+            $this->assertTrue(TaskPolicy::userCanDeleteAnyTask($user), $email);
+            $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $someoneElses), $email);
+            $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $corrective), $email);
+            $this->assertTrue(TaskPolicy::userCanDeleteAutomatedTask($user, (object) ['assignor' => 'x@5core.com', 'assign_to' => 'y@5core.com']), $email);
+            // Delete only: no edit of another assignor's task, no changing the assignor, not president.
+            $this->assertFalse(TaskPolicy::userCanEditAnyTask($user), $email);
+            $this->assertFalse(TaskPolicy::userCanEditTask($user, $someoneElses), $email);
+            $this->assertFalse(TaskPolicy::userCanChangeTaskAssignor($user), $email);
+            $this->assertFalse(TaskPolicy::userIsPresident($user), $email);
+        }
     }
 
     public function test_software5_can_edit_and_delete_anyones_task(): void

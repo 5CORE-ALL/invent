@@ -72,6 +72,29 @@ class TaskPolicy
     ];
 
     /**
+     * Logins that may DELETE tasks assigned by someone else (regular, corrective-action and automated
+     * templates) but get none of the president's other rights: they still cannot edit another
+     * assignor's task, change an assignor, or bulk-update.
+     *
+     * @var list<string>
+     */
+    private const DELETE_ANY_TASK_EMAILS = [
+        'inventory@5core.com',      // Ritu (users table login)
+        'ritu.kaur013@gmail.com',   // Ritu (alternate login)
+    ];
+
+    public static function userIsDeleteAnyTaskUser(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $email = strtolower(trim((string) ($user->email ?? '')));
+
+        return $email !== '' && in_array($email, self::DELETE_ANY_TASK_EMAILS, true);
+    }
+
+    /**
      * Logins that may EDIT any automated task template (automate_tasks), not only the ones they assigned.
      * Edit only: they still cannot delete someone else's template, and get none of the president's other task rights.
      *
@@ -103,10 +126,10 @@ class TaskPolicy
         return $email !== '' && in_array($email, self::PRESIDENT_EMAILS, true);
     }
 
-    /** May edit AND delete tasks assigned by someone else. President only. */
+    /** May delete tasks assigned by someone else: the president, and Ritu (delete only, no edit). */
     public static function userCanDeleteAnyTask(?User $user): bool
     {
-        return self::userIsPresident($user);
+        return self::userIsPresident($user) || self::userIsDeleteAnyTaskUser($user);
     }
 
     public static function userCanEditAnyTask(?User $user): bool
@@ -239,7 +262,7 @@ class TaskPolicy
      */
     public static function userCanDeleteAutomatedTask(User $user, object $task): bool
     {
-        if (self::userIsPresident($user)) {
+        if (self::userCanDeleteAnyTask($user)) {
             return true;
         }
 
