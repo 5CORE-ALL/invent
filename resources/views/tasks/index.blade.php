@@ -1543,6 +1543,14 @@
             box-shadow: none !important;
         }
 
+        /* Status dropdown inside the Add / Edit Task side panel (full width, readable size) */
+        #tf_status.status-select {
+            width: 100%;
+            font-size: 12px !important;
+            border: none !important;
+            padding: 6px 12px !important;
+        }
+
         .status-select option {
             padding: 10px;
         }
@@ -3229,6 +3237,13 @@
                 <label for="tf_title" class="form-label fw-bold" style="font-size: 12px;">Task <span class="text-danger">*</span></label>
                 <input type="text" class="form-control form-control-sm tf-lockable" id="tf_title" name="title" placeholder="Enter Task">
             </div>
+            {{-- Status: edit mode only, for users who may change it (admin / assignor / assignee).
+                 Uses the same .status-select handler as the table column (Done / Rework /
+                 Dependent / Need Help / Need Approval open their own modal). --}}
+            <div class="mb-2" id="tf-status-wrap" style="display: none;">
+                <label for="tf_status" class="form-label fw-bold" style="font-size: 12px;">Status</label>
+                <select class="form-select form-select-sm status-select" id="tf_status" data-task-id="" data-current-status=""></select>
+            </div>
             <div class="mb-2">
                 <label for="tf_description" class="form-label fw-bold" style="font-size: 12px;">Description</label>
                 <textarea class="form-control form-control-sm tf-lockable" id="tf_description" name="description" rows="3" placeholder="Add details, steps or context for this task (optional)" style="resize: vertical;"></textarea>
@@ -4409,9 +4424,28 @@
                                 ? '<span class="badge bg-secondary ms-1" style="font-size:9px; vertical-align:middle;">Subtask</span>'
                                 : '';
 
+                            // Round type badge: ATE (Auto Task Event) or D / W / M for
+                            // daily / weekly / monthly automated tasks.
+                            var typeBadge = '';
+                            var typeLabel = '', typeTitle = '', typeBg = '';
+                            if (rowData.is_ate_task == 1) {
+                                typeLabel = 'ATE'; typeTitle = 'ATE - created by an Auto Task Event rule'; typeBg = '#ec4899';
+                            } else if (rowData.is_automate_task == 1) {
+                                var freqType = String(rowData.schedule_type || '').toLowerCase();
+                                if (freqType === 'daily') { typeLabel = 'D'; typeTitle = 'Daily task'; typeBg = '#0d6efd'; }
+                                else if (freqType === 'weekly') { typeLabel = 'W'; typeTitle = 'Weekly task'; typeBg = '#6f42c1'; }
+                                else if (freqType === 'monthly') { typeLabel = 'M'; typeTitle = 'Monthly task'; typeBg = '#0f766e'; }
+                            }
+                            if (typeLabel) {
+                                typeBadge = '<span title="' + typeTitle + '" style="display:inline-flex;align-items:center;justify-content:center;' +
+                                    'width:24px;height:24px;border-radius:50%;background:' + typeBg + ';color:#fff;font-weight:700;' +
+                                    'font-size:' + (typeLabel.length > 1 ? '8px' : '11px') + ';line-height:1;margin-right:6px;vertical-align:middle;flex-shrink:0;">' +
+                                    typeLabel + '</span>';
+                            }
+
                             // Show full text with auto wrapping (no line limit)
                             return '<div style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.4; text-align: left;">' +
-                                   '<strong style="font-size: 13px;">' + htmlTitle + '</strong>' + subtaskBadge +
+                                   typeBadge + '<strong style="font-size: 13px;">' + htmlTitle + '</strong>' + subtaskBadge +
                                    '</div>';
                         }
                     });
@@ -7579,6 +7613,70 @@
                 return false;
             }
 
+            var TF_STATUS_COLORS = {
+                'Todo': {bg: '#0dcaf0', text: '#000'},
+                'Working': {bg: '#ffc107', text: '#000'},
+                'Archived': {bg: '#6c757d', text: '#fff'},
+                'Done': {bg: '#28a745', text: '#fff'},
+                'Need Help': {bg: '#fd7e14', text: '#000'},
+                'Need Approval': {bg: '#6610f2', text: '#fff'},
+                'Dependent': {bg: '#d63384', text: '#fff'},
+                'Approved': {bg: '#20c997', text: '#000'},
+                'Hold': {bg: '#495057', text: '#fff'},
+                'Monitor': {bg: '#0f766e', text: '#fff'},
+                'Rework': {bg: '#f5576c', text: '#fff'},
+                'Missed': {bg: '#dc3545', text: '#fff'}
+            };
+
+            // Fill the panel's Status dropdown for a task (edit mode, allowed users only).
+            function tfSetupStatus(mode, rowData) {
+                var $wrap = $('#tf-status-wrap');
+                var $sel = $('#tf_status');
+                if (mode !== 'edit' || !rowData || !rowData.id) {
+                    $wrap.hide();
+                    return;
+                }
+                var canUpdateStatus = isAdmin
+                    || parseInt(rowData.assignor_id, 10) === currentUserId
+                    || currentUserIsAssigneeOnTask(rowData);
+                if (!canUpdateStatus) {
+                    $wrap.hide();
+                    return;
+                }
+                var current = rowData.status || 'Todo';
+                var list = ['Todo', 'Working', 'Done', 'Need Help', 'Need Approval', 'Dependent', 'Approved', 'Hold', 'Monitor', 'Rework'];
+                // Archived / Missed are system statuses: show them as the current value only.
+                if (current === 'Archived' || current === 'Missed') {
+                    list.unshift(current);
+                }
+                $sel.empty();
+                list.forEach(function(s) {
+                    $sel.append($('<option/>').val(s).text(s));
+                });
+                tfApplyStatusToSelect(rowData.id, current);
+                $wrap.show();
+            }
+
+            function tfApplyStatusToSelect(taskId, status) {
+                var $sel = $('#tf_status');
+                var c = TF_STATUS_COLORS[status] || {bg: '#6c757d', text: '#fff'};
+                $sel.attr('data-task-id', taskId).data('task-id', taskId)
+                    .attr('data-current-status', status).data('current-status', status)
+                    .val(status)
+                    .css({background: c.bg, color: c.text});
+            }
+
+            // After a status change (table reloaded) keep an open panel's Status in step with the row.
+            function tfSyncStatusFromTable() {
+                var id = $('#tf_task_id').val();
+                if (!id || !$('#tf-status-wrap').is(':visible') || typeof table === 'undefined' || !table) return;
+                var row = table.getRow(id) || table.getRow(parseInt(id, 10));
+                var d = row ? row.getData() : null;
+                if (d && d.status) {
+                    tfApplyStatusToSelect(id, d.status);
+                }
+            }
+
             function openTaskPanel(mode, rowData) {
                 tfInitSelect2();
                 rowData = rowData || {};
@@ -7670,6 +7768,8 @@
                     $('#task-form-assignee-note').toggle(isAssigneeOnly);
                     tfSetMoreFields(isAssigneeOnly);
                 }
+
+                tfSetupStatus(mode, rowData);
 
                 // Lock non-link fields for assignee-only edit; unlock otherwise.
                 $('.tf-lockable').prop('disabled', lock);
@@ -8496,6 +8596,14 @@
                 newStatusValue = select.val();
                 currentTaskId = select.data('task-id');
                 previousStatus = select.data('current-status');
+
+                // Status picked from the Edit Task side panel: close the panel first when a modal is
+                // needed (Done / Rework / Dependent / Need Help / Need Approval), so the offcanvas
+                // focus trap does not block typing in that modal.
+                if (select.is('#tf_status') && taskFormOffcanvas
+                    && (newStatusValue === 'Done' || newStatusValue === 'Rework' || addAssigneeStatusConfig[newStatusValue])) {
+                    taskFormOffcanvas.hide();
+                }
                 
                 if (newStatusValue === 'Done') {
                     openDoneModalForTasks(collectDoneTargetTaskIds(currentTaskId, statusChangeSelectedSnapshot));
@@ -8724,7 +8832,10 @@
                     data: data,
                         success: function(response) {
                             // Update table data without page reload
-                            table.replaceData();
+                            var reloaded = table.replaceData();
+                            if (reloaded && typeof reloaded.then === 'function') {
+                                reloaded.then(tfSyncStatusFromTable);
+                            }
                             
                             // Show success message
                             var message = (response && response.archived && response.message)
