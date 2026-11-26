@@ -12,6 +12,7 @@ jobs:
     env:
       TT_TOKEN: ${{ secrets.TIKTOK_ADS_ACCESS_TOKEN }}
       TT_ADV: ${{ secrets.TIKTOK_ADS_ADVERTISER_ID }}
+      TT_STORE: ${{ secrets.TIKTOK_SHOP_ID }}
     steps:
       - name: Check info endpoint
         run: |
