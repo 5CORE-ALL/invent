@@ -15,16 +15,22 @@ jobs:
     steps:
       - name: Check info endpoint
         run: |
-          set -uo pipefail
+          set +e
           TT_TOKEN=$(printf '%s' "$TT_TOKEN" | tr -d '[:space:]')
           TT_ADV=$(printf '%s' "$TT_ADV" | tr -d '[:space:]')
           B=https://business-api.tiktok.com/open_api/v1.3
           out=""
-          for path in gmv_max/campaign/info; do
-            http=$(curl -sS -m 40 -o i.json -w '%{http_code}' -G "$B/$path/" -H "Access-Token: $TT_TOKEN" \
-              --data-urlencode "advertiser_id=$TT_ADV" --data-urlencode 'campaign_id=1882667097534897')
-            out="$out || $path http=$http code=$(jq -r '.code // "?"' i.json) msg=$(jq -r '.message // ""' i.json | head -c 120)"
-            out="$out data_keys=$(jq -r '(.data // {}) | keys | join("+")' i.json | head -c 400)"
-            out="$out budget_like=$(jq -c '[(.data // {}) | to_entries[] | select(.key|test("budget";"i")) | {(.key): .value}] | add' i.json | head -c 200)"
+          for path in gmv_max/campaign/info gmv_max/campaign/get; do
+            if [ "$path" = "gmv_max/campaign/info" ]; then
+              http=$(curl -sS -m 40 -o i.json -w '%{http_code}' -G "$B/$path/" -H "Access-Token: $TT_TOKEN" \
+                --data-urlencode "advertiser_id=$TT_ADV" --data-urlencode 'campaign_id=1882667097534897')
+            else
+              http=$(curl -sS -m 40 -o i.json -w '%{http_code}' -G "$B/$path/" -H "Access-Token: $TT_TOKEN" \
+                --data-urlencode "advertiser_id=$TT_ADV" \
+                --data-urlencode 'filtering={"gmv_max_promotion_types":["PRODUCT_GMV_MAX"],"campaign_ids":["1882667097534897"]}')
+            fi
+            out="$out || $path http=$http bodyhead=$(head -c 60 i.json | tr '\n"' '  ')"
+            out="$out | paths=$(jq -r '[paths(scalars) | map(tostring) | join(".")] | .[0:60] | join(",")' i.json 2>/dev/null | head -c 700)"
+            out="$out | budget_vals=$(jq -c '[.. | objects | to_entries[] | select(.key|test("budget";"i")) | {(.key): .value}]' i.json 2>/dev/null | head -c 250)"
           done
           echo "::notice title=budget check::$out"
