@@ -661,6 +661,26 @@
             background-color: #6c757d;
         }
 
+        /* Toolbar: everything on ONE row (compact controls) */
+        #pi-toolbar { gap: 4px !important; }
+        #pi-toolbar > * { flex: 0 0 auto; }
+        @media (min-width: 1100px) { #pi-toolbar { flex-wrap: nowrap !important; } }
+        #pi-toolbar .cvr-play-group .btn.rounded-circle { width: 20px; height: 20px; font-size: 9px; }
+        #pi-toolbar .cvr-play-group #play-auto, #pi-toolbar .cvr-play-group #play-pause,
+        #pi-toolbar .cvr-play-group #play-npft-auto, #pi-toolbar .cvr-play-group #play-npft-pause,
+        #pi-toolbar .cvr-play-group #play-dil-auto, #pi-toolbar .cvr-play-group #play-dil-pause,
+        #pi-toolbar .cvr-play-group #play-cvr-auto, #pi-toolbar .cvr-play-group #play-cvr-pause,
+        #pi-toolbar .cvr-play-group #play-groi-auto, #pi-toolbar .cvr-play-group #play-groi-pause { width: 24px; height: 24px; font-size: 10px; }
+        #pi-toolbar .cvr-play-group.btn-group { gap: 1px; }
+        #pi-toolbar .btn.dropdown-toggle { padding: 3px 6px; font-size: 12px; }
+        #pi-toolbar .btn.dropdown-toggle::after { margin-left: 4px; }
+        #pi-toolbar .form-select-sm { padding: 2px 18px 2px 6px; font-size: 12px; background-position: right 4px center; }
+        #pi-toolbar #inventory-filter { width: 62px !important; }
+        #pi-toolbar #sw-l30-match-filter { width: 82px !important; }
+        #pi-toolbar #sku-parent-filter { width: 118px !important; }
+        #pi-toolbar .cvr-play-group { margin-left: 2px !important; }
+        #pi-toolbar .pi-hl-switch { padding: 2px 6px !important; gap: 4px !important; min-height: 28px !important; }
+        #pi-toolbar #push-history-total { font-size: 11px !important; }
         /* High / Low switch: compact "H/L" until you hover it, then the full text shows */
         .pi-hl-full { display: none; }
         .pi-hl-switch:hover .pi-hl-short, .pi-hl-switch:focus-within .pi-hl-short { display: none; }
@@ -2435,7 +2455,7 @@
             </div>
             <div class="card-body py-3">
              
-                <div class="d-flex align-items-center flex-wrap gap-2">
+                <div id="pi-toolbar" class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: 80px;" title="Inventory: All / = 0 / &gt; 0">
                         <option value="all">All</option>
