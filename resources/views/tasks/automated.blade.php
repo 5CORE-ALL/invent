@@ -2,6 +2,8 @@
 
 @section('css')
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         /* Statistics Cards */
@@ -835,6 +837,46 @@
     }
     #automated-filter-bar .task-playback-group {
         flex-wrap: nowrap;
+    }
+    /* Searchable Assignor / Assignee (Select2) sized like the other compact filters */
+    #automated-filter-bar .select2-container {
+        flex: 1 1 70px;
+        min-width: 0;
+        width: auto !important;
+    }
+    #automated-filter-bar .select2-container--bootstrap-5 .select2-selection {
+        min-height: 26px;
+        height: 26px;
+        padding: 1px 18px 1px 6px;
+        font-size: 11px;
+    }
+    #automated-filter-bar .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+        line-height: 22px;
+        padding-left: 0;
+        padding-right: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    #automated-filter-bar .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+        height: 100%;
+        right: 4px;
+    }
+    .select2-container--bootstrap-5 .select2-dropdown.ate-user-dropdown {
+        width: 220px !important;
+        min-width: 220px;
+        max-width: 90vw;
+        font-size: 12px;
+    }
+    .ate-user-dropdown .select2-results__options {
+        max-height: 260px;
+    }
+    .ate-user-dropdown .select2-search__field {
+        font-size: 12px;
+        padding: 3px 6px;
+    }
+    .select2-container--bootstrap-5.select2-container--open {
+        z-index: 2000;
     }
     #automated-filter-bar .task-playback-group .btn {
         width: 20px !important;
@@ -1826,6 +1868,7 @@
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     
     <script>
         $(document).ready(function() {
@@ -3270,6 +3313,9 @@
 
             // Combined filter function (proper AND logic)
             function applyFilters() {
+                // Keep the searchable (Select2) Assignor / Assignee boxes in step with values set by
+                // playback or restored filters (no app 'change' handlers fire for this namespace).
+                $('#filter-assignor, #filter-assignee').trigger('change.select2');
                 table.clearFilter();
                 
                 var filters = [];
@@ -3366,6 +3412,24 @@
             $('#filter-search').on('keyup', applyFilters);
             $('#filter-group').on('keyup', applyFilters);
             $('#filter-task').on('keyup', applyFilters);
+            // Searchable Assignor / Assignee dropdowns (type a name to filter the list)
+            // No placeholder / dropdownAutoWidth: keeps "All Assignors" selectable and the list narrow.
+            $('#filter-assignor').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                dropdownParent: $('body'),
+                dropdownCssClass: 'ate-user-dropdown'
+            });
+            $('#filter-assignee').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                dropdownParent: $('body'),
+                dropdownCssClass: 'ate-user-dropdown'
+            });
+            $(document).on('select2:open', function () {
+                var field = document.querySelector('.select2-container--open .select2-search__field');
+                if (field) field.focus();
+            });
             $('#filter-assignor').on('change', applyFilters);
             $('#filter-assignee').on('change', applyFilters);
             $('#filter-freq').on('change', applyFilters);
