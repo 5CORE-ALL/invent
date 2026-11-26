@@ -673,7 +673,10 @@ class OverallAmazonController extends Controller
                     $lastPushedValue = isset($raw['SPRICE_PUSHED_VALUE']) && is_numeric($raw['SPRICE_PUSHED_VALUE'])
                         ? round((float) $raw['SPRICE_PUSHED_VALUE'], 2)
                         : 0.0;
-                    if ($lastPushedValue > 0 && in_array($pushSt, ['pushed', 'applied'], true)
+                    // SPRICE_PUSHED_VALUE / SPRICE_PUSHED_AT belong to SPRICE_STATUS (S PRC push). PUSH_PRC_STATUS is a separate,
+                    // often older field, so it must not decide whether that push succeeded.
+                    $spriceSt = strtolower((string) ($raw['SPRICE_STATUS'] ?? ''));
+                    if ($lastPushedValue > 0 && in_array($spriceSt, ['pushed', 'applied'], true)
                         && ($pushedSale === null || abs($lastPushedValue - $pushedSale) > 0.009)) {
                         $pushedSale = $lastPushedValue;
                     }
@@ -683,14 +686,19 @@ class OverallAmazonController extends Controller
                     // price that has since been replaced.
                     $pulledAtTs = ! empty($raw['PRICE_PULLED_AT']) ? strtotime((string) $raw['PRICE_PULLED_AT']) : false;
                     $lastPushTs = 0;
-                    foreach (['SPRICE_PUSHED_AT', 'PUSH_PRC_PUSHED_AT'] as $pushAtKey) {
+                    $pushAtKeys = $spriceSt !== 'error' ? ['SPRICE_PUSHED_AT'] : [];
+                    if (strtolower((string) ($raw['PUSH_PRC_STATUS'] ?? '')) !== 'error') {
+                        $pushAtKeys[] = 'PUSH_PRC_PUSHED_AT';
+                    }
+                    foreach ($pushAtKeys as $pushAtKey) {
                         $ts = ! empty($raw[$pushAtKey]) ? strtotime((string) $raw[$pushAtKey]) : false;
                         if ($ts !== false && $ts > $lastPushTs) {
                             $lastPushTs = $ts;
                         }
                     }
+                    // 'saved' = S PRC edited after the push; only a push that errored leaves the older pull valid.
                     if ($pulledLive > 0 && $pulledAtTs !== false && $pulledAtTs < $lastPushTs
-                        && in_array($pushSt, ['pushed', 'applied'], true)) {
+                        && $spriceSt !== 'error') {
                         $pulledLive = 0.0;
                     }
                     // Buy Box / datasheet keep Your Price. After a successful push the
