@@ -262,7 +262,15 @@ class ListingManagerEbayTradingPublisher
 
         // eBay 3 keeps photos on its own servers. A later variation add is rejected if this listing
         // was created with self-hosted links, so every photo goes to eBay Picture Services first.
-        if (($ctx['channel'] ?? '') === 'ebaythree') {
+        // Any other channel is copied too when its photos already mix eBay-hosted (EPS) and self-hosted links:
+        // eBay refuses "a mixture of Self Hosted and EPS pictures" in one listing.
+        $allPhotoUrls = $images;
+        foreach ($variations as $row) {
+            foreach ((array) ($row['images'] ?? []) as $photo) {
+                $allPhotoUrls[] = (string) $photo;
+            }
+        }
+        if (($ctx['channel'] ?? '') === 'ebaythree' || self::mixesPictureHosts($allPhotoUrls)) {
             $hosted = self::hostPictureList($ctx, $images);
             if ($hosted['urls'] === []) {
                 return ['success' => false, 'message' => 'Could not copy the photos onto eBay, so the listing was not created.'
@@ -792,6 +800,35 @@ class ListingManagerEbayTradingPublisher
         $photoNotes = [];
         $hostedGallery = [];
         $mustHost = $epsHosted || (($ctx['channel'] ?? '') === 'ebaythree');
+
+        // What the live listing already uses decides which kind the new photos must be.
+        $liveUrls = array_values(array_filter(array_map('strval', $galleryUrls)));
+        foreach ($existingPictureSets as $set) {
+            foreach ((array) ($set['urls'] ?? []) as $liveUrl) {
+                $liveUrls[] = (string) $liveUrl;
+            }
+        }
+        $newUrls = [];
+        foreach ($newVariations as $row) {
+            foreach ((array) ($row['images'] ?? []) as $photo) {
+                $newUrls[] = (string) $photo;
+            }
+        }
+        if (! $mustHost) {
+            $liveSelfHosted = $liveUrls !== [] && ! self::mixesPictureHosts($liveUrls) && ! self::isEpsUrl($liveUrls[0]);
+            if ($liveSelfHosted) {
+                // The live listing keeps its own links: a photo that is already on eBay's servers cannot be sent to it.
+                foreach ($newVariations as $i => $row) {
+                    $kept = array_values(array_filter((array) ($row['images'] ?? []), static fn ($u) => ! self::isEpsUrl((string) $u)));
+                    if ($kept === [] && ! empty($row['images'])) {
+                        return ['success' => false, 'message' => 'The photos of '.$row['sku'].' are all hosted on eBay, but this listing uses self-hosted photos, and eBay does not allow both in one listing. Nothing was added.'];
+                    }
+                    $newVariations[$i]['images'] = $kept;
+                }
+            } elseif (self::mixesPictureHosts(array_merge($liveUrls, $newUrls))) {
+                $mustHost = true;
+            }
+        }
         if ($mustHost) {
             foreach ($newVariations as $i => $row) {
                 $wanted = array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12);
@@ -978,6 +1015,31 @@ class ListingManagerEbayTradingPublisher
         }
 
         return [intdiv($total, 16), $total % 16];
+    }
+
+    private static function isEpsUrl(string $url): bool
+    {
+        return (bool) preg_match('#ebayimg\.com|ebaystatic\.com#i', $url);
+    }
+
+    /** True when the photos are partly on eBay's servers (EPS) and partly self-hosted. */
+    private static function mixesPictureHosts(array $urls): bool
+    {
+        $eps = false;
+        $self = false;
+        foreach ($urls as $url) {
+            $url = trim((string) $url);
+            if ($url === '') {
+                continue;
+            }
+            if (self::isEpsUrl($url)) {
+                $eps = true;
+            } else {
+                $self = true;
+            }
+        }
+
+        return $eps && $self;
     }
 
     /**
