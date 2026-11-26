@@ -132,6 +132,61 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         ]);
     }
 
+    /**
+     * Pending orders per site, the same rows /order-fulfillment/pending lists, counted as distinct orders.
+     * Used by the hourly snapshot (order-fulfillment:snapshot-pending); uses the default date range.
+     *
+     * @return array<string, array{label: string, orders: int}>
+     */
+    public function pendingCountsBySite(): array
+    {
+        $rows = $this->collectFulfillmentRows();
+        $rows = $this->attachSavedTracking($rows);
+        $rows = $this->attachCarrierAndTrackingStatus($rows);
+
+        $orders = [];
+        $labels = [];
+        foreach ($rows as $row) {
+            if (! $this->fulfillmentRowIsPending($row)) {
+                continue;
+            }
+            $slug = (string) ($row['mm_slug'] ?? '');
+            $label = (string) ($row['channel'] ?? $slug);
+            if ($slug === self::MANUAL_SLUG) {
+                $slug = 'manual:'.strtolower(trim($label));
+            }
+            if ($slug === '') {
+                continue;
+            }
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            $orders[$slug][$orderId !== '' ? $orderId : 'row:'.($row['id'] ?? count($orders[$slug] ?? []))] = true;
+            $labels[$slug] = $label !== '' ? $label : $slug;
+        }
+
+        $out = [];
+        foreach ($orders as $slug => $ids) {
+            $out[$slug] = ['label' => $labels[$slug] ?? $slug, 'orders' => count($ids)];
+        }
+        uasort($out, static fn (array $a, array $b): int => $b['orders'] <=> $a['orders']);
+
+        return $out;
+    }
+
+    /** History badge / graph on /order-fulfillment/pending: hourly counts and the 3:30 PM Ohio records. */
+    public function pendingHistory(Request $request): JsonResponse
+    {
+        try {
+            return response()->json(
+                ['success' => true] + app(\App\Services\OrderFulfillment\PendingSnapshotService::class)
+                    ->history((string) $request->query('range', '7d'))
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['success' => false, 'message' => 'Could not load the pending history.'], 500);
+        }
+    }
+
     public function data(): JsonResponse
     {
         try {

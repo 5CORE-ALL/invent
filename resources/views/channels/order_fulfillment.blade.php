@@ -177,6 +177,69 @@
         }
         .of-pdf-dot.is-set { background: #198754; }
         .of-pdf-dot.is-empty { background: #dc3545; }
+
+        /* ---------- Pending history badge + modal (gen-z) ---------- */
+        .of-ph-badge {
+            position: relative; display: inline-flex; align-items: center; gap: 7px;
+            border: 0; cursor: pointer; color: #fff; font-weight: 700; font-size: 0.86rem; line-height: 1.15;
+            padding: 0.3rem 0.8rem 0.3rem 0.65rem; border-radius: 999px;
+            background: linear-gradient(135deg, #7c3aed 0%, #ec4899 55%, #f97316 100%);
+            box-shadow: 0 6px 16px -6px rgba(236, 72, 153, 0.7);
+            transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+            white-space: nowrap;
+        }
+        .of-ph-badge:hover { transform: translateY(-1px) scale(1.03); box-shadow: 0 10px 22px -6px rgba(236, 72, 153, 0.85); filter: saturate(1.15); }
+        .of-ph-badge:active { transform: scale(.97); }
+        .of-ph-badge b { font-variant-numeric: tabular-nums; font-size: 0.95rem; }
+        .of-ph-pulse { width: 8px; height: 8px; border-radius: 50%; background: #a7f3d0; box-shadow: 0 0 0 0 rgba(167, 243, 208, .8); animation: of-ph-pulse 1.8s infinite; }
+        @keyframes of-ph-pulse { 70% { box-shadow: 0 0 0 7px rgba(167, 243, 208, 0); } 100% { box-shadow: 0 0 0 0 rgba(167, 243, 208, 0); } }
+        .of-ph-delta { font-size: .72rem; font-weight: 800; padding: 1px 7px; border-radius: 99px; background: rgba(0,0,0,.25); }
+        .of-ph-delta:empty { display: none; }
+
+        .of-ph-modal .modal-dialog { max-width: 1020px; }
+        .of-ph-modal .modal-content {
+            border: 0; border-radius: 26px; overflow: hidden; color: #e9eaff;
+            background: radial-gradient(1200px 500px at 10% -10%, rgba(124, 58, 237, .28), transparent 60%), #0f1020;
+            box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .7);
+        }
+        .of-ph-head {
+            position: relative; padding: 22px 26px 20px; color: #fff; overflow: hidden;
+            background: linear-gradient(135deg, #7c3aed 0%, #ec4899 60%, #f97316 100%);
+        }
+        .of-ph-head::after { content: ''; position: absolute; right: -60px; top: -70px; width: 240px; height: 240px; border-radius: 50%; background: rgba(255,255,255,.15); }
+        .of-ph-head .btn-close { position: absolute; right: 18px; top: 18px; z-index: 3; filter: invert(1) grayscale(1) brightness(2); opacity: .9; }
+        .of-ph-pill { display: inline-flex; align-items: center; gap: 6px; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 4px 11px; border-radius: 99px; background: rgba(255,255,255,.22); backdrop-filter: blur(6px); position: relative; z-index: 1; }
+        .of-ph-head h5 { margin: 8px 0 2px; font-weight: 800; font-size: 1.45rem; letter-spacing: -.01em; position: relative; z-index: 1; color: #fff; }
+        .of-ph-sub { font-size: .78rem; opacity: .92; position: relative; z-index: 1; }
+        .of-ph-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; position: relative; z-index: 1; }
+        .of-ph-stat { background: rgba(255,255,255,.18); backdrop-filter: blur(8px); border-radius: 16px; padding: 9px 15px; min-width: 128px; }
+        .of-ph-stat b { display: block; font-size: 1.35rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+        .of-ph-stat span { font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; opacity: .88; }
+        .of-ph-body { padding: 16px 22px 22px; max-height: 68vh; overflow-y: auto; }
+        .of-ph-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+        .of-ph-tools .of-ph-spacer { flex: 1; }
+        .of-ph-btn { border: 1px solid rgba(255,255,255,.16); background: transparent; color: #cfd1ff; border-radius: 99px; padding: 6px 14px; font-size: .78rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+        .of-ph-btn:hover { background: rgba(255,255,255,.08); }
+        .of-ph-btn.is-on { background: linear-gradient(135deg, #7c3aed, #ec4899); color: #fff; border-color: transparent; }
+        .of-ph-chartbox { position: relative; height: 310px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 20px; padding: 12px 14px; }
+        .of-ph-hint { font-size: .72rem; color: rgba(233,234,255,.55); margin: 8px 2px 12px; }
+        .of-ph-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+        .of-ph-chip { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 11px; border-radius: 14px; cursor: pointer; color: #e9eaff; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); transition: all .15s; }
+        .of-ph-chip:hover { background: rgba(255,255,255,.11); transform: translateY(-1px); }
+        .of-ph-chip.is-off { opacity: .38; }
+        .of-ph-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 10px currentColor; }
+        .of-ph-chip .of-ph-name { flex: 1; min-width: 0; font-size: .78rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .of-ph-chip .of-ph-num { font-weight: 800; font-variant-numeric: tabular-nums; }
+        .of-ph-chip .of-ph-d { font-size: .66rem; font-weight: 800; padding: 1px 6px; border-radius: 99px; }
+        .of-ph-d.up { background: rgba(251, 113, 133, .22); color: #fda4af; }
+        .of-ph-d.down { background: rgba(52, 211, 153, .2); color: #6ee7b7; }
+        .of-ph-table { width: 100%; margin-top: 14px; font-size: .8rem; border-collapse: separate; border-spacing: 0 4px; }
+        .of-ph-table th { color: rgba(233,234,255,.5); font-weight: 700; text-transform: uppercase; font-size: .64rem; letter-spacing: .06em; padding: 0 10px; text-align: left; }
+        .of-ph-table td { background: rgba(255,255,255,.05); padding: 8px 10px; color: #e9eaff; }
+        .of-ph-table td:first-child { border-radius: 12px 0 0 12px; font-weight: 700; }
+        .of-ph-table td:last-child { border-radius: 0 12px 12px 0; }
+        .of-ph-empty { text-align: center; padding: 46px 10px; color: rgba(233,234,255,.7); }
+        .of-ph-empty big { display: block; font-size: 2.4rem; margin-bottom: 6px; }
     </style>
 @endsection
 
@@ -198,6 +261,14 @@
                         <button type="button" class="badge bg-secondary of-summary-badge" id="of-channels-badge" title="Show connected marketplaces">Channels: <span id="of-channel-count">0</span></button>
                         <span class="badge of-summary-badge" style="background:#d1e7dd; color:#0f5132;">Paid: <span id="of-paid-count">0</span></span>
                         <span class="badge of-summary-badge" style="background:#fff3cd; color:#856404;">Unpaid: <span id="of-unpaid-count">0</span></span>
+                        @if(!empty($ofPendingOnly))
+                            <button type="button" class="of-ph-badge" id="of-ph-badge" title="Pending orders by site: hourly history graph and the 3:30 PM Ohio daily record">
+                                <span class="of-ph-pulse" aria-hidden="true"></span>
+                                <i class="fas fa-chart-line" aria-hidden="true"></i>
+                                Pending by site <b id="of-ph-total">…</b>
+                                <span class="of-ph-delta" id="of-ph-delta"></span>
+                            </button>
+                        @endif
                         @if(!empty($ofScanPendingOnly))
                             <span class="badge of-summary-badge" style="background:#f8d7da; color:#b02a37;" title="Rows with a tracking number and no carrier scan, over 36 hours after the order time"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Alerts: <span id="of-alert-count">0</span></span>
                             <button type="button" class="badge of-summary-badge" id="of-days-badge" style="background:#dc3545; color:#fff; border:0; cursor:pointer;" title="Alert rows grouped by how many days old the order is">Days</button>
@@ -250,6 +321,45 @@
             </div>
         </div>
     </div>
+
+    @if(!empty($ofPendingOnly))
+    <div class="modal fade of-ph-modal" id="of-ph-modal" tabindex="-1" aria-labelledby="of-ph-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="of-ph-head">
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <span class="of-ph-pill"><i class="fas fa-bolt" aria-hidden="true"></i> Refreshes every hour</span>
+                    <h5 id="of-ph-title">Pending orders by site</h5>
+                    <div class="of-ph-sub" id="of-ph-updated">Loading…</div>
+                    <div class="of-ph-stats">
+                        <div class="of-ph-stat"><b id="of-ph-s-now">—</b><span>Pending now</span></div>
+                        <div class="of-ph-stat"><b id="of-ph-s-delta">—</b><span>vs last hour</span></div>
+                        <div class="of-ph-stat"><b id="of-ph-s-daily">—</b><span>3:30 PM today (Ohio)</span></div>
+                        <div class="of-ph-stat"><b id="of-ph-s-sites">—</b><span>Sites with pending</span></div>
+                    </div>
+                </div>
+                <div class="of-ph-body">
+                    <div class="of-ph-tools">
+                        <button type="button" class="of-ph-btn is-on" data-ph-tab="hourly">Hourly</button>
+                        <button type="button" class="of-ph-btn" data-ph-tab="daily">3:30 PM daily</button>
+                        <span class="of-ph-spacer"></span>
+                        <button type="button" class="of-ph-btn" data-ph-range="24h">24h</button>
+                        <button type="button" class="of-ph-btn is-on" data-ph-range="7d">7d</button>
+                        <button type="button" class="of-ph-btn" data-ph-range="30d">30d</button>
+                        <button type="button" class="of-ph-btn" id="of-ph-reload" title="Reload the saved history"><i class="fas fa-rotate" aria-hidden="true"></i></button>
+                    </div>
+                    <div id="of-ph-content">
+                        <div class="of-ph-chartbox"><canvas id="of-ph-canvas"></canvas></div>
+                        <div class="of-ph-hint" id="of-ph-hint"></div>
+                        <div class="of-ph-chips" id="of-ph-chips"></div>
+                        <div id="of-ph-daily-table"></div>
+                    </div>
+                    <div class="of-ph-empty" id="of-ph-empty" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     @if(!empty($ofScanPendingOnly))
     <div class="modal fade" id="of-days-modal" tabindex="-1" aria-labelledby="of-days-modal-label" aria-hidden="true">
@@ -2173,4 +2283,245 @@
     });
 })();
 </script>
+@if(!empty($ofPendingOnly))
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const badge = document.getElementById('of-ph-badge');
+    if (!badge) return;
+
+    const HISTORY_URL = @json(route('order.fulfillment.pending.history'));
+    const OHIO_TZ = 'America/New_York';
+    const HOUR_MS = 3600000;
+    const PALETTE = ['#8b5cf6', '#ec4899', '#f97316', '#22d3ee', '#a3e635', '#facc15', '#fb7185', '#38bdf8'];
+    const OTHER = { key: '__other', label: 'Other sites', color: '#94a3b8' };
+
+    let data = null;
+    let range = '7d';
+    let tab = 'hourly';
+    let chart = null;
+    const hidden = new Set();
+
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const num = (n) => Number(n || 0).toLocaleString();
+    const el = (id) => document.getElementById(id);
+
+    function ohioToday() {
+        return new Date().toLocaleDateString('en-CA', { timeZone: OHIO_TZ });
+    }
+
+    function deltaChip(d) {
+        if (d === null || d === undefined || d === 0) return '';
+        return '<span class="of-ph-d ' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '▲ +' : '▼ ') + d + '</span>';
+    }
+
+    // Top sites (by pending now) get their own colour; every other site is summed into "Other sites".
+    function seriesDefs() {
+        const sites = (data && data.latest && data.latest.sites) || [];
+        const defs = sites.slice(0, 8).map(function (s, i) {
+            return { key: s.slug, label: s.label, color: PALETTE[i % PALETTE.length] };
+        });
+        if (sites.length > 8) defs.push(OTHER);
+        return defs;
+    }
+
+    function valuesFor(rows, def, topKeys) {
+        return rows.map(function (r) {
+            if (def.key === OTHER.key) {
+                let rest = 0;
+                Object.keys(r.counts || {}).forEach(function (k) { if (topKeys.indexOf(k) === -1) rest += Number(r.counts[k] || 0); });
+                return rest;
+            }
+            return Number((r.counts || {})[def.key] || 0);
+        });
+    }
+
+    function paintBadge() {
+        const total = data && data.latest ? data.latest.total : null;
+        el('of-ph-total').textContent = total === null ? '—' : num(total);
+        const prev = data && data.latest ? data.latest.previous_total : null;
+        const d = total !== null && prev !== null && prev !== undefined ? total - prev : null;
+        const chip = el('of-ph-delta');
+        chip.textContent = d ? (d > 0 ? '▲ +' + d : '▼ ' + d) : '';
+        chip.title = d ? 'Change since the previous hourly snapshot' : '';
+    }
+
+    function paintHeader() {
+        const l = data && data.latest;
+        el('of-ph-updated').textContent = l
+            ? 'Updated ' + l.label + ' (Ohio time) · refreshed every hour · daily record at ' + (data.daily_time || '3:30 PM') + ' Ohio time'
+            : (data && data.message) || 'No data yet';
+        el('of-ph-s-now').textContent = l ? num(l.total) : '—';
+        const d = l && l.previous_total !== null && l.previous_total !== undefined ? l.total - l.previous_total : null;
+        el('of-ph-s-delta').textContent = d === null ? '—' : (d > 0 ? '+' + num(d) : num(d));
+        const today = ohioToday();
+        const todays = ((data && data.daily) || []).filter(function (r) { return r.date === today; })[0];
+        el('of-ph-s-daily').textContent = todays ? num(todays.total) : '—';
+        el('of-ph-s-sites').textContent = l ? num(l.sites.length) : '—';
+    }
+
+    function paintChips() {
+        const defs = seriesDefs();
+        const l = data && data.latest;
+        const sites = (l && l.sites) || [];
+        const topKeys = defs.map(function (d) { return d.key; });
+        const html = defs.map(function (def) {
+            let count; let delta = null;
+            if (def.key === OTHER.key) {
+                const rest = sites.filter(function (s) { return topKeys.indexOf(s.slug) === -1; });
+                count = rest.reduce(function (a, s) { return a + s.orders; }, 0);
+                if (rest.every(function (s) { return s.delta !== null; })) delta = rest.reduce(function (a, s) { return a + s.delta; }, 0);
+            } else {
+                const s = sites.filter(function (x) { return x.slug === def.key; })[0];
+                count = s ? s.orders : 0;
+                delta = s ? s.delta : null;
+            }
+            return '<button type="button" class="of-ph-chip' + (hidden.has(def.key) ? ' is-off' : '') + '" data-key="' + esc(def.key) + '" title="Click to show / hide on the graph">' +
+                '<span class="of-ph-dot" style="background:' + def.color + ';color:' + def.color + '"></span>' +
+                '<span class="of-ph-name">' + esc(def.label) + '</span>' +
+                '<span class="of-ph-num">' + num(count) + '</span>' + deltaChip(delta) + '</button>';
+        }).join('');
+        el('of-ph-chips').innerHTML = html;
+    }
+
+    function paintDailyTable() {
+        const box = el('of-ph-daily-table');
+        if (tab !== 'daily') { box.innerHTML = ''; return; }
+        const rows = ((data && data.daily) || []).slice().reverse();
+        if (!rows.length) { box.innerHTML = ''; return; }
+        const body = rows.map(function (r, i) {
+            const older = rows[i + 1];
+            const d = older ? r.total - older.total : null;
+            const top = Object.keys(r.counts || {}).map(function (k) { return { k: k, n: r.counts[k] }; })
+                .sort(function (a, b) { return b.n - a.n; }).slice(0, 3)
+                .map(function (x) { return esc((data.labels && data.labels[x.k]) || x.k) + ' ' + num(x.n); }).join(' · ');
+            return '<tr><td>' + esc(r.label) + '</td><td>' + esc(r.recorded_at) + '</td><td><b>' + num(r.total) + '</b> ' + deltaChip(d) + '</td><td>' + (top || '—') + '</td></tr>';
+        }).join('');
+        box.innerHTML = '<table class="of-ph-table"><thead><tr><th>Day</th><th>Recorded (Ohio)</th><th>Pending orders</th><th>Top sites</th></tr></thead><tbody>' + body + '</tbody></table>';
+    }
+
+    function renderChart() {
+        const canvas = el('of-ph-canvas');
+        if (chart) { chart.destroy(); chart = null; }
+        if (!window.Chart || !data || !data.latest) return;
+
+        const rows = tab === 'hourly' ? data.hourly : data.daily;
+        const defs = seriesDefs();
+        const topKeys = defs.map(function (d) { return d.key; });
+        const isLine = tab === 'hourly';
+        const labels = rows.map(function (r) { return r.label; });
+
+        const datasets = defs.map(function (def) {
+            return {
+                label: def.label,
+                data: valuesFor(rows, def, topKeys),
+                hidden: hidden.has(def.key),
+                borderColor: def.color,
+                backgroundColor: isLine ? def.color + '55' : def.color + 'cc',
+                fill: isLine,
+                tension: 0.35,
+                borderWidth: isLine ? 2 : 0,
+                borderRadius: isLine ? 0 : 6,
+                pointRadius: isLine ? (rows.length > 60 ? 0 : 2) : 0,
+                pointHoverRadius: 5,
+            };
+        });
+
+        const grid = 'rgba(255,255,255,0.08)';
+        const tick = 'rgba(233,234,255,0.6)';
+        chart = new Chart(canvas, {
+            type: isLine ? 'line' : 'bar',
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { stacked: true, grid: { display: false }, ticks: { color: tick, maxRotation: 0, autoSkip: true, maxTicksLimit: isLine ? 8 : 14, font: { size: 10 } } },
+                    y: { stacked: true, beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(15,16,32,0.96)',
+                        borderColor: 'rgba(255,255,255,0.15)',
+                        borderWidth: 1,
+                        callbacks: {
+                            footer: function (items) {
+                                const sum = items.reduce(function (a, it) { return a + (it.parsed.y || 0); }, 0);
+                                return 'Total: ' + num(sum);
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    function paint() {
+        paintBadge();
+        paintHeader();
+        const has = !!(data && data.latest);
+        el('of-ph-content').style.display = has ? '' : 'none';
+        const empty = el('of-ph-empty');
+        empty.style.display = has ? 'none' : '';
+        if (!has) {
+            empty.innerHTML = '<big>📊</big><div><b>' + esc((data && data.message) || 'No snapshot yet.') + '</b></div>' +
+                '<div class="mt-2 small">Or run <code>php artisan order-fulfillment:snapshot-pending</code> once.</div>';
+            return;
+        }
+        el('of-ph-hint').textContent = tab === 'hourly'
+            ? 'Pending orders per site, one point per hourly refresh. Click a site below to show / hide it.'
+            : 'The record taken every day at ' + (data.daily_time || '3:30 PM') + ' Ohio time (the first refresh after 3:30 PM if that one was missed).';
+        paintChips();
+        paintDailyTable();
+        renderChart();
+    }
+
+    function load() {
+        return fetch(HISTORY_URL + '?range=' + encodeURIComponent(range), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+                if (!json || !json.success) throw new Error((json && json.message) || 'failed');
+                data = json;
+                paint();
+            })
+            .catch(function () {
+                el('of-ph-total').textContent = '—';
+                el('of-ph-updated').textContent = 'Could not load the history. Try the reload button.';
+            });
+    }
+
+    function setActive(attr, value) {
+        document.querySelectorAll('[' + attr + ']').forEach(function (b) { b.classList.toggle('is-on', b.getAttribute(attr) === value); });
+    }
+
+    badge.addEventListener('click', function () {
+        const modal = el('of-ph-modal');
+        if (window.bootstrap && bootstrap.Modal && modal) bootstrap.Modal.getOrCreateInstance(modal).show();
+        load();
+    });
+    el('of-ph-modal')?.addEventListener('click', function (e) {
+        const t = e.target.closest('[data-ph-tab]');
+        if (t) { tab = t.getAttribute('data-ph-tab'); setActive('data-ph-tab', tab); paint(); return; }
+        const r = e.target.closest('[data-ph-range]');
+        if (r) { range = r.getAttribute('data-ph-range'); setActive('data-ph-range', range); load(); return; }
+        const chip = e.target.closest('.of-ph-chip');
+        if (chip) {
+            const key = chip.getAttribute('data-key');
+            if (hidden.has(key)) hidden.delete(key); else hidden.add(key);
+            paintChips();
+            renderChart();
+        }
+    });
+    el('of-ph-reload')?.addEventListener('click', load);
+    // The graph re-renders when the modal finishes opening so Chart.js measures the real size.
+    el('of-ph-modal')?.addEventListener('shown.bs.modal', function () { renderChart(); });
+
+    load();
+    // The snapshots are saved every hour, so re-read them every hour (badge and open graph).
+    setInterval(load, HOUR_MS);
+})();
+</script>
+@endif
 @endsection

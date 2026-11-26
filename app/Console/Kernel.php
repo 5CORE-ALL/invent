@@ -4088,6 +4088,24 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // /order-fulfillment/pending history badge: pending orders per site, saved every hour at :50
+        // (after the :45 order refresh above), and once a day at 3:30 PM Ohio time.
+        // The first run at or after 3:30 PM Ohio also writes the daily record if it is missing.
+        $schedule->command('order-fulfillment:snapshot-pending')
+            ->hourlyAt(50)
+            ->timezone('Asia/Kolkata')
+            ->name('order-fulfillment-snapshot-pending-hourly')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        $schedule->command('order-fulfillment:snapshot-pending --daily')
+            ->dailyAt('15:30')
+            ->timezone('America/New_York')
+            ->name('order-fulfillment-snapshot-pending-daily')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Daily catch-up also re-fetches marketplace orders, then import + fulfill + tracking.
         // --max-minutes 120 (hard kill at 125) stays below the 180 min lock.
         $schedule->command('mm:push-orders-tracking --days=7 --skip-inventory --max-minutes=120')
