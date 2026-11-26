@@ -42,6 +42,7 @@ class VerifyFacebookSheetMatchesMeta extends Command
             $this->info('Re-syncing from Meta first...');
             $this->call('meta-ads:sync', ['--ad-account' => $acct, '--force' => true]);
             $this->call('meta-ads:refresh-insights', ['--days' => 30, '--ad-account' => $acct]);
+            $this->call('facebook:sync-lifetime-stats');
             $this->call('facebook:sync-sheet-campaigns');
         }
 
@@ -172,6 +173,92 @@ class VerifyFacebookSheetMatchesMeta extends Command
             foreach ($diff as $d) {
                 $this->line("      {$d}");
             }
+        }
+
+        // 4) Lifetime columns (Lifetime Spend / Sales / Acos, LT Sold…) are read from
+        // facebook_campaign_lifetime_stats — compare that table with Meta's
+        // all-time numbers for the campaigns on the sheet.
+        $ltBad = [];
+        $ltChecked = 0;
+        $sheetIds = [];
+        foreach ($rows as $row) {
+            $id = (string) ($row['CAMPAIGN ID'] ?? '');
+            if (preg_match('/^\d{6,}$/', $id)) {
+                $sheetIds[$id] = true;
+            }
+        }
+        if ($sheetIds) {
+            $metaLt = [];
+            $after = null;
+            $pages = 0;
+            do {
+                $p = [
+                    'access_token' => $token,
+                    'level'        => 'campaign',
+                    'date_preset'  => 'maximum',
+                    'fields'       => 'campaign_id,spend,impressions,clicks,actions,action_values',
+                    'limit'        => 500,
+                ];
+                if ($after) {
+                    $p['after'] = $after;
+                }
+                $r = Http::timeout(120)->get("{$baseUrl}/{$acct}/insights", $p);
+                if (! $r->successful()) {
+                    $this->error('Meta API error (lifetime): ' . ($r->json('error.message') ?? $r->body()));
+
+                    return 1;
+                }
+                foreach ($r->json('data') ?? [] as $d) {
+                    $sales = 0.0;
+                    $sold = 0;
+                    foreach ($d['action_values'] ?? [] as $a) {
+                        if (($a['action_type'] ?? '') === 'purchase') {
+                            $sales = (float) $a['value'];
+                        }
+                    }
+                    foreach ($d['actions'] ?? [] as $a) {
+                        if (($a['action_type'] ?? '') === 'purchase') {
+                            $sold = (int) $a['value'];
+                        }
+                    }
+                    $metaLt[(string) $d['campaign_id']] = [
+                        'spend' => (float) ($d['spend'] ?? 0), 'sales' => $sales, 'sold' => $sold,
+                        'impr' => (int) ($d['impressions'] ?? 0), 'clk' => (int) ($d['clicks'] ?? 0),
+                    ];
+                }
+                $after = $r->json('paging.next') ? $r->json('paging.cursors.after') : null;
+            } while ($after && ++$pages < 50);
+
+            foreach (DB::table('facebook_campaign_lifetime_stats')->whereIn('campaign_id', array_keys($sheetIds))->get() as $s) {
+                $m = $metaLt[(string) $s->campaign_id] ?? null;
+                if (! $m) {
+                    continue;
+                }
+                $ltChecked++;
+                $diff = [];
+                if (abs((float) $s->spend - $m['spend']) > 0.011) $diff[] = "lifetime spend: sheet {$s->spend} vs meta {$m['spend']}";
+                if (abs((float) $s->sales - $m['sales']) > 0.011) $diff[] = "lifetime sales: sheet {$s->sales} vs meta {$m['sales']}";
+                if ((int) $s->sold !== $m['sold'])               $diff[] = "lifetime sold: sheet {$s->sold} vs meta {$m['sold']}";
+                if ((int) $s->impr !== $m['impr'])               $diff[] = "lifetime impr: sheet {$s->impr} vs meta {$m['impr']}";
+                if ((int) $s->clk !== $m['clk'])                 $diff[] = "lifetime clk: sheet {$s->clk} vs meta {$m['clk']}";
+                if ($diff) {
+                    $ltBad[(string) $s->campaign_id] = $diff;
+                }
+            }
+        }
+        $this->line("Lifetime stats compared with Meta: {$ltChecked} | MISMATCHED: " . count($ltBad));
+        $shown = 0;
+        foreach ($ltBad as $id => $diff) {
+            if (++$shown > (int) $this->option('show')) {
+                break;
+            }
+            $this->line("  {$id}");
+            foreach ($diff as $d) {
+                $this->line("      {$d}");
+            }
+        }
+        foreach ($ltBad as $id => $diff) {
+            $bad[$id] = array_merge($bad[$id] ?? [], $diff);
         }
 
         if ($bad) {
