@@ -162,6 +162,7 @@
             border-radius: 7px; background: #16a34a; color: #fff; border: 1px solid #fff; font-size: 8.5px; font-weight: 700;
             line-height: 12px; text-align: center; white-space: nowrap; pointer-events: auto; cursor: default;
         }
+        #ebay1-data-table .tabulator-col .e1d-have.e1d-have-short { background: #dc2626; }
         .e1d-allcols { margin: .15rem 0 .35rem; border: 1px solid #e2e8f0; border-radius: 8px; padding: .25rem .5rem; background: #fff; }
         .e1d-allcols > summary { cursor: pointer; display: flex; justify-content: space-between; gap: 1rem; font-size: .82rem; font-weight: 600; color: #1e293b; }
         .e1d-allcols > summary .have { color: #16a34a; font-weight: 700; }
@@ -1098,11 +1099,11 @@
                     const present = c.cells - c.missing;
                     const body = c.every.map(function (col) {
                         return '<tr><td>' + esc(col.name) + '</td>'
-                            + '<td class="have" title="' + col.present + ' of ' + col.total + ' rows have a value">' + col.present.toLocaleString() + '/' + col.total.toLocaleString() + '</td>'
+                            + '<td class="' + (col.missing ? 'miss' : 'have') + '" title="' + col.present + ' of ' + col.total + ' rows have a value">' + col.present.toLocaleString() + '/' + col.total.toLocaleString() + '</td>'
                             + '<td class="miss">' + (col.missing ? col.missing.toLocaleString() : '') + '</td></tr>';
                     }).join('');
                     return '<details class="e1d-allcols"><summary><span>' + esc(catLabel(c.name)) + ' <small class="text-muted">' + c.every.length + ' columns, ' + total.toLocaleString() + ' rows</small></span>'
-                        + '<span><span class="have">' + present.toLocaleString() + '/' + c.cells.toLocaleString() + '</span> &nbsp; <span class="miss">' + c.missing.toLocaleString() + ' missing</span></span></summary>'
+                        + '<span><span class="' + (c.missing ? 'miss' : 'have') + '">' + present.toLocaleString() + '/' + c.cells.toLocaleString() + '</span> &nbsp; <span class="miss">' + c.missing.toLocaleString() + ' missing</span></span></summary>'
                         + '<table><thead><tr><th>Column</th><th class="text-end">Present / total</th><th class="text-end">Missing</th></tr></thead><tbody>' + body + '</tbody></table></details>';
                 }).join('');
             }
@@ -1268,6 +1269,7 @@
                             el.appendChild(have);
                         }
                         have.textContent = (data.length - missing) + '/' + data.length;
+                        have.classList.toggle('e1d-have-short', missing > 0);
                         have.title = (data.length - missing) + ' of ' + data.length + ' rows of this tab have a value in this column';
                     }
                     if (!missing) {
@@ -2082,6 +2084,28 @@
                     .filter(function (name) { return !q || name.toLowerCase().indexOf(q) !== -1; });
             }
 
+            // present / total for one column of the open tab, counted like the red heads: blank and "—" are not data.
+            function delPresentCount(name, pageCol) {
+                const tabRows = rows.filter(passesTab).filter(countsTowardMissing);
+                let present = 0;
+                if (pageCol) {
+                    tabRows.forEach(function (row) { if (!isMissingValue(row[pageCol.field])) present++; });
+                } else {
+                    const key = gKey(name);
+                    const group = displayedSpecGroups(tabRows).find(function (names) {
+                        return names.some(function (n) { return n === name || gKey(n) === key; });
+                    }) || [name];
+                    tabRows.forEach(function (row) {
+                        const has = group.some(function (n) {
+                            const raw = row.specifics && !Array.isArray(row.specifics) ? row.specifics[n] : undefined;
+                            return !isMissingValue(raw) || !isMissingValue(row[specKey(n)]);
+                        });
+                        if (has) present++;
+                    });
+                }
+                return { present: present, total: tabRows.length };
+            }
+
             function renderDelList() {
                 const names = allDeleteNames();
                 delPicked = new Set(Array.from(delPicked).filter(function (name) { return names.some(function (n) { return gKey(n) === gKey(name); }); }));
@@ -2104,7 +2128,7 @@
                     row.appendChild(document.createTextNode(' ' + name + ' '));
                     const pageCol = pageColumnByName(name);
                     const count = document.createElement('span');
-                    if (pageCol) {
+                    if (pageCol && (hiddenFields.has(pageCol.field) || E1_NO_MISS.has(pageCol.field))) {
                         const hidden = hiddenFields.has(pageCol.field);
                         count.className = 'e1d-cnt ' + (hidden ? 'red' : 'green');
                         count.textContent = hidden ? 'hidden' : 'page';
@@ -2112,10 +2136,11 @@
                             ? 'Hidden on this page. Tick it and press the button to show it again.'
                             : 'A column of this page. Hiding it does not change ' + E1_SITE + '.';
                     } else {
-                        const have = delTargets(name).length;
-                        count.className = 'e1d-cnt ' + (have === delTotal ? 'green' : 'red');
-                        count.textContent = have + '/' + delTotal;
-                        count.title = have + ' of ' + delTotal + ' SKUs in this category have this column';
+                        // Rows of the tab that hold a value in this column, out of all rows of the tab (blank = not present).
+                        const pc = delPresentCount(name, pageCol);
+                        count.className = 'e1d-cnt ' + (pc.present === pc.total ? 'green' : 'red');
+                        count.textContent = pc.present + '/' + pc.total;
+                        count.title = pc.present + ' of ' + pc.total + ' rows in this category have data in this column';
                     }
                     row.appendChild(count);
                     list.appendChild(row);
