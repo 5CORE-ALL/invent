@@ -2552,6 +2552,15 @@
                         <option value="red">SW L30 — Red only</option>
                     </select>
 
+                    <!-- High / Low switch: sorts the table by DIL% (off = High → Low, on = Low → High) -->
+                    <div class="form-check form-switch d-flex align-items-center gap-2 mb-0 px-2 py-1 border rounded bg-white"
+                        style="min-height: 31px;" title="Switch DIL% order: off = High → Low, on = Low → High">
+                        <input class="form-check-input ms-0 mt-0" type="checkbox" role="switch" id="dil-high-low-switch" style="cursor:pointer;">
+                        <label class="form-check-label mb-0" for="dil-high-low-switch" style="cursor:pointer; font-size: 13px; white-space: nowrap;">
+                            High / Low: <b id="dil-high-low-label">High → Low</b>
+                        </label>
+                    </div>
+
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="both">Both (SKU + Parent)</option>
@@ -14044,6 +14053,21 @@
         });
         $(updateHistLabel);
 
+        // High / Low switch: unchecked = High → Low (desc, default), checked = Low → High (asc)
+        function dilSortDir() {
+            return $('#dil-high-low-switch').is(':checked') ? 'asc' : 'desc';
+        }
+
+        $('#dil-high-low-switch').on('change', function() {
+            const asc = dilSortDir() === 'asc';
+            $('#dil-high-low-label').text(asc ? 'Low → High' : 'High → Low');
+            applyFilters();
+            // Parent Only re-sorts inside buildParentView; for SKU / Both just re-sort the table
+            if (!isPlayNavigationActive && $('#sku-parent-filter').val() !== 'parent') {
+                table.setSort([{ column: "dil_percent", dir: dilSortDir() }]);
+            }
+        });
+
         function buildParentView() {
             console.log('=== Building Parent View ===');
             console.log('fullDataset length:', fullDataset.length);
@@ -14058,7 +14082,9 @@
                 .filter(row => row.is_parent_summary === true)
                 .filter(row => passesPushHistoryFilter(row)) // hide parents whose SKUs were all pushed < 7 days ago
                 .slice()
-                .sort((a, b) => (parseFloat(b.dil_percent) || 0) - (parseFloat(a.dil_percent) || 0));
+                .sort((a, b) => dilSortDir() === 'asc'
+                    ? (parseFloat(a.dil_percent) || 0) - (parseFloat(b.dil_percent) || 0)
+                    : (parseFloat(b.dil_percent) || 0) - (parseFloat(a.dil_percent) || 0));
             const childRows = fullDataset.filter(row => row.is_parent_summary !== true);
             
             console.log('Parents found:', parentRows.length);
@@ -14182,9 +14208,9 @@
                 if (skuVal) table.addFilter("sku", "like", skuVal);
                 const parentVal = $('#parent-search').val();
                 if (parentVal) table.addFilter("parent", "like", parentVal);
-                // Default: Dil% high → low (keep child grouping when a parent is expanded)
+                // Dil% order follows the High / Low switch (default high → low); keep child grouping when a parent is expanded
                 if (expandedParent === null) {
-                    table.setSort([{ column: "dil_percent", dir: "desc" }]);
+                    table.setSort([{ column: "dil_percent", dir: dilSortDir() }]);
                 }
                 updateSummary();
             }).catch(err => {
@@ -14614,6 +14640,8 @@
             $allNpft.addClass('active');
             $('#npftFilterDropdown').html('').append($allNpft.find('.status-circle').clone()).append(' NPFT%');
             $('#sw-l30-match-filter').val('all');
+            $('#dil-high-low-switch').prop('checked', false);
+            $('#dil-high-low-label').text('High → Low');
             histSetSelected(['all']); updateHistLabel();
             applyFilters();
         });
