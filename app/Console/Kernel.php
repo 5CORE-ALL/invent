@@ -4026,7 +4026,7 @@ class Kernel extends ConsoleKernel
 
         // Newegg / AliExpress get the page's tracking number straight away (no Shopify step needed),
         // so run their own pass more often than the all-marketplace run above.
-        foreach (['newegg', 'aliexpress'] as $directSlug) {
+        foreach (['newegg', 'aliexpress', 'reverb'] as $directSlug) {
             $schedule->command('order-fulfillment:push-tracking --slug='.$directSlug.' --limit=60 --budget=240')
                 ->everyFiveMinutes()
                 ->timezone('Asia/Kolkata')

@@ -40,7 +40,12 @@ class ReverbTrackingSyncService
      *   provider?: string|null
      * }
      */
-    public function pushTrackingForOrder(ReverbOrderMetric $line): array
+    /**
+     * @param  array<string, mixed>  $known  Tracking the Order Fulfillment page already has for this order
+     *                                       (tracking, carrier). When given it is pushed as it is and the
+     *                                       order does not need a Shopify copy or Shopify tracking first.
+     */
+    public function pushTrackingForOrder(ReverbOrderMetric $line, array $known = []): array
     {
         if (empty($this->reverbApi->getAccessToken())) {
             return ['success' => false, 'message' => 'REVERB token missing.'];
@@ -61,7 +66,10 @@ class ReverbTrackingSyncService
                 ->value('shopify_order_id')
         ));
 
-        if ($shopifyOrderId === '') {
+        $knownTracking = trim((string) ($known['tracking'] ?? ''));
+        $useKnown = $knownTracking !== '';
+
+        if ($shopifyOrderId === '' && ! $useKnown) {
             return [
                 'success' => false,
                 'skipped' => true,
@@ -69,11 +77,16 @@ class ReverbTrackingSyncService
             ];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderRef, (string) ($line->sku ?? ''));
-        if (empty($shopifyFulfillment['tracking'])) {
-            $copied = $this->copyPurchasedLabelToShopify('reverb', (int) ($line->id ?? 0));
-            if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
-                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderRef, (string) ($line->sku ?? ''));
+        if ($useKnown) {
+            // Number from the Order Fulfillment page: no Shopify lookup needed.
+            $shopifyFulfillment = ['tracking' => $knownTracking, 'carrier' => trim((string) ($known['carrier'] ?? ''))];
+        } else {
+            $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderRef, (string) ($line->sku ?? ''));
+            if (empty($shopifyFulfillment['tracking'])) {
+                $copied = $this->copyPurchasedLabelToShopify('reverb', (int) ($line->id ?? 0));
+                if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
+                    $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderRef, (string) ($line->sku ?? ''));
+                }
             }
         }
 
@@ -84,6 +97,19 @@ class ReverbTrackingSyncService
         $reverbTracking = trim((string) ($reverbShipment['tracking'] ?? ''));
         $reverbProvider = trim((string) ($reverbShipment['service'] ?? ''));
         $direction = self::trackingSyncAction($shopifyTracking, $reverbTracking);
+
+        if ($direction === 'pull_from_reverb' && $useKnown) {
+            // The page's number is the one to keep; Reverb already shipped with a different one.
+            return [
+                'success' => false,
+                'skipped' => true,
+                'action' => 'reverb_has_other_tracking',
+                'message' => "Reverb already has tracking {$reverbTracking}; the page has {$knownTracking}.",
+                'shopify_tracking' => $knownTracking,
+                'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+                'reverb_tracking' => $reverbTracking,
+            ];
+        }
 
         if ($direction === 'pull_from_reverb') {
             $provider = $reverbProvider !== '' ? $reverbProvider : 'Other';

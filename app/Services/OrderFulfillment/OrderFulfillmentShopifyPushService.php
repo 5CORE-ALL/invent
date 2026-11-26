@@ -57,7 +57,7 @@ class OrderFulfillmentShopifyPushService
      * Marketplaces that get the page's tracking number directly, as soon as the page has it
      * (label bought / synced), without waiting for the Shopify order to be fulfilled.
      */
-    public const DIRECT_CHANNEL_SLUGS = ['newegg', 'aliexpress'];
+    public const DIRECT_CHANNEL_SLUGS = ['newegg', 'aliexpress', 'reverb'];
 
     public function __construct(
         protected VeeqoShopifyFulfillmentService $labels,
