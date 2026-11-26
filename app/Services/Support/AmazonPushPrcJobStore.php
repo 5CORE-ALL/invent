@@ -680,7 +680,7 @@ class AmazonPushPrcJobStore
             if (! Schema::hasTable('amazon_buybox_data')) {
                 continue;
             }
-            foreach (DB::table('amazon_buybox_data')->whereIn('sku', $chunk)->where('our_listing_price', '>', 0)->get(['sku', 'our_listing_price']) as $row) {
+            foreach (\App\Models\AmazonBuyboxData::applyFreshSitePrice(DB::table('amazon_buybox_data')->whereIn('sku', $chunk))->get(['sku', 'our_listing_price']) as $row) {
                 $key = strtoupper(trim((string) $row->sku));
                 $price = (float) ($row->our_listing_price ?? 0);
                 if ($key !== '' && $price > 0) {

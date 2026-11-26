@@ -1640,8 +1640,9 @@ final class AmazonAdsCampaignSkuMetrics
         if (SchemaMemo::hasTable('amazon_buybox_data')) {
             foreach (array_chunk($compactKeys, 400) as $chunk) {
                 $ph = implode(',', array_fill(0, count($chunk), '?'));
-                $rows = \Illuminate\Support\Facades\DB::table('amazon_buybox_data')
-                    ->where('our_listing_price', '>', 0)
+                $rows = \App\Models\AmazonBuyboxData::applyFreshSitePrice(
+                    \Illuminate\Support\Facades\DB::table('amazon_buybox_data')
+                )
                     ->whereRaw('UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), "")) IN ('.$ph.')', $chunk)
                     ->get(['sku', 'our_listing_price']);
                 foreach ($rows as $row) {
@@ -1655,8 +1656,9 @@ final class AmazonAdsCampaignSkuMetrics
             // like that were never found. Match them by the SKU text as well.
             foreach (array_chunk($spaceKeys, 400) as $chunk) {
                 $ph = implode(',', array_fill(0, count($chunk), '?'));
-                $rows = \Illuminate\Support\Facades\DB::table('amazon_buybox_data')
-                    ->where('our_listing_price', '>', 0)
+                $rows = \App\Models\AmazonBuyboxData::applyFreshSitePrice(
+                    \Illuminate\Support\Facades\DB::table('amazon_buybox_data')
+                )
                     ->whereRaw('UPPER(TRIM(sku)) IN ('.$ph.')', $chunk)
                     ->get(['sku', 'our_listing_price']);
                 foreach ($rows as $row) {

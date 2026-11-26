@@ -90,4 +90,27 @@ class AmazonBuyboxData extends Model
         'raw_payload' => 'array',
         'fetched_at' => 'datetime',
     ];
+
+    /**
+     * How long a pulled "our listing price" may override the datasheet Price.
+     *
+     * amazon:pull-buybox only runs for SKUs with INV >= 1, so rows for everything else (and rows from a
+     * failed pull) keep an old our_listing_price forever. Past this age the datasheet price (listings
+     * sync + pushed-price read-back) is the better source and must win, or the app disagrees with Amazon.
+     */
+    public const SITE_PRICE_MAX_AGE_HOURS = 48;
+
+    /**
+     * Rows whose our_listing_price is recent and came from a successful pull.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     * @return \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder
+     */
+    public static function applyFreshSitePrice($query)
+    {
+        return $query
+            ->where('our_listing_price', '>', 0)
+            ->whereNull('error_message')
+            ->where('fetched_at', '>=', now()->subHours(self::SITE_PRICE_MAX_AGE_HOURS));
+    }
 }

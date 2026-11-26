@@ -4272,7 +4272,7 @@ class CvrMasterController extends Controller
                         }
                     }
                     $sitePrice = null;
-                    foreach (DB::table('amazon_buybox_data')->where('our_listing_price', '>', 0)->get(['sku', 'our_listing_price']) as $bb) {
+                    foreach (\App\Models\AmazonBuyboxData::applyFreshSitePrice(DB::table('amazon_buybox_data'))->get(['sku', 'our_listing_price']) as $bb) {
                         $bbSku = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $bb->sku)));
                         $bbCompact = AmazonDatasheet::normalizeSkuForLookup($bbSku);
                         if (isset($siteKeys[$bbSku]) || ($bbCompact !== '' && isset($siteKeys[$bbCompact]))) {

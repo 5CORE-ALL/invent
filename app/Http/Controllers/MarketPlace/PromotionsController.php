@@ -667,7 +667,7 @@ class PromotionsController extends Controller
             return [];
         }
         $map = [];
-        foreach (DB::table('amazon_buybox_data')->where('our_listing_price', '>', 0)->get(['sku', 'our_listing_price']) as $row) {
+        foreach (\App\Models\AmazonBuyboxData::applyFreshSitePrice(DB::table('amazon_buybox_data'))->get(['sku', 'our_listing_price']) as $row) {
             $sku = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $row->sku)));
             if ($sku === '') {
                 continue;
