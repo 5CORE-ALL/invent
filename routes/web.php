@@ -8024,6 +8024,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tiktok-gmv-ads-raw-data/data', 'getData')->name('tiktok.gmv.ads.raw.data');
     });
 
+    Route::controller(\App\Http\Controllers\Campaigns\TiktokGmvMaxCampaignsController::class)->group(function () {
+        Route::get('/tiktok-gmv-max-campaigns', 'index')->name('tiktok.gmv.max.campaigns');
+        Route::get('/tiktok-gmv-max-campaigns/data', 'data')->name('tiktok.gmv.max.campaigns.data');
+    });
+
     Route::controller(TiktokVideoQualityController::class)->group(function () {
         Route::get('/tiktok-video-quality', 'index')->name('tiktok.video.quality');
         Route::get('/tiktok-video-quality/data', 'getData')->name('tiktok.video.quality.data');

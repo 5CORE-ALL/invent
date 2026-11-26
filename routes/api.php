@@ -93,6 +93,8 @@ Route::get('/l30-total-sales', [ChannelMasterController::class, 'getViewChannelD
 // GMV Max spend per product, pushed by a GitHub Actions job running outside India (shared-secret header).
 Route::post('/tiktok-gmv-max/ingest', [App\Http\Controllers\Api\TikTokGmvMaxIngestController::class, 'ingest'])
     ->middleware('throttle:30,1');
+Route::post('/tiktok-gmv-max/campaigns', [App\Http\Controllers\Api\TikTokGmvMaxIngestController::class, 'campaigns'])
+    ->middleware('throttle:30,1');
 
 // TikTok Shop Webhook
 // Route::post('/webhooks/tiktok/orders', [App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);
