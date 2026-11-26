@@ -56,8 +56,8 @@ class AutomatedListingPage
      * pages created but not yet live are neither Listed nor Missing L).
      *
      * @param  iterable<int, object>  $rows
-     * Pending / MissingL count every missing SKU ("Missing L with 0 Inv"); PendingInv only those with INV above 0
-     * ("Missing L without 0 Inv").
+     * Pending / MissingL count every missing SKU ("Missing L = 0"); PendingInv only those with INV above 0
+     * ("Missing L > 0").
      *
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv: int, MissingL: int}
      */

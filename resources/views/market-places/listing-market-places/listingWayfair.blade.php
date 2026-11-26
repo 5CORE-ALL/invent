@@ -595,8 +595,8 @@
                                 <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--listed" id="listed-badge" role="button" tabindex="0" title="Listed on Wayfair, including inv=0. Click to show listed SKUs.">Listed:<span id="listed-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--inv0" id="inv0-badge" role="button" tabindex="0" title="Child SKUs with inv=0. Click to show them.">inv=0:<span id="inv0-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-all-badge" role="button" tabindex="0" title="Click to show all Missing L SKUs (REQ + not listed), including the ones with 0 inventory. Click again to clear.">Missing L with 0 Inv:<span id="pending-all-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed) that have inventory (INV above 0). Click again to clear.">Missing L without 0 Inv:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-all-badge" role="button" tabindex="0" title="Click to show all Missing L SKUs (REQ + not listed), including the ones with 0 inventory. Click again to clear.">Missing L = 0:<span id="pending-all-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed) that have inventory (INV above 0). Click again to clear.">Missing L > 0:<span id="pending-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--pending-inv0" id="missing-l-inv0-badge" role="button" tabindex="0" title="Click to show Missing L SKUs with inv=0. Click again to clear.">Missing L = 0:<span id="pending-inv0-total">0</span></span>
                             </div>
 
@@ -1181,7 +1181,7 @@
                 applyListingFilters();
                 syncCatalogBadgeActive();
             });
-            // Missing L with 0 Inv: every missing SKU, whatever its inventory.
+            // Missing L = 0: every missing SKU, whatever its inventory.
             $(document).on('click', '#missing-l-all-badge', function () {
                 const already = $('#missing-l-all-badge').hasClass('is-active');
                 applyMissingLBadgeFilter(true);

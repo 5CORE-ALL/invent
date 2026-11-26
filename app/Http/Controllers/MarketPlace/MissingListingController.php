@@ -47,6 +47,9 @@ class MissingListingController extends Controller
 
     private const PAGE_CACHE_TTL_DAYS = 7;
 
+    /** The cached table counts as fresh for a day (plus slack); the daily scheduler run replaces it. */
+    private const PAGE_STALE_AFTER_HOURS = 26;
+
     /** @var list<string> */
     public const LISTING_MODES = ['Auto', 'CSV', 'Manual', 'Semi'];
 
@@ -663,7 +666,9 @@ class MissingListingController extends Controller
         $partial = ! empty($cached['partial']);
         if (! $partial && $computedAt !== '') {
             try {
-                if (now()->diffInSeconds(Carbon::parse($computedAt)) < 180) {
+                // The cached table is rebuilt once a day by the scheduler (missing-listing:warm-page); opening the
+                // page only rebuilds it when the cache is missing / partial or the daily run was missed.
+                if (Carbon::parse($computedAt)->greaterThan(now()->subHours(self::PAGE_STALE_AFTER_HOURS))) {
                     return;
                 }
             } catch (\Throwable $e) {

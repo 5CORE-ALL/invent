@@ -3089,11 +3089,12 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Once a day: the /missing-listing page serves this cached table all day (opening the page never recounts).
         $ist($schedule->command('missing-listing:warm-page')
-            ->everyFifteenMinutes()
+            ->dailyAt('06:00')
             ->timezone('Asia/Kolkata')
             ->name('missing-listing-warm-page')
-            ->withoutOverlapping(15)
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo($log));
 

@@ -62,7 +62,7 @@ class ListingChannelCounts
 {
     public const TOTAL_CACHE_KEY = 'listing_pages_missing_l_total_v2';
 
-    /** Missing L without 0 Inv (INV above 0 only) — the number the sidebar shows. */
+    /** Missing L > 0 (INV above 0 only) — the number the sidebar shows. */
     public const TOTAL_INV_CACHE_KEY = 'listing_pages_missing_l_inv_total_v1';
 
     /** Per-channel counts cache (REQ / NRL / Listed / Pending / PendingInv). */
@@ -528,7 +528,7 @@ class ListingChannelCounts
     }
 
     /**
-     * Missing L without 0 Inv: Missing L SKUs that have inventory (INV above 0), summed over the same
+     * Missing L > 0: Missing L SKUs that have inventory (INV above 0), summed over the same
      * channels as {@see totalMissingL()}. This is the number the sidebar badge shows.
      */
     public static function totalMissingLInv(bool $useCache = true): int
@@ -570,7 +570,7 @@ class ListingChannelCounts
      * Persist a precomputed total (e.g. after /missing-listing/data loads).
      * Kept as long as the page payload, so the sidebar never falls back to another figure.
      *
-     * @param  int|null  $totalInv  Missing L without 0 Inv total, stored together with the main total
+     * @param  int|null  $totalInv  Missing L > 0 total, stored together with the main total
      */
     public static function storeTotalMissingL(int $total, ?int $totalInv = null): void
     {

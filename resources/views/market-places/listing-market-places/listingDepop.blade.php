@@ -22,8 +22,8 @@
                 <span class="badge bg-success depop-stat p-2">REQ: <span id="depop-req">{{ number_format((int) ($counts['REQ'] ?? 0)) }}</span></span>
                 <span class="badge bg-danger depop-stat p-2">NRL: <span id="depop-nrl">{{ number_format((int) ($counts['NRL'] ?? 0)) }}</span></span>
                 <span class="badge bg-primary depop-stat p-2">Listed: <span id="depop-listed">{{ number_format((int) ($counts['Listed'] ?? 0)) }}</span></span>
-                <span class="badge bg-warning text-dark depop-stat p-2" title="Every missing SKU, including the ones with 0 inventory">Missing L with 0 Inv: <span id="depop-missing">{{ number_format((int) ($counts['Pending'] ?? 0)) }}</span></span>
-                <span class="badge bg-warning text-dark depop-stat p-2" title="Missing SKUs that have inventory (INV above 0)">Missing L without 0 Inv: <span id="depop-missing-inv">{{ number_format((int) ($counts['PendingInv'] ?? 0)) }}</span></span>
+                <span class="badge bg-warning text-dark depop-stat p-2" title="Every missing SKU, including the ones with 0 inventory">Missing L = 0: <span id="depop-missing">{{ number_format((int) ($counts['Pending'] ?? 0)) }}</span></span>
+                <span class="badge bg-warning text-dark depop-stat p-2" title="Missing SKUs that have inventory (INV above 0)">Missing L > 0: <span id="depop-missing-inv">{{ number_format((int) ($counts['PendingInv'] ?? 0)) }}</span></span>
             </div>
         </div>
 
@@ -31,8 +31,8 @@
             <div class="card-body">
                 <div id="depop-listing-toolbar" class="d-flex flex-wrap align-items-center gap-2 mb-3">
                     <input type="search" id="depop-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search SKU">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="depop-filter-missing" title="Show every missing SKU, including the ones with 0 inventory">Missing L with 0 Inv only</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="depop-filter-missing-inv" title="Show missing SKUs that have inventory (INV above 0)">Missing L without 0 Inv only</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="depop-filter-missing" title="Show every missing SKU, including the ones with 0 inventory">Missing L = 0 only</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="depop-filter-missing-inv" title="Show missing SKUs that have inventory (INV above 0)">Missing L > 0 only</button>
                     <a href="{{ route('listing.depop.template') }}" class="btn btn-sm btn-outline-primary">Download template</a>
                     <a href="{{ route('listing.depop.export') }}" class="btn btn-sm btn-outline-success">Export current sheet</a>
                     <label class="btn btn-sm btn-warning mb-0">
@@ -56,7 +56,7 @@
 document.addEventListener('DOMContentLoaded', function () {
     const csrf = '{{ csrf_token() }}';
     let table = null;
-    // '' = no filter, 'all' = Missing L with 0 Inv, 'inv' = Missing L without 0 Inv.
+    // '' = no filter, 'all' = Missing L = 0, 'inv' = Missing L > 0.
     const missingParam = new URLSearchParams(location.search).get('missing');
     let missingMode = missingParam === 'inv' ? 'inv' : (missingParam === '1' ? 'all' : '');
     function syncMissingButtons() {

@@ -151,7 +151,7 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
      */
     public static function missingLCountForSidebar(): int
     {
-        // Same number as the default badge on the Missing Listing page: Missing L without 0 Inv
+        // Same number as the default badge on the Missing Listing page: Missing L > 0
         // (sum of every listing page's Missing L SKUs that have inventory).
         // The Active Channel "Miss" sum (MISSING_L_CACHE_KEY) is a different measure and is not used here.
         try {

@@ -215,12 +215,12 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat ml-mode-badge" id="stat-missing-listing" data-metric="missing_l" title="Missing L with 0 Inv: every REQ SKU not listed, including the ones with 0 inventory. Same count as the Missing L with 0 Inv badge on each listing page." style="background-color:#a71d2a !important;">
-                        Missing L with 0 Inv: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
+                    <span class="badge bg-danger badge-ml-stat ml-mode-badge" id="stat-missing-listing" data-metric="missing_l" title="Missing L = 0: every REQ SKU not listed, including the ones with 0 inventory. Same count as the Missing L = 0 badge on each listing page." style="background-color:#a71d2a !important;">
+                        Missing L = 0: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
                         <i class="fas fa-circle ml-overall-chart-dot ms-1" title="View overall history" style="cursor:pointer;color:#fff;font-size:10px;vertical-align:middle;"></i>
                     </span>
-                    <span class="badge bg-danger badge-ml-stat ml-mode-badge is-active" id="stat-missing-listing-inv" data-metric="missing_l_inv" title="Missing L without 0 Inv: REQ SKUs not listed that have inventory (INV above 0). Same count as the sidebar and the Missing L without 0 Inv badge on each listing page." style="background-color:#a71d2a !important;">
-                        Missing L without 0 Inv: <span id="total-missing-listing-inv">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingLInv(true)) }}</span>
+                    <span class="badge bg-danger badge-ml-stat ml-mode-badge is-active" id="stat-missing-listing-inv" data-metric="missing_l_inv" title="Missing L > 0: REQ SKUs not listed that have inventory (INV above 0). Same count as the sidebar and the Missing L > 0 badge on each listing page." style="background-color:#a71d2a !important;">
+                        Missing L > 0: <span id="total-missing-listing-inv">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingLInv(true)) }}</span>
                     </span>
                     @unless($c2c)
                         <button type="button" class="btn btn-sm btn-primary" id="ml-refresh-all-btn" title="Recount Missing L for every marketplace from the data in the app, the same numbers each listing page shows. Nothing is fetched from the marketplaces.">
@@ -364,14 +364,14 @@
     }
 
     // One Missing Listing column per count, both read straight from the channel's listing-page numbers:
-    //   M with 0 Inv    -> missing_listing      (every missing SKU, opens ?missing=1)
-    //   M without 0 Inv -> missing_listing_inv  (missing SKUs with INV above 0, opens ?missing=inv)
+    //   M = 0    -> missing_listing      (every missing SKU, opens ?missing=1)
+    //   M > 0 -> missing_listing_inv  (missing SKUs with INV above 0, opens ?missing=inv)
     function mlMissingColumn(title, field, linkParam, withChart, tooltip, filterProps) {
         const num = function(row) { return Number((row && row[field]) || 0); };
         return Object.assign({
             title: title,
             field: field,
-            width: 150,
+            minWidth: 80,
             hozAlign: 'center',
             sorter: 'number',
             headerTooltip: tooltip,
@@ -857,7 +857,7 @@
             dataProcessed: function() {
                 paintColumnHeadCounts(table ? table.getData() : []);
             },
-            layout: "fitDataStretch",
+            layout: "fitColumns",
             pagination: true,
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, 200, 500],
@@ -868,7 +868,7 @@
                     title: "Image",
                     field: "image",
                     headerSort: false,
-                    width: 90,
+                    width: 64,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const logo = cell.getValue();
@@ -885,7 +885,8 @@
                 Object.assign({
                     title: "Channel",
                     field: "channel",
-                    minWidth: 220,
+                    minWidth: 200,
+                    widthGrow: 3,
                     formatter: function(cell) {
                         const name = (cell.getValue() || '').trim();
                         const row = cell.getRow().getData();
@@ -911,7 +912,7 @@
                 Object.assign({
                     title: "Mode",
                     field: "listing_mode",
-                    width: 130,
+                    minWidth: 90,
                     hozAlign: "center",
                     headerSort: false,
                     headerTooltip: "How this channel listing is updated: Auto, CSV, Manual, or Semi",
@@ -936,7 +937,7 @@
                 Object.assign({
                     title: "Type",
                     field: "type",
-                    width: 120,
+                    minWidth: 80,
                     hozAlign: "center",
                     headerSort: false,
                     headerTooltip: "B2B, B2C, or C2C",
@@ -957,7 +958,7 @@
                     // Same setting as the Variation/Single column on Active Channel Master (/all-marketplace-master).
                     title: "Variation/Single",
                     field: "variation_single",
-                    width: 140,
+                    minWidth: 100,
                     hozAlign: "center",
                     headerSort: true,
                     headerTooltip: "Does this channel list products as Variation or Single? Shared with the Active Channel Master column.",
@@ -975,7 +976,7 @@
                 Object.assign({
                     title: "Data Source",
                     field: "data_source",
-                    width: 140,
+                    minWidth: 80,
                     hozAlign: "center",
                     headerTooltip: "API = live listing-page counts; CSV = uploaded current listings vs CP Master; Sheet = From Sheet; Not connected = marketplace API credentials missing",
                     formatter: function(cell) {
@@ -998,7 +999,7 @@
                 Object.assign({
                     title: "SKU",
                     field: "sku",
-                    width: 90,
+                    minWidth: 60,
                     hozAlign: "center",
                     sorter: "number",
                     headerTooltip: "Total non-PARENT SKUs from CP Master",
@@ -1008,65 +1009,9 @@
                     },
                 }, shortFilter()),
                 Object.assign({
-                    title: "0 Inv",
-                    field: "zero_inv",
-                    width: 90,
-                    hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "SKUs with 0 / missing Shopify INV from CP Master",
-                    formatter: function(cell) {
-                        const v = Number(cell.getValue() || 0);
-                        return `<span style="color:#dc3545;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
-                    },
-                }, shortFilter()),
-                Object.assign({
-                    title: "REQ",
-                    field: "req",
-                    width: 100,
-                    hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "All Active SKUs (in stock or not) that are required (not NRL) — same as the REQ badge on the listing page",
-                    formatter: function(cell) {
-                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
-                        const v = Number(cell.getValue() || 0);
-                        return `<span style="color:#198754;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
-                    },
-                    bottomCalc: function(values, data) {
-                        return (data || []).reduce((sum, row) => {
-                            if (isSheetRow(row)) return sum;
-                            return sum + Number(row.req || 0);
-                        }, 0);
-                    },
-                    bottomCalcFormatter: function(cell) {
-                        return Number(cell.getValue() || 0).toLocaleString('en-US');
-                    },
-                }, shortFilter()),
-                Object.assign({
-                    title: "NRL",
-                    field: "nrl",
-                    width: 100,
-                    hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "SKUs marked NRL / Not Required (deducted from Missing Listing) — same as the listing page",
-                    formatter: function(cell) {
-                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
-                        const v = Number(cell.getValue() || 0);
-                        return `<span style="color:#dc3545;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
-                    },
-                    bottomCalc: function(values, data) {
-                        return (data || []).reduce((sum, row) => {
-                            if (isSheetRow(row)) return sum;
-                            return sum + Number(row.nrl || 0);
-                        }, 0);
-                    },
-                    bottomCalcFormatter: function(cell) {
-                        return Number(cell.getValue() || 0).toLocaleString('en-US');
-                    },
-                }, shortFilter()),
-                Object.assign({
                     title: "Listed",
                     field: "listed",
-                    width: 110,
+                    minWidth: 70,
                     hozAlign: "center",
                     sorter: "number",
                     headerTooltip: "SKUs that have a marketplace listing id — same as the Listed badge on the listing page",
@@ -1085,10 +1030,10 @@
                         return Number(cell.getValue() || 0).toLocaleString('en-US');
                     },
                 }, shortFilter()),
-                mlMissingColumn('M with 0 Inv', 'missing_listing', '1', true,
-                    'Missing L with 0 Inv: REQ SKUs not listed on this marketplace, including the ones with 0 inventory. Same number as the Missing L with 0 Inv badge on the listing page.', shortFilter()),
-                mlMissingColumn('M without 0 Inv', 'missing_listing_inv', 'inv', false,
-                    'Missing L without 0 Inv: REQ SKUs not listed on this marketplace that have inventory (INV above 0). Same number as the Missing L without 0 Inv badge on the listing page.', shortFilter()),
+                mlMissingColumn('M = 0', 'missing_listing', '1', true,
+                    'Missing L = 0: REQ SKUs not listed on this marketplace, including the ones with 0 inventory. Same number as the Missing L = 0 badge on the listing page.', shortFilter()),
+                mlMissingColumn('M > 0', 'missing_listing_inv', 'inv', false,
+                    'Missing L > 0: REQ SKUs not listed on this marketplace that have inventory (INV above 0). Same number as the Missing L > 0 badge on the listing page.', shortFilter()),
                 {
                     title: "Inactive Listing",
                     headerHozAlign: "center",
@@ -1097,7 +1042,7 @@
                         Object.assign({
                             title: "Parent",
                             field: "inactive_parent",
-                            width: 100,
+                            minWidth: 70,
                             hozAlign: "center",
                             sorter: "number",
                             headerTooltip: "Inactive parent listings on the seller platform, excluding 0 Inv SKUs",
@@ -1114,7 +1059,7 @@
                         Object.assign({
                             title: "Child",
                             field: "inactive_child",
-                            width: 100,
+                            minWidth: 70,
                             hozAlign: "center",
                             sorter: "number",
                             headerTooltip: "Inactive child / variation SKUs with inventory. 0 Inv is excluded. If the channel has no parent listings, this is the full in-stock seller-platform inactive count.",
@@ -1133,8 +1078,8 @@
                 Object.assign({
                     title: "Seller Portal",
                     field: "seller_portal",
-                    width: 90,
-                    maxWidth: 90,
+                    width: 80,
+                    maxWidth: 80,
                     hozAlign: "center",
                     editor: "input",
                     headerSort: false,
@@ -1301,6 +1246,23 @@
                 showToast(msg, 'error');
             });
         });
+
+        // Auto refresh: re-read the cached table every 10 minutes while the tab is open (cheap, served from the
+        // daily cache) and when the tab is shown again after a while, so the numbers stay current without a reload.
+        (function() {
+            const EVERY_MS = 10 * 60 * 1000;
+            let last = Date.now();
+            function reload() {
+                last = Date.now();
+                if (table) table.replaceData();
+            }
+            setInterval(function() {
+                if (!document.hidden) reload();
+            }, EVERY_MS);
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden && Date.now() - last > EVERY_MS) reload();
+            });
+        })();
 
         $('#missing-listing-search').on('input', function() {
             const q = $(this).val().trim().toLowerCase();

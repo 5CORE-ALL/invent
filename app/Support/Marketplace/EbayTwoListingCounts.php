@@ -25,7 +25,7 @@ class EbayTwoListingCounts
         $productMasters = ListingCountsEngine::productMasters();
         $skus = ListingCountsEngine::countUniverseSkus($requirePositiveInv);
 
-        // INV is always loaded: "Missing L without 0 Inv" needs it even when 0-inventory SKUs are counted.
+        // INV is always loaded: "Missing L > 0" needs it even when 0-inventory SKUs are counted.
         $shopifyData = ListingCountsEngine::requestShopifyMap();
         $nrValues = ListingCountsEngine::loadNrValues(EbayTwoDataView::class, $skus);
         if (! $requirePositiveInv) {

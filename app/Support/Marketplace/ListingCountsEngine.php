@@ -104,7 +104,7 @@ class ListingCountsEngine
 
     /**
      * With $inStockOnly only SKUs with INV above 0 are counted, and the result carries the in-stock SKU total
-     * under the key '__stock' (Missing L without 0 Inv = in-stock SKUs - in-stock SKUs marked Listed).
+     * under the key '__stock' (Missing L > 0 = in-stock SKUs - in-stock SKUs marked Listed).
      *
      * @return array<string, int>
      */
@@ -336,7 +336,7 @@ class ListingCountsEngine
     }
 
     /**
-     * Whether the SKU has inventory (Shopify INV above 0). "Missing L without 0 Inv" counts only these.
+     * Whether the SKU has inventory (Shopify INV above 0). "Missing L > 0" counts only these.
      */
     public static function skuInStock(Collection $shopifyData, string $sku, string $original = ''): bool
     {

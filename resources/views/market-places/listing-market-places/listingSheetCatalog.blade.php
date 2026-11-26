@@ -40,8 +40,8 @@
                 <span class="badge bg-success sheet-stat p-2">REQ: <span id="sheet-req">{{ number_format((int) ($counts['REQ'] ?? 0)) }}</span></span>
                 <span class="badge bg-danger sheet-stat p-2">NRL: <span id="sheet-nrl">{{ number_format((int) ($counts['NRL'] ?? 0)) }}</span></span>
                 <span class="badge bg-primary sheet-stat p-2">Listed: <span id="sheet-listed">{{ number_format((int) ($counts['Listed'] ?? 0)) }}</span></span>
-                <span class="badge bg-warning text-dark sheet-stat p-2" title="Every missing SKU, including the ones with 0 inventory">Missing L with 0 Inv: <span id="sheet-missing">{{ number_format((int) ($counts['Pending'] ?? 0)) }}</span></span>
-                <span class="badge bg-warning text-dark sheet-stat p-2" title="Missing SKUs that have inventory (INV above 0)">Missing L without 0 Inv: <span id="sheet-missing-inv">{{ number_format((int) ($counts['PendingInv'] ?? 0)) }}</span></span>
+                <span class="badge bg-warning text-dark sheet-stat p-2" title="Every missing SKU, including the ones with 0 inventory">Missing L = 0: <span id="sheet-missing">{{ number_format((int) ($counts['Pending'] ?? 0)) }}</span></span>
+                <span class="badge bg-warning text-dark sheet-stat p-2" title="Missing SKUs that have inventory (INV above 0)">Missing L > 0: <span id="sheet-missing-inv">{{ number_format((int) ($counts['PendingInv'] ?? 0)) }}</span></span>
             </div>
         </div>
 
@@ -49,8 +49,8 @@
             <div class="card-body">
                 <div id="sheet-listing-toolbar" class="d-flex flex-wrap align-items-center gap-2 mb-3">
                     <input type="search" id="sheet-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search SKU">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="sheet-filter-missing" title="Show every missing SKU, including the ones with 0 inventory">Missing L with 0 Inv only</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="sheet-filter-missing-inv" title="Show missing SKUs that have inventory (INV above 0)">Missing L without 0 Inv only</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="sheet-filter-missing" title="Show every missing SKU, including the ones with 0 inventory">Missing L = 0 only</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="sheet-filter-missing-inv" title="Show missing SKUs that have inventory (INV above 0)">Missing L > 0 only</button>
                     <a href="{{ url('listing_'.$channel.'/template') }}" class="btn btn-sm btn-outline-primary">Download template</a>
                     <a href="{{ url('listing_'.$channel.'/export') }}" class="btn btn-sm btn-outline-success">Export current sheet</a>
                     <label class="btn btn-sm btn-warning mb-0">
@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const dataUrl = @json(url('listing_'.$channel.'/view-data'));
     const saveUrl = @json(url('listing_'.$channel.'/save-status'));
     let table = null;
-    // '' = no filter, 'all' = Missing L with 0 Inv, 'inv' = Missing L without 0 Inv.
+    // '' = no filter, 'all' = Missing L = 0, 'inv' = Missing L > 0.
     const missingParam = new URLSearchParams(location.search).get('missing');
     let missingMode = missingParam === 'inv' ? 'inv' : (missingParam === '1' ? 'all' : '');
     function syncMissingButtons() {

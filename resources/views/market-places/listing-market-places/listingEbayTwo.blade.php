@@ -526,8 +526,8 @@
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed), including the ones with 0 inventory. Click again to clear.">Missing L with 0 Inv:<span id="pending-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-inv-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed) that have inventory (INV above 0). Click again to clear.">Missing L without 0 Inv:<span id="pending-inv-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed), including the ones with 0 inventory. Click again to clear.">Missing L = 0:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-inv-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed) that have inventory (INV above 0). Click again to clear.">Missing L > 0:<span id="pending-inv-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
 
@@ -1077,7 +1077,7 @@
             $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
 
             // Missing L badges → filter table to unlisted REQ SKUs (toggle).
-            //   'all' = Missing L with 0 Inv (every missing SKU), 'inv' = Missing L without 0 Inv (INV above 0 only).
+            //   'all' = Missing L = 0 (every missing SKU), 'inv' = Missing L > 0 (INV above 0 only).
             let missingLFilterActive = '';
             function applyMissingLBadgeFilter(mode) {
                 missingLFilterActive = missingLFilterActive === mode ? '' : mode;
