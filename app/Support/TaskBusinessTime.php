@@ -49,6 +49,20 @@ class TaskBusinessTime
         return Carbon::today(self::INCENTIVE_TIMEZONE);
     }
 
+    /**
+     * "Today" used ONLY for the overdue rule - California calendar date by default
+     * (config tasks.overdue_timezone), independent of the Task Manager business timezone.
+     */
+    public static function overdueToday(): Carbon
+    {
+        return Carbon::today(static::overdueTz());
+    }
+
+    public static function overdueTz(): string
+    {
+        return (string) (static::configValue('tasks.overdue_timezone') ?: self::INCENTIVE_TIMEZONE);
+    }
+
     public static function todayStart(): Carbon
     {
         return static::today()->startOfDay();
@@ -294,7 +308,7 @@ class TaskBusinessTime
         bool $isAutomateTask = false,
         mixed $group = null
     ): bool {
-        $today = static::today()->toDateString();
+        $today = static::overdueToday()->toDateString();
         if (static::isLongOverdueGroup($group)) {
             $anchorRaw = ($isAutomateTask && static::isWeeklyOrMonthly((string) $scheduleType) && $createdAt)
                 ? $createdAt

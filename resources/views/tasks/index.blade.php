@@ -3408,6 +3408,8 @@
             /** Set from session (e.g. Task Summary dot); OR filter assignor/assignee; cleared when assignee dropdown changes away from this name */
             var taskManagerSessionUserFocus = @json(trim((string) ($selectedUserName ?? '')));
             var taskBusinessToday = @json($taskBusinessToday ?? '');
+            // Overdue uses the California calendar date (not the business timezone's date).
+            var taskOverdueToday = @json($taskOverdueToday ?? ($taskBusinessToday ?? ''));
             /** Groups (Sourcing / Purchase) that get a longer overdue window, and how many days */
             var taskLongOverdueGroups = @json(\App\Support\TaskBusinessTime::longOverdueGroups());
             var taskLongOverdueDays = {{ (int) \App\Support\TaskBusinessTime::longOverdueDays() }};
@@ -3765,7 +3767,7 @@
                 if (!rowData || rowData.status === 'Archived') {
                     return false;
                 }
-                if (!taskBusinessToday) {
+                if (!taskOverdueToday) {
                     return false;
                 }
                 // Sourcing / Purchase group: overdue 15 days after TID (created date for weekly/monthly auto).
@@ -3777,7 +3779,7 @@
                     if (!longAnchor || !/^\d{4}-\d{2}-\d{2}$/.test(longAnchor)) {
                         return false;
                     }
-                    return taskBusinessToday >= addDaysYmd(longAnchor, taskLongOverdueDays);
+                    return taskOverdueToday >= addDaysYmd(longAnchor, taskLongOverdueDays);
                 }
 
                 // Weekly/monthly automated tasks: overdue 6 days after created_at.
@@ -3786,7 +3788,7 @@
                     if (!created) {
                         return false;
                     }
-                    return taskBusinessToday >= addDaysYmd(created, 6);
+                    return taskOverdueToday >= addDaysYmd(created, 6);
                 }
                 var bd = rowData.tid_business_date;
                 if (!bd) {
@@ -3795,9 +3797,9 @@
                 // Daily automated tasks: overdue the day after TID. Everything else: TID + 1 day grace.
                 var isAutoRow = rowData.is_automate_task == 1 || rowData.is_automate_task === true || rowData.is_automate_task === '1';
                 if (isAutoRow && String(rowData.schedule_type || '').toLowerCase() === 'daily') {
-                    return taskBusinessToday > bd;
+                    return taskOverdueToday > bd;
                 }
-                return taskBusinessToday > addDaysYmd(bd, 1);
+                return taskOverdueToday > addDaysYmd(bd, 1);
             }
 
             // Missed applies to every task, not only rows already stamped status "Missed".

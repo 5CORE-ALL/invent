@@ -48,6 +48,12 @@ return [
     'weekly_monthly_overdue_days' => (int) env('TASK_WEEKLY_MONTHLY_OVERDUE_DAYS', 6),
 
     /**
+     * Timezone whose calendar date is "today" for the overdue rule (California by default).
+     * A task is only overdue once this date has moved past its due day.
+     */
+    'overdue_timezone' => env('TASK_OVERDUE_TIMEZONE', 'America/Los_Angeles'),
+
+    /**
      * Task groups that get a longer overdue window (default: Sourcing and Purchase, 15 days).
      * A task in one of these groups becomes overdue on TID + days (created_at + days for
      * weekly/monthly automated tasks). Group names are matched case-insensitively, exactly.

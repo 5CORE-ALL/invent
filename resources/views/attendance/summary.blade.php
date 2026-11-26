@@ -25,7 +25,7 @@
     .es-ss { position: relative; min-width: 168px; }
     select.es-ss-native,
     .es-toolbar select.es-ss-native.form-select {
-        display: none !important;
+        display: none !important;`
     }
     .es-ss-btn {
         min-height: 34px; font-size: .85rem; width: 168px; max-width: 200px;

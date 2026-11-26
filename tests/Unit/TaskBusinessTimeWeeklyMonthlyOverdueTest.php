@@ -22,7 +22,7 @@ class TaskBusinessTimeWeeklyMonthlyOverdueTest extends TestCase
 
     public function test_daily_automated_is_overdue_the_day_after_tid_others_a_day_later(): void
     {
-        $tz = TaskBusinessTime::tz();
+        $tz = TaskBusinessTime::overdueTz();
         $start = '2026-09-01 10:00:00';
 
         try {
@@ -46,9 +46,28 @@ class TaskBusinessTimeWeeklyMonthlyOverdueTest extends TestCase
         }
     }
 
+    public function test_overdue_uses_california_date_not_business_timezone(): void
+    {
+        $start = '2026-11-26 12:00:00';
+
+        try {
+            // 4:58 AM IST on 27 Nov = 3:28 PM on 26 Nov in California: TID 26 daily task is NOT overdue yet.
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-11-27 04:58:00', 'Asia/Kolkata'));
+            $this->assertSame('2026-11-26', TaskBusinessTime::overdueToday()->toDateString());
+            $this->assertFalse(TaskBusinessTime::isTaskOverdue('Todo', $start, $start, 'daily', true));
+            $this->assertFalse(TaskBusinessTime::isDoneUncheckedOverdue('Done', $start, $start, 'daily', true));
+
+            // California midnight passes: now overdue.
+            \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-11-27 00:30:00', 'America/Los_Angeles'));
+            $this->assertTrue(TaskBusinessTime::isTaskOverdue('Todo', $start, $start, 'daily', true));
+        } finally {
+            \Carbon\Carbon::setTestNow();
+        }
+    }
+
     public function test_done_task_not_deleted_by_assignor_becomes_overdue_with_same_timing(): void
     {
-        $tz = TaskBusinessTime::tz();
+        $tz = TaskBusinessTime::overdueTz();
         $start = '2026-09-01 10:00:00';
 
         try {
@@ -84,7 +103,7 @@ class TaskBusinessTimeWeeklyMonthlyOverdueTest extends TestCase
 
     public function test_sourcing_and_purchase_groups_get_fifteen_days(): void
     {
-        $tz = TaskBusinessTime::tz();
+        $tz = TaskBusinessTime::overdueTz();
         $start = '2026-09-01 10:00:00';
 
         $this->assertSame(15, TaskBusinessTime::longOverdueDays());

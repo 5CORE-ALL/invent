@@ -36,26 +36,27 @@ final class UserOverdueNudge
         }
 
         $minOverdueDays = max(0, $minOverdueDays);
-        $cacheKey = 'overdue_nudge_count_v5_'.$user->id.'_'.$minOverdueDays.'_'.TaskBusinessTime::today()->toDateString();
+        $cacheKey = 'overdue_nudge_count_v5_'.$user->id.'_'.$minOverdueDays.'_'.TaskBusinessTime::overdueToday()->toDateString();
 
         return (int) Cache::remember($cacheKey, now()->addMinutes(2), function () use ($email, $minOverdueDays) {
             TaskBusinessTime::applyDatabaseSession();
             $days = (int) TaskBusinessTime::weeklyMonthlyOverdueDays();
             $longDays = (int) TaskBusinessTime::longOverdueDays();
             $longGroups = TaskBusinessTime::longOverdueGroupsSql();
+            $today = "'".TaskBusinessTime::overdueToday()->toDateString()."'";
             // Sourcing / Purchase group: TID + 15 days (created_at + 15 for weekly/monthly automated).
             $longDue = "DATE_ADD(DATE(CASE WHEN COALESCE(is_automate_task, 0) = 1 AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly') THEN COALESCE(created_at, start_date) ELSE start_date END), INTERVAL {$longDays} DAY)";
             $long = $minOverdueDays > 0
-                ? "{$longDue} < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)"
-                : "{$longDue} <= CURDATE()";
+                ? "{$longDue} < DATE_SUB({$today}, INTERVAL {$minOverdueDays} DAY)"
+                : "{$longDue} <= {$today}";
             if ($minOverdueDays > 0) {
-                $weekly = "DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$days} DAY) < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)";
-                $regular = "DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)";
-                $daily = "DATE(start_date) < DATE_SUB(CURDATE(), INTERVAL {$minOverdueDays} DAY)";
+                $weekly = "DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$days} DAY) < DATE_SUB({$today}, INTERVAL {$minOverdueDays} DAY)";
+                $regular = "DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < DATE_SUB({$today}, INTERVAL {$minOverdueDays} DAY)";
+                $daily = "DATE(start_date) < DATE_SUB({$today}, INTERVAL {$minOverdueDays} DAY)";
             } else {
-                $weekly = "DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$days} DAY) <= CURDATE()";
-                $regular = "DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < CURDATE()";
-                $daily = "DATE(start_date) < CURDATE()";
+                $weekly = "DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$days} DAY) <= {$today}";
+                $regular = "DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < {$today}";
+                $daily = "DATE(start_date) < {$today}";
             }
 
             $overdueCase = "(CASE

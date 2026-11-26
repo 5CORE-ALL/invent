@@ -307,6 +307,7 @@ class TaskController extends Controller
             'taskBusinessTzShort' => TaskBusinessTime::shortLabel(),
             'taskBusinessTzLabel' => TaskBusinessTime::label(),
             'taskBusinessToday' => TaskBusinessTime::today()->toDateString(),
+            'taskOverdueToday' => TaskBusinessTime::overdueToday()->toDateString(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
             ->header('Pragma', 'no-cache');
     }
@@ -424,6 +425,8 @@ class TaskController extends Controller
         $weeklyMonthlyDays = (int) TaskBusinessTime::weeklyMonthlyOverdueDays();
         $longDays = (int) TaskBusinessTime::longOverdueDays();
         $longGroups = TaskBusinessTime::longOverdueGroupsSql();
+        // California calendar date (not the DB session / business timezone).
+        $today = "'".TaskBusinessTime::overdueToday()->toDateString()."'";
 
         return $query->whereNotNull('start_date')
             ->whereRaw(
@@ -436,14 +439,14 @@ class TaskController extends Controller
                             THEN COALESCE(created_at, start_date)
                             ELSE start_date
                         END),
-                        INTERVAL {$longDays} DAY) <= CURDATE()
+                        INTERVAL {$longDays} DAY) <= {$today}
                     WHEN COALESCE(is_automate_task, 0) = 1
                          AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly')
-                    THEN DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$weeklyMonthlyDays} DAY) <= CURDATE()
+                    THEN DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$weeklyMonthlyDays} DAY) <= {$today}
                     WHEN COALESCE(is_automate_task, 0) = 1
                          AND LOWER(COALESCE(schedule_type, '')) = 'daily'
-                    THEN DATE(start_date) < CURDATE()
-                    ELSE DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < CURDATE()
+                    THEN DATE(start_date) < {$today}
+                    ELSE DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < {$today}
                 END)"
             );
     }
