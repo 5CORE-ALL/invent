@@ -9112,7 +9112,7 @@ class CvrMasterController extends Controller
         return $out;
     }
 
-    /** "+$ SPRICE" amount added to the siblings' price (0 when empty / invalid / negative). */
+    /** "+$ SPRICE" amount added to the siblings' price (0 when empty / invalid; negative values lower the siblings' price). */
     private function siblingsAddAmount(Request $request): float
     {
         $add = $request->input('siblings_add');
@@ -9120,7 +9120,7 @@ class CvrMasterController extends Controller
             return 0.0;
         }
 
-        return max(0.0, min(10000.0, round((float) $add, 2)));
+        return max(-10000.0, min(10000.0, round((float) $add, 2)));
     }
 
     private function finishSuggestedSaveWithSiblings(Request $request, string $fullSku, string $marketplace, array $payload)
@@ -9143,7 +9143,7 @@ class CvrMasterController extends Controller
         // "+$ SPRICE" (siblings_add): siblings get this SPRICE + that amount (e.g. 7.44 + 0.01 = 7.45), never the same price.
         if ($applySiblings && $sprice > 0) {
             $siblingPayload = $payload;
-            $siblingPayload['sprice'] = round($sprice + $this->siblingsAddAmount($request), 2);
+            $siblingPayload['sprice'] = max(0.01, round($sprice + $this->siblingsAddAmount($request), 2)); // negative "+$" lowers it, never below $0.01
             foreach ($this->resolveSiblingSkus($fullSku) as $sibSku) {
                 if (strtoupper(trim((string) $sibSku)) === strtoupper(trim($fullSku))) {
                     continue;

@@ -3805,10 +3805,14 @@
             siblingsSaveTimer = setTimeout(saveSiblingsSettingsNow, 300);
         });
 
-        /** "+$ SPRICE" box: the amount ADDED to the siblings' price (7.44 + 0.01 → siblings get 7.45). 0 when empty / invalid. */
+        /** "+$ SPRICE" box: the amount ADDED to the siblings' price (7.44 + 0.01 → siblings get 7.45; -1 → 6.44). Negative allowed. 0 when empty / invalid. */
         function siblingsAddAmount() {
             const v = parseFloat(String($('#modal-sprice-bump-input').val() || '').replace(/[$,\s]/g, '').replace(',', '.'));
-            return (isFinite(v) && v > 0) ? +v.toFixed(2) : 0;
+            return isFinite(v) ? +Math.max(-10000, Math.min(10000, v)).toFixed(2) : 0;
+        }
+        /** A sibling's price = this SKU's price + the +$ amount (never below $0.01). */
+        function siblingPriceWithAdd(price, add) {
+            return Math.max(0.01, +((parseFloat(price) || 0) + (add || 0)).toFixed(2));
         }
 
         function siblingsApplyPayload(price) {
@@ -3897,7 +3901,7 @@
                 const preview = modalSiblingSkus.slice(0, 3).join(', ')
                     + (n > 3 ? (' +' + (n - 3) + ' more') : '');
                 const add = siblingsAddAmount();
-                return ' (+' + n + ' siblings: ' + preview + (add > 0 ? (', each +$' + add.toFixed(2)) : '') + ')';
+                return ' (+' + n + ' siblings: ' + preview + (add !== 0 ? (', each ' + (add > 0 ? '+' : '−') + '$' + Math.abs(add).toFixed(2)) : '') + ')';
             }
             return ' (+ siblings)';
         }
@@ -10919,7 +10923,7 @@
                 : targets.map(function(t) { return { mp: t.marketplace, price: t.price }; });
             const sibPrices = sibBasePrices
                 .filter(function(p) { return p.mp && chsaveIsSupported(p.mp); })
-                .map(function(p) { return { mp: p.mp, price: +(p.price + sibAdd).toFixed(2) }; });
+                .map(function(p) { return { mp: p.mp, price: siblingPriceWithAdd(p.price, sibAdd) }; });
             const sibSaveDfd = sibSkus.length
                 ? chpushSaveToSiblings(sibSkus, sibPrices)
                 : $.Deferred().resolve({ saved: 0, failed: 0, total: 0 }).promise();
@@ -10995,7 +10999,7 @@
                     let sibNote = '';
                     let sibBad = false;
                     if (sibSkus.length) {
-                        sibNote = ' | Siblings (' + sibSkus.length + (sibAdd > 0 ? (', +$' + sibAdd.toFixed(2) + ' each') : '') + '): SPRICE saved '
+                        sibNote = ' | Siblings (' + sibSkus.length + (sibAdd !== 0 ? (', ' + (sibAdd > 0 ? '+' : '−') + '$' + Math.abs(sibAdd).toFixed(2) + ' each') : '') + '): SPRICE saved '
                             + (sibSaveRes.total - sibSaveRes.failed) + '/' + sibSaveRes.total
                             + (sibPushTot ? (', pushed ' + sibPushOk + '/' + sibPushTot) : '')
                             + (sibErrors.length ? ('. Failed: ' + sibErrors.slice(0, 4).join(' | ') + (sibErrors.length > 4 ? (' … +' + (sibErrors.length - 4) + ' more (see Push Pending)') : '')) : '');
@@ -11026,7 +11030,7 @@
                 const sibPushes = sibSkus.map(function(sibSku) {
                     const sibTargets = jobTargets.map(function(t) {
                         return {
-                            sku: sibSku, marketplace: t.marketplace, price: +(t.priceTyped + sibAdd).toFixed(2),
+                            sku: sibSku, marketplace: t.marketplace, price: siblingPriceWithAdd(t.priceTyped, sibAdd),
                             channel: t.channel, $tr: $(), $btn: $('<button type="button"></button>'), applySiblings: 0
                         };
                     });
