@@ -676,7 +676,15 @@ class OverallAmazonController extends Controller
                     // SPRICE_PUSHED_VALUE / SPRICE_PUSHED_AT belong to SPRICE_STATUS (S PRC push). PUSH_PRC_STATUS is a separate,
                     // often older field, so it must not decide whether that push succeeded.
                     $spriceSt = strtolower((string) ($raw['SPRICE_STATUS'] ?? ''));
-                    if ($lastPushedValue > 0 && in_array($spriceSt, ['pushed', 'applied'], true)
+                    // SPRICE_STATUS can read 'saved' (S PRC edited after the push) or be blank. The push history only gets an
+                    // entry when Amazon accepted the push, so a newest entry equal to SPRICE_PUSHED_VALUE proves it succeeded.
+                    $lastHist = (isset($raw['SPRICE_PUSH_HISTORY'][0]) && is_array($raw['SPRICE_PUSH_HISTORY'][0]))
+                        ? $raw['SPRICE_PUSH_HISTORY'][0]
+                        : null;
+                    $lastPushOk = in_array($spriceSt, ['pushed', 'applied'], true)
+                        || ($spriceSt !== 'error' && $lastHist !== null && isset($lastHist['price'])
+                            && is_numeric($lastHist['price']) && abs((float) $lastHist['price'] - $lastPushedValue) < 0.009);
+                    if ($lastPushedValue > 0 && $lastPushOk
                         && ($pushedSale === null || abs($lastPushedValue - $pushedSale) > 0.009)) {
                         $pushedSale = $lastPushedValue;
                     }
