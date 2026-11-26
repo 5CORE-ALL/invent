@@ -206,10 +206,10 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
 
             $payload = request()->boolean('refresh')
                 ? null
-                : \Illuminate\Support\Facades\Cache::get('slo_loss_summary_v1');
+                :                 \Illuminate\Support\Facades\Cache::get('slo_loss_summary_v2');
             if (! is_array($payload)) {
                 $payload = $this->buildLossSummary();
-                \Illuminate\Support\Facades\Cache::put('slo_loss_summary_v1', $payload, 180);
+                \Illuminate\Support\Facades\Cache::put('slo_loss_summary_v2', $payload, 180);
             }
 
             return response()->json(['success' => true] + $payload);
@@ -234,9 +234,12 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
             'today' => ['label' => 'Today', 'from' => $today->toDateString(), 'to' => $today->toDateString()],
         ];
         foreach ($periods as &$p) {
-            $p += ['orders' => 0, 'loss_orders' => 0, 'loss_amount' => 0.0, 'skus' => 0];
+            $p += ['orders' => 0, 'loss_orders' => 0, 'loss_amount' => 0.0, 'skus' => 0, 'nroi_pct' => null, 'npft_pct' => null];
         }
         unset($p);
+
+        // Amount-weighted NROI% / NPFT% sums per period: [weighted pct sum, amount sum].
+        $agg = [];
 
         $seen = [];
         $lossSeen = [];
@@ -267,6 +270,15 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
                     $seen[$key][$orderKey] = true;
                     $p['orders']++;
                 }
+                if ($amount > 0) {
+                    foreach (['nroi', 'npft'] as $metric) {
+                        $v = $row[$metric.'_pct'] ?? null;
+                        if (is_numeric($v)) {
+                            $agg[$key][$metric][0] = ($agg[$key][$metric][0] ?? 0.0) + ((float) $v * $amount);
+                            $agg[$key][$metric][1] = ($agg[$key][$metric][1] ?? 0.0) + $amount;
+                        }
+                    }
+                }
                 if ($isLoss) {
                     if (! isset($lossSeen[$key][$orderKey])) {
                         $lossSeen[$key][$orderKey] = true;
@@ -288,6 +300,8 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
                     'qty' => max(1, (int) ($row['quantity'] ?? 1)),
                     'amount' => $amount > 0 ? round($amount, 2) : null,
                     'pct' => $pct,
+                    'nroi' => is_numeric($row['nroi_pct'] ?? null) ? round((float) $row['nroi_pct'], 1) : null,
+                    'npft' => is_numeric($row['npft_pct'] ?? null) ? round((float) $row['npft_pct'], 1) : null,
                     'loss' => $loss,
                 ];
             }
@@ -296,6 +310,10 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
         foreach ($periods as $key => &$p) {
             $p['skus'] = count($lossSkus[$key] ?? []);
             $p['loss_amount'] = round($p['loss_amount'], 2);
+            foreach (['nroi', 'npft'] as $metric) {
+                $pair = $agg[$key][$metric] ?? null;
+                $p[$metric.'_pct'] = ($pair && $pair[1] > 0) ? round($pair[0] / $pair[1], 1) : null;
+            }
         }
         unset($p);
 

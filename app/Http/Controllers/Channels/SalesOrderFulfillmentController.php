@@ -76,6 +76,13 @@ class SalesOrderFulfillmentController extends Controller
     /** @var list<string> */
     public const TOP_BADGE_KEYS = ['gofo', 'veeqo', 'shopify', 'others'];
 
+    /**
+     * Channels whose GPFT/GROI/NPFT/NROI ignore ship: gross profit per unit = (Price × Margin) − LP.
+     * Prepaid-label channels plus Alibaba and Business5Core. Best Buy and Purchasing Power
+     * subtract Ship BB instead.
+     */
+    protected const SITE_PROFIT_NO_SHIP_SLUGS = ['faire', 'topdawg', 'wayfair', 'doba', 'alibaba', 'business5core'];
+
     /** Max orders per HTTP Pull Tracking request (keep under nginx/proxy gateway timeout). */
     protected const HTTP_PULL_MAX = 8;
 
@@ -9061,7 +9068,7 @@ class SalesOrderFulfillmentController extends Controller
 
         $noAds = ['doba', 'purchasingpower', 'topdawg', 'shein', 'faire', 'temu2', 'alibaba'];
         // Prepaid-label channels: ship is not a seller cost, so GPFT/GROI/NPFT/NROI ignore it.
-        $noShip = ['faire', 'topdawg', 'purchasingpower', 'wayfair', 'doba'];
+        $noShip = self::SITE_PROFIT_NO_SHIP_SLUGS;
         $out = [];
 
         foreach (MarketplaceManagerRegistry::channels() as $channel) {
@@ -9107,7 +9114,7 @@ class SalesOrderFulfillmentController extends Controller
                 'ship_key' => match (true) {
                     in_array($slug, $noShip, true) => 'none',
                     in_array($slug, ['temu', 'temu2'], true) => 'ship_temu',
-                    $slug === 'bestbuy' => 'ship_bb',
+                    in_array($slug, ['bestbuy', 'purchasingpower'], true) => 'ship_bb',
                     default => 'ship',
                 },
                 'is_temu' => $slug === 'temu',
@@ -9136,7 +9143,7 @@ class SalesOrderFulfillmentController extends Controller
         $isTemu2 = ! empty($ctx['is_temu2']);
         $noAds = ! empty($ctx['no_ads']) || $isTemu2;
         $shipKey = (string) ($ctx['ship_key'] ?? 'ship');
-        if ($shipKey === 'none' || in_array($slug, ['faire', 'topdawg', 'purchasingpower', 'wayfair', 'doba'], true)) {
+        if ($shipKey === 'none' || in_array($slug, self::SITE_PROFIT_NO_SHIP_SLUGS, true)) {
             $ship = 0.0;
         }
 

@@ -564,6 +564,8 @@
         .lossx-bar { height: 6px; border-radius: 99px; background: rgba(255,255,255,.25); margin: 10px 0 8px; overflow: hidden; }
         .lossx-bar > i { display: block; height: 100%; width: 0; border-radius: 99px; background: #fff; transition: width .7s cubic-bezier(.2,.8,.2,1); }
         .lossx-chip { display: inline-block; font-size: .74rem; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: rgba(0,0,0,.22); }
+        .lossx-mini { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .lossx-mini .lossx-chip b { font-weight: 800; margin-left: 3px; font-variant-numeric: tabular-nums; }
         .lossx-card.is-loading .lossx-big, .lossx-card.is-loading .lossx-sub, .lossx-card.is-loading .lossx-chip {
             color: transparent; background: linear-gradient(90deg, rgba(255,255,255,.12), rgba(255,255,255,.32), rgba(255,255,255,.12));
             background-size: 200% 100%; animation: lossx-shimmer 1.2s infinite; border-radius: 8px;
@@ -647,6 +649,10 @@
                                 <div class="lossx-sub" data-f="sub">&nbsp;</div>
                                 <div class="lossx-bar"><i data-f="bar"></i></div>
                                 <span class="lossx-chip" data-f="amount">&nbsp;</span>
+                                <div class="lossx-mini">
+                                    <span class="lossx-chip" title="Net ROI % for all orders in this period (amount-weighted)">NROI% <b data-f="nroi">—</b></span>
+                                    <span class="lossx-chip" title="Net profit % for all orders in this period (amount-weighted)">NPRFT% <b data-f="npft">—</b></span>
+                                </div>
                             </button>
                         @endforeach
                     </div>
@@ -742,6 +748,8 @@
                         <div class="lossx-stat"><b id="lossxStatSkus">0</b><span>Products</span></div>
                         <div class="lossx-stat"><b id="lossxStatLoss">$0</b><span>Est. loss</span></div>
                         <div class="lossx-stat"><b id="lossxStatRate">0%</b><span>Of all orders</span></div>
+                        <div class="lossx-stat" title="All orders in this period, amount-weighted"><b id="lossxStatNroi">—</b><span>NROI%</span></div>
+                        <div class="lossx-stat" title="All orders in this period, amount-weighted"><b id="lossxStatNpft">—</b><span>NPRFT%</span></div>
                     </div>
                 </div>
                 <div class="lossx-body">
@@ -1734,6 +1742,8 @@
                 : 'No orders in this period';
             card.querySelector('[data-f="bar"]').style.width = Math.min(100, rate) + '%';
             card.querySelector('[data-f="amount"]').textContent = p.loss_amount < 0 ? 'Est. ' + money(p.loss_amount) : 'No loss amount';
+            card.querySelector('[data-f="nroi"]').textContent = pct(p.nroi_pct);
+            card.querySelector('[data-f="npft"]').textContent = pct(p.npft_pct);
         });
     }
 
@@ -1764,7 +1774,7 @@
             const gk = (r.sku || r.title || '(no sku)').trim() || '(no sku)';
             let g = groups.get(gk);
             if (!g) {
-                g = { sku: r.sku || '(no sku)', title: r.title || '', orderKeys: new Set(), qty: 0, loss: 0, worst: null, channels: {}, orders: [] };
+                g = { sku: r.sku || '(no sku)', title: r.title || '', orderKeys: new Set(), qty: 0, loss: 0, worst: null, channels: {}, orders: [], nroiSum: 0, nroiW: 0, npftSum: 0, npftW: 0 };
                 groups.set(gk, g);
             }
             if (!g.title && r.title) g.title = r.title;
@@ -1774,6 +1784,13 @@
             if (r.pct !== null && (g.worst === null || r.pct < g.worst)) g.worst = r.pct;
             g.channels[r.channel] = (g.channels[r.channel] || 0) + 1;
             g.orders.push(r);
+            const w = Number(r.amount) > 0 ? Number(r.amount) : 1;
+            if (r.nroi !== null && r.nroi !== undefined) { g.nroiSum += Number(r.nroi) * w; g.nroiW += w; }
+            if (r.npft !== null && r.npft !== undefined) { g.npftSum += Number(r.npft) * w; g.npftW += w; }
+        });
+        groups.forEach(function (g) {
+            g.nroi = g.nroiW > 0 ? g.nroiSum / g.nroiW : null;
+            g.npft = g.npftW > 0 ? g.npftSum / g.npftW : null;
         });
         return Array.from(groups.values());
     }
@@ -1790,6 +1807,8 @@
         document.getElementById('lossxStatSkus').textContent = num(p.skus);
         document.getElementById('lossxStatLoss').textContent = money(p.loss_amount);
         document.getElementById('lossxStatRate').textContent = (p.orders > 0 ? (p.loss_orders / p.orders) * 100 : 0).toFixed(1) + '%';
+        document.getElementById('lossxStatNroi').textContent = pct(p.nroi_pct);
+        document.getElementById('lossxStatNpft').textContent = pct(p.npft_pct);
 
         let groups = periodGroups(current);
         const q = query.trim().toLowerCase();
@@ -1819,6 +1838,7 @@
             const orders = g.orders.slice().sort(function (a, b) { return (a.pct ?? 0) - (b.pct ?? 0); }).slice(0, 60).map(function (o) {
                 return '<tr><td>' + esc(o.channel) + '</td><td>' + esc(o.order_id) + '</td><td>' + esc(o.date) + '</td><td>' + esc(o.qty) +
                     '</td><td>' + (o.amount === null ? '—' : money(o.amount)) + '</td><td class="lossx-neg">' + pct(o.pct) +
+                    '</td><td>' + pct(o.nroi) + '</td><td>' + pct(o.npft) +
                     '</td><td class="lossx-neg">' + (o.loss ? money(o.loss) : '—') + '</td></tr>';
             }).join('');
             const more = g.orders.length > 60 ? '<div class="lossx-title mt-1">Showing the 60 worst of ' + g.orders.length + ' lines.</div>' : '';
@@ -1832,10 +1852,12 @@
                         '<div class="lossx-num"><b>' + num(g.orderKeys.size) + '</b><span>Orders</span></div>' +
                         '<div class="lossx-num"><b>' + num(g.qty) + '</b><span>Units</span></div>' +
                         '<div class="lossx-num is-loss"><b>' + pct(g.worst) + '</b><span>Worst</span></div>' +
+                        '<div class="lossx-num"><b>' + pct(g.nroi) + '</b><span>NROI%</span></div>' +
+                        '<div class="lossx-num"><b>' + pct(g.npft) + '</b><span>NPRFT%</span></div>' +
                         '<div class="lossx-num is-loss"><b>' + (g.loss ? money(g.loss) : '—') + '</b><span>Est. loss</span></div>' +
                         '<i class="fas fa-chevron-down lossx-chev" aria-hidden="true"></i>' +
                     '</div></div>' +
-                '<div class="lossx-orders"><table><thead><tr><th>Channel</th><th>Order</th><th>Date</th><th>Qty</th><th>Amount</th><th>Profit %</th><th>Est. loss</th></tr></thead><tbody>' +
+                '<div class="lossx-orders"><table><thead><tr><th>Channel</th><th>Order</th><th>Date</th><th>Qty</th><th>Amount</th><th>Profit %</th><th>NROI%</th><th>NPRFT%</th><th>Est. loss</th></tr></thead><tbody>' +
                     orders + '</tbody></table>' + more + '</div></div>';
         }).join('');
     }
