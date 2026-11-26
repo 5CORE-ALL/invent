@@ -110,6 +110,31 @@ jobs:
             summary="$summary | $range products_with_spend=$n upload: $(echo "$up" | head -c 220)"
           }
 
+          # 2b) which products (item_group_id) each active campaign sells, from the L30 window.
+          build_cprod() {
+            local f="$1" cid page total http arr
+            echo '{}' > cprod.json
+            for cid in $(jq -r 'select(.id != "" and (.cost > 0 or .orders > 0)) | .id' "$f" | awk 'NR<=100'); do
+              : > cp_ids.txt; page=1; total=1
+              while [ "$page" -le "$total" ] && [ "$page" -le 10 ]; do
+                http=$(curl -sS -m 90 -o cp.json -w '%{http_code}' -G "$B/gmv_max/report/get/" \
+                  -H "Access-Token: $TT_TOKEN" \
+                  --data-urlencode "advertiser_id=$TT_ADV" \
+                  --data-urlencode "store_ids=[\"$TT_STORE\"]" \
+                  --data-urlencode 'dimensions=["item_group_id"]' \
+                  --data-urlencode 'metrics=["cost"]' \
+                  --data-urlencode "start_date=$D30" --data-urlencode "end_date=$TODAY" \
+                  --data-urlencode "filtering={\"campaign_ids\":[\"$cid\"]}" \
+                  --data-urlencode "page=$page" --data-urlencode 'page_size=100') || break
+                [ "$http" = "200" ] && [ "$(jq -r '.code // -1' cp.json 2>/dev/null || echo -1)" = "0" ] || break
+                jq -r '(.data.list // [])[] | (.dimensions.item_group_id // "") | tostring' cp.json >> cp_ids.txt
+                total=$(jq -r '.data.page_info.total_page // 1' cp.json); page=$((page+1))
+              done
+              arr=$(jq -R -s 'split("\n") | map(select(length > 0)) | unique' cp_ids.txt)
+              jq --arg c "$cid" --argjson a "$arr" '.[$c] = $a' cprod.json > cprod.tmp && mv cprod.tmp cprod.json
+            done
+          }
+
           # 3) campaign-level totals (same columns as the Ads Manager export), <=100 campaigns per request.
           fetch_campaigns() {
             local range="$1" start="$2" end="$3" chunk ids page total http code up n
@@ -141,10 +166,11 @@ jobs:
                 page=$((page+1))
               done
             done
-            jq -s --slurpfile meta meta.json --arg r "$range" --arg s "$start" --arg e "$end" \
+            [ -f cprod.json ] || build_cprod "crows_$range.ndjson"
+            jq -s --slurpfile meta meta.json --slurpfile cprod cprod.json --arg r "$range" --arg s "$start" --arg e "$end" \
               '{range: $r, start_date: $s, end_date: $e,
                 campaigns: [ .[] | select(.id != "" and (.cost > 0 or .orders > 0)) | . as $c | ($meta[0][$c.id] // {}) as $m
-                  | {campaign_id: $c.id, campaign_name: $m.name, status: $m.status, budget: $m.budget, promotion_type: $m.type,
+                  | {campaign_id: $c.id, campaign_name: $m.name, status: $m.status, budget: $m.budget, promotion_type: $m.type, item_group_ids: ($cprod[0][$c.id] // []),
                      cost: $c.cost, orders: $c.orders, gross_revenue: $c.revenue, roi: $c.roi}]}' \
               "crows_$range.ndjson" > "cpayload_$range.json"
             n=$(jq '.campaigns | length' "cpayload_$range.json")
@@ -161,5 +187,5 @@ jobs:
           fetch_campaigns L1 "$YESTERDAY" "$YESTERDAY" || rc=1
           fetch_range L30 "$D30" "$TODAY" || rc=1
           fetch_range L1 "$YESTERDAY" "$YESTERDAY" || rc=1
-          echo "::notice title=GMV Max sync::campaigns=$ncamp meta_keys=$metakeys window $D30..$TODAY $summary"
+          echo "::notice title=GMV Max sync::campaigns=$ncamp campaigns_with_products=$(jq '[.[] | select(length > 0)] | length' cprod.json 2>/dev/null || echo 0) meta_keys=$metakeys window $D30..$TODAY $summary"
           exit $rc
