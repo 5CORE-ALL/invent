@@ -48,7 +48,6 @@
         }
         .badge-ml-chart { cursor: pointer; font-weight: bold; }
         /* The without-0-Inv badge is the number the sidebar shows. */
-        .ml-mode-badge.is-active { box-shadow: 0 0 0 3px #212529; }
         .ml-seller-portal-cell {
             display: flex;
             align-items: center;
@@ -219,7 +218,6 @@
         .ml-stat:hover { transform: translateY(-3px) rotate(-.4deg); }
         .ml-stat--a { --ml-bg: linear-gradient(135deg, #ff3d81 0%, #ff8a3d 100%); --ml-glow: rgba(255, 61, 129, .65); }
         .ml-stat--b { --ml-bg: linear-gradient(135deg, #7c3aed 0%, #3b82f6 100%); --ml-glow: rgba(124, 58, 237, .65); }
-        .ml-stat.is-active { outline: 3px solid rgba(30, 27, 75, .85); outline-offset: 3px; }
         .ml-stat-text { display: flex; flex-direction: column; line-height: 1.05; }
         .ml-stat-label { font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; opacity: .9; }
         .ml-stat-num { font-size: 2.1rem; font-weight: 800; letter-spacing: -.02em; }
