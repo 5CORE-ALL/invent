@@ -22,6 +22,19 @@
             <div class="d-flex flex-wrap align-items-center mb-2" id="vpt-filter-bar">
                 <input type="text" id="vpt-parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 170px;">
                 <input type="text" id="vpt-sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 170px;">
+                <select id="vpt-dil-filter" class="form-select form-select-sm" style="width: 150px; height: 28px; font-size: 12px;" title="Dil = OV L30 ÷ INV">
+                    <option value="all">Dil: All</option>
+                    <option value="zero">Dil: 0%</option>
+                    <option value="lt25">Dil: 1–24%</option>
+                    <option value="25to50">Dil: 25–49%</option>
+                    <option value="gte50">Dil: 50%+</option>
+                    <option value="custom">Dil: Custom…</option>
+                </select>
+                <span id="vpt-dil-custom" class="d-none d-flex align-items-center" style="gap: 4px;">
+                    <input type="number" id="vpt-dil-min" class="form-control form-control-sm" placeholder="Min %" style="width: 74px;">
+                    <span class="small text-muted">to</span>
+                    <input type="number" id="vpt-dil-max" class="form-control form-control-sm" placeholder="Max %" style="width: 74px;">
+                </span>
                 <span class="badge bg-dark" id="vpt-rows-badge">Rows: 0</span>
                 <span class="small text-muted" id="vpt-status">Loading…</span>
             </div>
@@ -83,14 +96,37 @@
             function applySearch() {
                 const parent = document.getElementById('vpt-parent-search').value.trim().toLowerCase();
                 const sku = document.getElementById('vpt-sku-search').value.trim().toLowerCase();
+                const mode = dilSelect.value;
+                const minRaw = document.getElementById('vpt-dil-min').value;
+                const maxRaw = document.getElementById('vpt-dil-max').value;
+                const min = minRaw === '' ? null : Number(minRaw);
+                const max = maxRaw === '' ? null : Number(maxRaw);
+                dilCustom.classList.toggle('d-none', mode !== 'custom');
+
                 table.setFilter(function(d) {
                     if (parent && String(d.parent || '').toLowerCase().indexOf(parent) === -1) return false;
                     if (sku && String(d.sku || '').toLowerCase().indexOf(sku) === -1) return false;
+
+                    const v = Math.round(dil(d));
+                    if (mode === 'zero' && v !== 0) return false;
+                    if (mode === 'lt25' && !(v >= 1 && v < 25)) return false;
+                    if (mode === '25to50' && !(v >= 25 && v < 50)) return false;
+                    if (mode === 'gte50' && v < 50) return false;
+                    if (mode === 'custom') {
+                        if (min !== null && v < min) return false;
+                        if (max !== null && v > max) return false;
+                    }
                     return true;
                 });
+                badge.textContent = 'Rows: ' + table.getDataCount('active');
             }
+            const dilSelect = document.getElementById('vpt-dil-filter');
+            const dilCustom = document.getElementById('vpt-dil-custom');
             document.getElementById('vpt-parent-search').addEventListener('input', applySearch);
             document.getElementById('vpt-sku-search').addEventListener('input', applySearch);
+            dilSelect.addEventListener('change', applySearch);
+            document.getElementById('vpt-dil-min').addEventListener('input', applySearch);
+            document.getElementById('vpt-dil-max').addEventListener('input', applySearch);
 
             fetch(DATA_URL, {
                 credentials: 'same-origin',
