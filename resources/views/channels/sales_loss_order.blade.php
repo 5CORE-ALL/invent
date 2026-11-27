@@ -671,6 +671,11 @@
         .lossx-chip2 { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 4px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: .68rem; font-weight: 700; color: #111; }
         .lossx-chip2 i { font-style: normal; font-size: .54rem; font-weight: 700; color: #64748b; }
         .lossx-more { display: block; margin: 8px auto 0; }
+        .lossx-sibrow { flex: 1 1 100%; display: flex; align-items: center; gap: 4px; font-size: .64rem; font-weight: 700; color: #cfd1ff; }
+        .lossx-sibrow label { display: inline-flex; align-items: center; gap: 3px; margin: 0; cursor: pointer; white-space: nowrap; }
+        .lossx-sibrow input[type=checkbox] { width: 13px; height: 13px; margin: 0; accent-color: #22c55e; cursor: pointer; }
+        .lossx-sib-add { width: 54px; height: 20px; padding: 0 4px; font-size: .66rem; font-weight: 700; text-align: right; border-radius: 6px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.07); color: #fff; outline: none; }
+        .lossx-sib-add:disabled { opacity: .35; }
         .lossx-estrow { display: flex; align-items: center; gap: 6px; }
         .lossx-hbtn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(0,0,0,.22); color: #fff; font-size: .68rem; cursor: pointer; transition: background .12s, transform .12s; }
         .lossx-hbtn:hover, .lossx-hbtn:focus-visible { background: rgba(0,0,0,.42); transform: scale(1.1); outline: none; }
@@ -845,9 +850,9 @@
                 <div class="lossx-body">
                     <div class="lossx-tools">
                         <input type="search" class="lossx-search" id="lossxSearch" placeholder="Search SKU, product or channel…" autocomplete="off">
-                        <button type="button" class="lossx-sort is-on" data-sort="orders">Most orders</button>
+                        <button type="button" class="lossx-sort" data-sort="orders">Most orders</button>
                         <button type="button" class="lossx-sort" data-sort="loss">Biggest loss</button>
-                        <button type="button" class="lossx-sort" data-sort="pct">Worst %</button>
+                        <button type="button" class="lossx-sort is-on" data-sort="pct">Worst %</button>
                         <select class="lossx-filter" id="lossxFilter" title="Show products by their action">
                             <option value="all">All actions</option>
                             <option value="open">Open (no action)</option>
@@ -1889,7 +1894,7 @@
     const KEYS = ['l30', 'l7', 'yesterday', 'today'];
     let data = null;
     let current = 'l30';
-    let sortBy = 'orders';
+    let sortBy = 'pct';
     let query = '';
 
     const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -2128,6 +2133,36 @@
         }).join('');
     }
 
+    // "Siblings" rule — the SAME per-SKU switch as the Siblings tick of the /price-increase SKU window (shared browser storage):
+    // ticked → the SPRICE push is also saved + pushed on every sibling SKU under the parent (price + the "+$" addition).
+    const SIB_PREF_KEY = 'cvr_master_siblings_apply_by_sku_v1';
+    const SIB_ADD_KEY = 'cvr_master_siblings_add_by_sku_v1';
+    function lsMap(k) {
+        try { const m = JSON.parse(localStorage.getItem(k) || '{}'); return (m && typeof m === 'object') ? m : {}; } catch (e) { return {}; }
+    }
+    function sibOn(key) { return !!lsMap(SIB_PREF_KEY)[key]; }
+    function sibAdd(key) { const v = lsMap(SIB_ADD_KEY)[key]; return (v === undefined || v === null) ? '' : String(v); }
+    function sibSave(key, on, add) {
+        const pm = lsMap(SIB_PREF_KEY);
+        if (on) pm[key] = 1; else delete pm[key];
+        const am = lsMap(SIB_ADD_KEY);
+        const raw = String(add === undefined || add === null ? '' : add).trim();
+        if (raw === '') delete am[key]; else am[key] = raw;
+        try {
+            localStorage.setItem(SIB_PREF_KEY, JSON.stringify(pm));
+            localStorage.setItem(SIB_ADD_KEY, JSON.stringify(am));
+        } catch (e) { /* ignore */ }
+    }
+    function siblingsOf(pi) {
+        const p = pi && pi.parent ? skuKey(pi.parent) : '';
+        if (!p) return [];
+        return (piByParent.get(p) || []).filter(function (r) { return skuKey(r.sku) !== skuKey(pi.sku); });
+    }
+    function addNum(raw) {
+        const v = parseFloat(String(raw === undefined || raw === null ? '' : raw).replace(/[$,\s]/g, '').replace(',', '.'));
+        return isFinite(v) ? +Math.max(-10000, Math.min(10000, v)).toFixed(2) : 0;
+    }
+
     /** SPRICE $ — editable price + ✓ (Push All, same as /price-increase) + profit chips. */
     function spHtml(pi) {
         if (!pi) return '<span class="lossx-dim" title="This SKU is not on /price-increase">—</span>';
@@ -2144,7 +2179,20 @@
                 ' title="SPRICE $ — press ✓ or Enter to fill every channel, save and push (Push All)' + (low > 0 ? '\nLowest LMP $' + low.toFixed(2) : '') + '">' +
             '<button type="button" class="lossx-sp-go"' + (busy ? ' disabled' : '') + ' title="Push All — fills every channel by its column rule, then saves and pushes them (same as the ✓ on /price-increase)" aria-label="Push all channels with this SPRICE">' +
                 '<i class="fas ' + (busy ? 'fa-spinner fa-spin' : 'fa-check') + '"></i></button>' +
+            sibHtml(pi, key) +
             '<span class="lossx-chips">' + chipsHtml(p > 0 ? p : saved, pi) + '</span></div>';
+    }
+
+    function sibHtml(pi, key) {
+        const sibs = siblingsOf(pi);
+        if (!sibs.length) return '';
+        const on = sibOn(key);
+        return '<div class="lossx-sibrow">' +
+            '<label title="Same Siblings rule as /price-increase: when ticked, this SPRICE is also saved and pushed on all ' + sibs.length + ' sibling SKU(s) of this parent (' + esc(sibs.slice(0, 6).map(function (r) { return r.sku; }).join(', ')) + (sibs.length > 6 ? ', …' : '') + ')">' +
+                '<input type="checkbox" class="lossx-sib-cb"' + (on ? ' checked' : '') + '> Siblings (' + sibs.length + ')</label>' +
+            '<input type="number" class="lossx-sib-add" step="0.01" placeholder="+$" value="' + esc(sibAdd(key)) + '"' + (on ? '' : ' disabled') +
+                ' title="Siblings addition ($): every sibling gets this SKU\'s price + this amount (e.g. 7.44 + 0.01 = 7.45). Saved per SKU, shared with /price-increase.">' +
+            '</div>';
     }
 
     function refreshSp(key) {
@@ -2604,7 +2652,14 @@
         const pi = piRows.get(key);
         if (pi) pi.box_sprice = job.price;
         refreshSp(key);
-        toast(m.sku + ': SPRICE $' + job.price.toFixed(2) + ' saved, pushing to all channels…');
+        // Siblings rule on: they were saved + pushed with this price (+ the addition) — show it on their rows too
+        (job.sibs || []).forEach(function (s) {
+            const sk = skuKey(s.sku);
+            s.box_sprice = Math.max(0.01, +(job.price + job.add).toFixed(2));
+            delete typed[sk];
+            refreshSp(sk);
+        });
+        toast(m.sku + ': SPRICE $' + job.price.toFixed(2) + ' saved, pushing to all channels' + ((job.sibs || []).length ? ' + ' + job.sibs.length + ' sibling SKU(s)' : '') + '…');
         followPush(m.sku, job.startedAt);
     });
 
@@ -2623,12 +2678,14 @@
         }
         if (pushing[key]) { toast('A push for ' + pi.sku + ' is still being prepared', true); return; }
         const value = Math.max(0.01, +price.toFixed(2));
-        pushing[key] = { startedAt: Date.now(), price: value };
+        const sibs = siblingsOf(pi);
+        const sibOnNow = sibs.length > 0 && sibOn(key);
+        pushing[key] = { startedAt: Date.now(), price: value, sibs: sibOnNow ? sibs : [], add: addNum(sibAdd(key)) };
         refreshSp(key);
         if (!bridgeReady) toast('Loading the push engine (/price-increase) — the first push can take a moment…');
         ensureBridge().then(function () {
             bridgeFrame.contentWindow.postMessage({
-                type: 'pi-box-push', sku: pi.sku, price: value,
+                type: 'pi-box-push', sku: pi.sku, price: value, siblings: sibOnNow, siblingAdd: sibAdd(key),
                 data: { inventory: Number(pi.inv) || 0, overall_l30: Number(pi.l30) || 0, dil_percent: Number(pi.dil) || 0, image_path: pi.image || '' }
             }, window.location.origin);
         }).catch(function (err) {
@@ -2741,6 +2798,14 @@
         if (player.playing && e.target.closest && e.target.closest('select, input, button')) { playerPause(); playerSync(); }
     });
     listEl?.addEventListener('change', function (e) {
+        const sb = e.target.closest ? e.target.closest('.lossx-sibrow') : null;
+        if (sb) {
+            const key = sb.closest('.lossx-sp').dataset.key;
+            const cb = sb.querySelector('.lossx-sib-cb'), add = sb.querySelector('.lossx-sib-add');
+            sibSave(key, cb.checked, add.value);
+            add.disabled = !cb.checked;
+            return;
+        }
         const cell = e.target.closest ? e.target.closest('.lossx-act-cell') : null;
         if (!cell) return;
         const key = cell.dataset.key, sku = cell.dataset.sku, v = e.target.value;
