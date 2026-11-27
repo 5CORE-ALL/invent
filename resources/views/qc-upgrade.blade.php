@@ -658,6 +658,17 @@
                         <strong>Bulk edit:</strong> only fields you change here are written to all selected SKUs.
                         Unchanged fields keep each SKU&rsquo;s existing value.
                     </div>
+                    <div id="editSiblingsWrap" class="form-check mb-3 p-2 ps-5 border rounded bg-light"
+                         title="When checked: the fields you change here are also written to every sibling SKU under the same parent. Empty values are never applied to siblings. PARENT rows are skipped.">
+                        <input class="form-check-input" type="checkbox" id="editSiblingsApplyCb">
+                        <label class="form-check-label fw-semibold" for="editSiblingsApplyCb">
+                            <i class="fas fa-sitemap me-1"></i>Siblings
+                            <span id="editSiblingsCount" class="text-muted fw-normal"></span>
+                        </label>
+                        <div class="text-muted" style="font-size: 12px;">
+                            Apply the fields you change to all sibling SKUs under the same parent. Unchanged and empty fields are never written to siblings.
+                        </div>
+                    </div>
                     <form id="editDimWtForm">
                         <input type="hidden" id="editProductId" name="product_id">
                         <input type="hidden" id="editSku" name="sku">
@@ -2507,10 +2518,88 @@
                 return data;
             }
 
+            // ---- Siblings rule (same idea as /price-increase): apply changed fields to all SKUs under the same parent ----
+            function isSiblingsApplyChecked() {
+                const cb = document.getElementById('editSiblingsApplyCb');
+                return !!(cb && cb.checked);
+            }
+
+            /** Sibling SKUs (same non-empty Parent, not a PARENT row) of the given products, excluding the products themselves. */
+            function getSiblingProducts(baseProducts) {
+                const baseSkus = new Set((baseProducts || []).map(p => String(p.SKU || '').toUpperCase()));
+                const parents = new Set((baseProducts || []).map(p => String(p.Parent || '').trim()).filter(Boolean));
+                if (parents.size === 0) return [];
+                const seen = new Set();
+                const out = [];
+                (tableData || []).forEach(d => {
+                    const sku = String(d.SKU || '').toUpperCase();
+                    if (!sku || isParentSkuString(sku) || baseSkus.has(sku) || seen.has(sku)) return;
+                    if (!parents.has(String(d.Parent || '').trim())) return;
+                    seen.add(sku);
+                    out.push(d);
+                });
+                return out;
+            }
+
+            function refreshSiblingsCount(baseProducts) {
+                const n = getSiblingProducts(baseProducts).length;
+                const label = document.getElementById('editSiblingsCount');
+                if (label) label.textContent = n > 0 ? '(' + n + ' other SKU' + (n === 1 ? '' : 's') + ')' : '(none)';
+                const cb = document.getElementById('editSiblingsApplyCb');
+                if (cb) {
+                    cb.disabled = n === 0;
+                    if (n === 0) cb.checked = false;
+                }
+            }
+
+            /** Drop empty values: siblings never get cleared fields. */
+            function siblingSafeFields(fields) {
+                const out = {};
+                Object.keys(fields || {}).forEach(k => {
+                    if (fields[k] !== null && fields[k] !== undefined && fields[k] !== '') out[k] = fields[k];
+                });
+                return out;
+            }
+
+            /** Write the changed fields to sibling SKUs. Returns {ok, fail}. */
+            async function saveToSiblings(siblings, fields, qcText, qcChanged, pkgText, pkgChanged) {
+                const safeFields = siblingSafeFields(fields);
+                const doQc = qcChanged && String(qcText ?? '').trim() !== '';
+                const doPkg = pkgChanged && String(pkgText ?? '').trim() !== '';
+                let ok = 0;
+                let fail = 0;
+                for (const sib of siblings) {
+                    try {
+                        if (Object.keys(safeFields).length > 0) {
+                            const response = await fetch('/dim-wt-master/update', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                                body: JSON.stringify({ ...safeFields, product_id: sib.id, sku: sib.SKU, parent: sib.Parent || '' })
+                            });
+                            if (!response.ok) { fail++; continue; }
+                        }
+                        if (doQc) await saveQcImprovementReqBeforeItemPkg(sib.id, sib.SKU, qcText);
+                        if (doPkg) await saveInstructionsItemPkg(sib.id, sib.SKU, pkgText);
+                        ok++;
+                    } catch (e) {
+                        console.error(e);
+                        fail++;
+                    }
+                }
+                return { ok, fail };
+            }
+
             // Edit row (QC Upgrade)
             function editDimWt(product) {
                 const modal = new bootstrap.Modal(document.getElementById('editDimWtModal'));
                 const isBulk = !!(bulkEditList && bulkEditList.length > 0);
+                const siblingsCb = document.getElementById('editSiblingsApplyCb');
+                if (siblingsCb) siblingsCb.checked = false;
+                const siblingsWrap = document.getElementById('editSiblingsWrap');
+                const baseForSiblings = isBulk ? bulkEditList : [product];
+                const hasRealSku = baseForSiblings.some(p => !isParentSkuString(String(p.SKU || '')));
+                if (siblingsWrap) siblingsWrap.style.display = hasRealSku ? '' : 'none';
+                refreshSiblingsCount(baseForSiblings);
                 document.getElementById('editDimWtModalLabel').textContent = isBulk
                     ? ('Bulk Edit (' + bulkEditList.length + ' items)')
                     : 'Edit dimensions & weight';
@@ -2565,7 +2654,8 @@
                     pkgEl.value = product.instructions_item_pkg != null ? String(product.instructions_item_pkg) : '';
                 }
 
-                bulkEditInitialValues = isBulk ? snapshotBulkEditFormValues() : null;
+                // Snapshot always (also for single edit) so the Siblings rule can write changed fields only.
+                bulkEditInitialValues = snapshotBulkEditFormValues();
                 
                 // Setup save button handler
                 const saveBtn = document.getElementById('saveDimWtBtn');
@@ -2675,11 +2765,21 @@
                                 failCount++;
                             }
                         }
+                        // Siblings rule: same changed fields on every other SKU under the selected parents
+                        let siblingNote = '';
+                        if (isSiblingsApplyChecked()) {
+                            const siblings = getSiblingProducts(bulkEditList);
+                            if (siblings.length > 0) {
+                                const sibRes = await saveToSiblings(siblings, payloadFields, qcBeforeText, qcBeforeChanged, pkgText, pkgChanged);
+                                siblingNote = ' Siblings: ' + sibRes.ok + ' updated' + (sibRes.fail ? ', ' + sibRes.fail + ' failed' : '') + '.';
+                                if (sibRes.fail > 0) failCount += sibRes.fail;
+                            }
+                        }
                         bulkEditList = null;
                         bulkEditInitialValues = null;
                         document.getElementById('editDimWtModalLabel').textContent = 'Edit dimensions & weight';
                         if (failCount === 0 && pkgFailCount === 0 && qcBeforeFailCount === 0) {
-                            showToast('success', successCount + ' item(s) updated (changed fields only)!');
+                            showToast('success', successCount + ' item(s) updated (changed fields only)!' + siblingNote);
                         } else if (failCount === 0 && (pkgFailCount > 0 || qcBeforeFailCount > 0)) {
                             const parts = [];
                             if (qcBeforeFailCount > 0) {
@@ -2690,7 +2790,7 @@
                             }
                             showToast('warning', successCount + ' dimension row(s) saved; ' + parts.join('; ') + '.');
                         } else {
-                            showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
+                            showToast('warning', successCount + ' updated, ' + failCount + ' failed.' + siblingNote);
                         }
                         const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
                         modal.hide();
@@ -2722,6 +2822,24 @@
                     }
 
                     const singleSku = document.getElementById('editSku').value;
+
+                    // Siblings rule: write the fields changed in this edit to every other SKU under the same parent
+                    let siblingNote = '';
+                    if (isSiblingsApplyChecked() && !isParentSkuString(singleSku)) {
+                        const self = tableData.find(d => d.SKU === singleSku);
+                        const siblings = self ? getSiblingProducts([self]) : [];
+                        if (siblings.length > 0) {
+                            const qcNow = document.getElementById('editQcImprovementReqBeforeItemPkg').value;
+                            const pkgNow = document.getElementById('editInstructionsItemPkg').value;
+                            const qcChangedSingle = bulkEditInitialValues
+                                && String(qcNow ?? '') !== String(bulkEditInitialValues.editQcImprovementReqBeforeItemPkg ?? '');
+                            const pkgChangedSingle = bulkEditInitialValues
+                                && String(pkgNow ?? '') !== String(bulkEditInitialValues.editInstructionsItemPkg ?? '');
+                            const sibRes = await saveToSiblings(siblings, getBulkChangedFormData(), qcNow, qcChangedSingle, pkgNow, pkgChangedSingle);
+                            siblingNote = ' Siblings: ' + sibRes.ok + ' updated' + (sibRes.fail ? ', ' + sibRes.fail + ' failed' : '') + '.';
+                        }
+                    }
+
                     if (!isParentSkuString(singleSku)) {
                         try {
                             await saveQcImprovementReqBeforeItemPkg(
@@ -2747,7 +2865,7 @@
                         }
                     }
                     
-                    showToast('success', 'Saved successfully!');
+                    showToast('success', 'Saved successfully!' + siblingNote);
                     
                     const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
                     modal.hide();
