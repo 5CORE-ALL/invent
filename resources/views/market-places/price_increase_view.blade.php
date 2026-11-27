@@ -669,7 +669,8 @@
         .card-body:has(> #pi-toolbar) { padding-top: 6px !important; padding-bottom: 6px !important; }
         #pi-toolbar { gap: 4px !important; }
         #pi-toolbar > * { flex: 0 0 auto; }
-        @media (min-width: 1100px) { #pi-toolbar { flex-wrap: nowrap !important; } }
+        #pi-toolbar > .pi-search { flex: 1 1 110px; min-width: 90px; max-width: 170px; width: auto; font-size: 12px; }
+        @media (min-width: 1600px) { #pi-toolbar { flex-wrap: nowrap !important; } }
         #pi-toolbar .cvr-play-group .btn.rounded-circle { width: 20px; height: 20px; font-size: 9px; }
         #pi-toolbar .cvr-play-group #play-auto, #pi-toolbar .cvr-play-group #play-pause,
         #pi-toolbar .cvr-play-group #play-npft-auto, #pi-toolbar .cvr-play-group #play-npft-pause,
@@ -2714,16 +2715,15 @@
                         <i class="fas fa-file-excel"></i>
                     </button>
 
+                    <!-- SKU & Parent Search (kept in the toolbar row) -->
+                    <input type="text" id="parent-search" class="form-control form-control-sm pi-search" placeholder="Search Parent...">
+                    <input type="text" id="sku-search" class="form-control form-control-sm pi-search" placeholder="Search SKU...">
+
                     {{-- Temu Clear/Push removed from outer toolbar — use OV L30 modal Temu push instead --}}
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="cvr-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU & Parent Search -->
-                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
-                        <input type="text" id="parent-search" class="form-control" placeholder="Search Parent..." style="max-width: 220px;">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU..." style="max-width: 220px;">
-                    </div>
                     <!-- Table body -->
                     <div id="cvr-table" style="flex: 1;"></div>
                 </div>
