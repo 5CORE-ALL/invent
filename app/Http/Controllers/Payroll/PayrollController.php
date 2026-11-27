@@ -859,6 +859,28 @@ class PayrollController extends Controller
         }
     }
 
+    /** @var array<string, array<int, float>> payroll month id => (user id => penalty hours) */
+    protected array $penaltyHoursByMonth = [];
+
+    /** Penalty hours of one user for a payroll month (from the Penalty window's monthly totals). */
+    protected function penaltyHoursFor(int $monthId, int $userId): float
+    {
+        if (! isset($this->penaltyHoursByMonth[$monthId])) {
+            $this->penaltyHoursByMonth[$monthId] = [];
+            try {
+                $month = PayrollMonth::find($monthId);
+                if ($month) {
+                    $ym = $month->period_start?->format('Y-m')
+                        ?? \Carbon\Carbon::parse('first day of '.$month->month_label)->format('Y-m');
+                    $this->penaltyHoursByMonth[$monthId] = \App\Support\Penalty::monthHoursByUser($ym);
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return (float) ($this->penaltyHoursByMonth[$monthId][$userId] ?? 0);
+    }
+
     /**
      * @param  array<int, array{hours: float, days: int, team_hours?: float, final_hours?: float, team_from?: string, team_to?: string, new_from?: ?string, new_to?: string}>  $newLoggerByUser
      * @return array<string, mixed>
@@ -899,6 +921,7 @@ class PayrollController extends Controller
             'incentive' => $r->incentive,
             'deduction' => $r->deduction,
             'deduction_reason' => $r->deduction_reason,
+            'penalty_hours' => $this->penaltyHoursFor((int) $r->payroll_month_id, (int) $r->user_id),
             'incentive_document_path' => $r->incentive_document_path,
             'incentive_document_name' => $r->incentive_document_name,
             'bill_document_path' => $r->bill_document_path,

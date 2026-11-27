@@ -842,6 +842,13 @@
             { title: 'Incr', field: 'increment', minWidth: 64, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Other', field: 'other', minWidth: 64, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Incentive', field: 'incentive', minWidth: 78, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Penalty', field: 'penalty_hours', minWidth: 70, hozAlign: 'center',
+                headerTooltip: 'Penalty hours of this month (from the Penalty window: points × slab rate)',
+                formatter: (c) => {
+                    const v = parseFloat(c.getValue());
+                    if (isNaN(v) || v <= 0) return '—';
+                    return '<span class="text-danger fw-semibold">' + (Math.round(v * 100) / 100) + 'h</span>';
+                } },
             { title: 'Docs', field: 'documents', hozAlign: 'center', headerSort: false, minWidth: 56,
                 formatter: (c) => formatDocumentsCell(c.getRow().getData(), !!c.getRow().getData()._locked) },
             { title: 'Advance', field: 'adv_inc_other', minWidth: 74, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },

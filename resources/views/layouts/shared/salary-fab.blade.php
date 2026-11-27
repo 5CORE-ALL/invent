@@ -89,6 +89,8 @@
     #salaryFabModal .sal-card.nextincr .sal-card-value { color: #94a3b8; }
     #salaryFabModal .sal-card.nextincr.approved { background: linear-gradient(135deg, #ecfdf5, #d1fae5); box-shadow: 0 8px 22px rgba(16, 185, 129, .22); }
     #salaryFabModal .sal-card.nextincr.approved .sal-card-value { color: #047857; }
+    #salaryFabModal .sal-next-badge { display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px; font-size: .78rem; font-weight: 800; color: #fff; background: linear-gradient(90deg, #059669, #10b981); box-shadow: 0 4px 10px rgba(16, 185, 129, .3); font-variant-numeric: tabular-nums; }
+    #salaryFabModal .sal-next-note { margin-top: 6px; font-size: .7rem; font-weight: 700; font-style: italic; color: #065f46; opacity: .85; }
     #salaryFabModal .sal-card.nextincr.approved .sal-card-label,
     #salaryFabModal .sal-card.nextincr.approved .sal-card-sub { color: #065f46; }
     #salaryFabModal .sal-next-pill { display: inline-block; margin-top: 4px; font-size: .68rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #d1fae5; color: #047857; }
@@ -117,6 +119,22 @@
     #salaryFabModal .sal-ring span { position: relative; font-weight: 900; font-size: .9rem; color: #1e1b4b; }
     #salaryFabModal .sal-ring.high { --c: #10b981; } #salaryFabModal .sal-ring.mid { --c: #f59e0b; } #salaryFabModal .sal-ring.low { --c: #ef4444; }
     #salaryFabModal .sal-badge-num { flex: none; width: 62px; height: 62px; border-radius: 20px; display: grid; place-items: center; font-size: 1.7rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+    #salaryFabModal .sal-badge-num.tat { font-size: 1.3rem; }
+    #salaryFabModal .sal-tile-rel { position: relative; }
+    /* history dot: same red dot as the Task Summary / Penalty history dots */
+    #salaryFabModal .sal-hist-dot { position: absolute; top: 12px; right: 12px; width: 14px; height: 14px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+        background: #dc2626; box-shadow: 0 0 0 3px rgba(220, 38, 38, .2); transition: transform .15s ease; }
+    #salaryFabModal .sal-hist-dot:hover { transform: scale(1.3); }
+    #salaryFabModal .sal-hist-dot:focus-visible { outline: 3px solid #8b5cf6; outline-offset: 2px; }
+    #salaryFabModal .sal-chart { margin-top: 12px; background: #fff; border-radius: 22px; padding: 14px 14px 6px; box-shadow: 0 8px 22px rgba(30, 27, 75, .08); }
+    #salaryFabModal .sal-chart-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    #salaryFabModal .sal-chart-title { font-weight: 900; font-size: .88rem; color: #1e1b4b; flex: 1; min-width: 150px; }
+    #salaryFabModal .sal-chart-title small { display: block; font-weight: 600; color: #8b8aa8; font-size: .7rem; }
+    #salaryFabModal .sal-chart select { width: 92px; border-radius: 10px; }
+    #salaryFabModal .sal-chart-x { border: 0; background: #f1effa; border-radius: 10px; width: 30px; height: 30px; font-size: 1.1rem; line-height: 1; color: #6b6a86; }
+    #salaryFabModal .sal-chart-empty { text-align: center; padding: 28px 10px; color: #8b8aa8; font-size: .85rem; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-chart { background: #1f1c3d; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-chart-title { color: #f1efff; }
     #salaryFabModal .sal-badge-num.zero { background: #d1fae5; color: #047857; }
     #salaryFabModal .sal-badge-num.some { background: #fef3c7; color: #b45309; }
     #salaryFabModal .sal-badge-num.many { background: #fee2e2; color: #b91c1c; }
@@ -257,6 +275,19 @@
 
                 <div class="sal-cards" id="salCards"></div>
                 <div class="sal-perf" id="salPerf"></div>
+
+                {{-- TAT history graph (opened from the red dot on the TAT badge) --}}
+                <div class="sal-chart sal-hidden" id="salTatChart">
+                    <div class="sal-chart-head">
+                        <div class="sal-chart-title">TAT · task accomplished time<small>Rolling last 30 days average (days), one point per day</small></div>
+                        <select class="form-select form-select-sm" id="salTatDays" aria-label="Days">
+                            <option value="30">30 days</option><option value="60" selected>60 days</option><option value="90">90 days</option>
+                        </select>
+                        <button type="button" class="sal-chart-x" id="salTatClose" aria-label="Close graph">&times;</button>
+                    </div>
+                    <div id="salTatMount" style="min-height:260px"></div>
+                    <div class="sal-chart-empty sal-hidden" id="salTatEmpty"></div>
+                </div>
                 <div class="sal-chips" id="salChips"></div>
 
                 {{-- president@5core.com only --}}
@@ -425,7 +456,12 @@
                         ? 'As per Increment page · ' + esc(m.next_from_label)
                         : 'Approved for ' + esc(m.next_month_label || 'next month')
                             + (m.next_salary !== null ? ' · new salary ' + esc(money(m.next_salary, cur)) : ''))
-                    + '</div></div>';
+                    + '</div>'
+                    + (m.current_salary !== null && m.current_salary !== undefined
+                        ? '<div class="sal-next-badge" title="Current month salary + increment">Next month salary · '
+                            + esc(money(Number(m.current_salary) + Number(m.next_increment), cur)) + '*</div>'
+                        : '')
+                    + '<div class="sal-next-note">* Subject to Performance &amp; KPI</div></div>';
             }
             return '<div class="sal-card nextincr"><div class="sal-card-label">Next month increment</div>'
                 + '<div class="sal-card-value">—</div>'
@@ -442,6 +478,9 @@
             var si = Number(p.si_count) || 0;
             var odCls = od === 0 ? 'zero' : (od < 5 ? 'some' : 'many');
             var odMsg = od === 0 ? 'All clear, nice 🎉' : (od < 5 ? 'Close them to stay on track' : 'Clear these to protect your raise');
+            var hasTat = p.tat !== null && p.tat !== undefined && !isNaN(Number(p.tat));
+            var tatTxt = hasTat ? Number(p.tat).toFixed(1) : '–';
+            var tatCls = !hasTat ? 'zero' : (Number(p.tat) <= 2 ? 'zero' : (Number(p.tat) <= 5 ? 'some' : 'many'));
             var darMsg = pct > 90 ? 'Crushing it 🔥' : (pct >= 80 ? 'Almost there' : 'File daily to level up');
             box.innerHTML =
                 '<div class="sal-tile"><div class="sal-ring ' + band + '" style="--p:' + pct + '"><span>' + Math.round(Number(p.dar_pct) || 0) + '%</span></div>'
@@ -451,13 +490,80 @@
                 + '<div class="sal-tile"><div class="sal-badge-num ' + odCls + '">' + od + '</div>'
                 + '<div><div class="sal-tile-label">Overdue tasks</div>'
                 + '<div class="sal-tile-main">' + (od === 1 ? '1 task' : od + ' tasks') + '</div>'
-                + '<div class="sal-tile-sub">' + odMsg + '</div></div></div>'
+                + '<div class="sal-tile-sub">' + odMsg + '</div>'
+                + (p.overdue_avg !== null && p.overdue_avg !== undefined
+                    ? '<div class="sal-tile-sub" style="margin-top:2px;font-weight:700;">Average: ' + esc(p.overdue_avg) + ' tasks per person</div>'
+                    : '')
+                + '</div></div>'
+                // TAT badge: task accomplished time (avg days start → done, last 30 days) + history dot
+                + '<div class="sal-tile sal-tile-rel"><div class="sal-badge-num tat ' + tatCls + '">' + tatTxt + '</div>'
+                + '<div><div class="sal-tile-label">TAT · Task accomplished time</div>'
+                + '<div class="sal-tile-main">' + (hasTat ? tatTxt + ' days' : 'No data yet') + '</div>'
+                + '<div class="sal-tile-sub">' + (hasTat ? 'Avg start → done · last 30 days' : 'Close tasks to see your TAT') + '</div></div>'
+                + '<button type="button" class="sal-hist-dot" id="salTatDot" title="TAT history" aria-label="Open TAT history"></button></div>'
                 + '<button type="button" class="sal-tile" id="salSiTile" title="Open Scope of Improvement">'
                 + '<div class="sal-si' + (si > 0 ? ' has' : '') + '">SI<span class="sal-si-count">' + si + '</span></div>'
                 + '<div><div class="sal-tile-label">Scope of improvement</div>'
                 + '<div class="sal-tile-main">' + (si === 1 ? '1 point' : si + ' points') + '</div>'
                 + '<div class="sal-tile-sub">' + (si > 0 ? 'Tap to view &amp; work on them' : 'Nothing pending 🌟') + '</div></div></button>';
         }
+
+        // ---------- TAT history graph (line graph, opened from the red dot on the TAT badge) ----------
+        var URL_TAT = @json(route('salaryFab.tatHistory'));
+        var CDN_APEX = 'https://cdn.jsdelivr.net/npm/apexcharts@3.54.1/dist/apexcharts.min.js';
+        var tatChart = null;
+        function loadApex(cb) {
+            if (typeof ApexCharts !== 'undefined') { cb(); return; }
+            var s = document.createElement('script');
+            s.src = CDN_APEX; s.onload = cb;
+            s.onerror = function () { tatMessage('Chart library could not be loaded.'); };
+            document.head.appendChild(s);
+        }
+        function tatMessage(msg) {
+            if (tatChart) { tatChart.destroy(); tatChart = null; }
+            $('salTatMount').innerHTML = '';
+            var e = $('salTatEmpty'); e.textContent = msg; e.classList.remove('sal-hidden');
+        }
+        function drawTat() {
+            $('salTatEmpty').classList.add('sal-hidden');
+            call('GET', URL_TAT + '?days=' + encodeURIComponent($('salTatDays').value)).then(function (res) {
+                if (!res.ok || !res.data || res.data.success === false) { tatMessage(firstError(res.data)); return; }
+                var pts = res.data.points || [];
+                if (!pts.some(function (p) { return p.value !== null && p.value !== undefined; })) { tatMessage('No completed tasks in this period yet.'); return; }
+                loadApex(function () {
+                    if (tatChart) { tatChart.destroy(); tatChart = null; }
+                    $('salTatMount').innerHTML = '';
+                    tatChart = new ApexCharts($('salTatMount'), {
+                        chart: { type: 'line', height: 280, toolbar: { show: true }, animations: { enabled: true, easing: 'easeinout', speed: 500 }, fontFamily: 'inherit' },
+                        series: [{ name: 'TAT (days)', data: pts.map(function (p) { return { x: new Date(p.date + 'T12:00:00').getTime(), y: p.value }; }) }],
+                        stroke: { curve: 'smooth', width: 3, colors: ['#7c3aed'] },
+                        markers: { size: 3, colors: ['#7c3aed'], strokeColors: '#fff', strokeWidth: 2, hover: { size: 6 } },
+                        colors: ['#7c3aed'],
+                        xaxis: { type: 'datetime', labels: { style: { fontSize: '11px' }, datetimeUTC: false } },
+                        yaxis: { min: 0, forceNiceScale: true, decimalsInFloat: 1, labels: { style: { fontSize: '12px' }, formatter: function (v) { return v == null ? '' : Number(v).toFixed(1); } } },
+                        grid: { borderColor: '#e2e8f0', strokeDashArray: 4 },
+                        dataLabels: { enabled: false },
+                        tooltip: { theme: 'light', x: { format: 'dd MMM yyyy' }, y: { formatter: function (v) { return v == null ? 'No data' : Number(v).toFixed(1) + ' days'; } } }
+                    });
+                    tatChart.render();
+                });
+            }).catch(function () { tatMessage('Network error. Please try again.'); });
+        }
+        function closeTat() {
+            $('salTatChart').classList.add('sal-hidden');
+            if (tatChart) { tatChart.destroy(); tatChart = null; }
+        }
+        modalEl.addEventListener('click', function (e) {
+            if (e.target.closest('#salTatDot')) {
+                $('salTatChart').classList.remove('sal-hidden');
+                drawTat();
+                $('salTatChart').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } else if (e.target.closest('#salTatClose')) {
+                closeTat();
+            }
+        });
+        $('salTatDays').addEventListener('change', drawTat);
+        modalEl.addEventListener('hidden.bs.modal', closeTat);
 
         function renderMine() {
             var m = state.me, box = $('salCards'), chips = $('salChips');

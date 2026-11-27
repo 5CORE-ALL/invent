@@ -8427,6 +8427,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'removeUserKpi'])->name('tasks.userKpis.remove');
     // Floating "Salary" icon: own current + future salary; only president@5core.com can set the future salary
     Route::get('/salary-fab', [\App\Http\Controllers\SalaryFabController::class, 'show'])->middleware('auth')->name('salaryFab.show');
+    Route::get('/salary-fab/tat-history', [\App\Http\Controllers\SalaryFabController::class, 'tatHistory'])->middleware('auth')->name('salaryFab.tatHistory');
     Route::post('/salary-fab/future', [\App\Http\Controllers\SalaryFabController::class, 'setFuture'])->middleware('auth')->name('salaryFab.setFuture');
     // Floating "Penalty" icon: users see their own; only president@5core.com adds points, rules and slabs
     Route::get('/penalty-fab', [\App\Http\Controllers\PenaltyFabController::class, 'show'])->middleware('auth')->name('penaltyFab.show');

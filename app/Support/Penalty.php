@@ -179,6 +179,43 @@ class Penalty
         return $out;
     }
 
+    /**
+     * Penalty hours per user for one calendar month (Y-m): the frozen figure for closed months,
+     * otherwise live points of that month priced with the current slabs.
+     *
+     * @return array<int, float> user id => penalty hours
+     */
+    public static function monthHoursByUser(string $ym): array
+    {
+        if (preg_match('/^\d{4}-\d{2}$/', $ym) !== 1 || ! self::tablesReady()) {
+            return [];
+        }
+
+        $start = Carbon::createFromFormat('Y-m-d', $ym.'-01')->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+
+        $frozen = [];
+        try {
+            if (Schema::hasTable('penalty_months')) {
+                $frozen = PenaltyMonth::query()->where('month', $ym)->pluck('amount', 'user_id')
+                    ->map(fn ($v) => (float) $v)->all();
+            }
+        } catch (\Throwable) {
+        }
+
+        $slabs = self::slabs();
+        $live = PenaltyEntry::query()
+            ->whereDate('penalty_date', '>=', $start->toDateString())
+            ->whereDate('penalty_date', '<=', $end->toDateString())
+            ->groupBy('user_id')
+            ->selectRaw('user_id, SUM(points) as pts')
+            ->pluck('pts', 'user_id')
+            ->map(fn ($pts) => self::amountFor((int) $pts, $slabs))
+            ->all();
+
+        return $frozen + $live;
+    }
+
     // ---------- monthly freeze (1st of every month) ----------
 
     /**

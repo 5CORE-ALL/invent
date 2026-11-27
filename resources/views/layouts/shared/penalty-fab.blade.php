@@ -226,7 +226,7 @@
                     <div class="pen-decl-emoji">💜</div>
                     <div>
                         <div class="pen-decl-title">This is about growth, not about cutting your pay.</div>
-                        <div class="pen-decl-text">Penalty points are <b>not</b> meant to deduct money. We use them to evaluate mistakes and shortcomings in performance, so they can be spotted early, corrected and learned from. The rupee amounts are only a way to keep score. Add a corrective point whenever you fix something. It shows how you are levelling up.</div>
+                        <div class="pen-decl-text">Penalty points are <b>not</b> meant to deduct money. We use them to evaluate mistakes and shortcomings in performance, so they can be spotted early, corrected and learned from. The hours are only a way to keep score. Add a corrective point whenever you fix something. It shows how you are levelling up.</div>
                     </div>
                 </div>
 
@@ -250,7 +250,7 @@
 
                 {{-- Slab ladder (everyone can see; president edits in his tools) --}}
                 <div class="pen-card">
-                    <div class="pen-section">🎚️ Penalty slabs · ₹ per point</div>
+                    <div class="pen-section">🎚️ Penalty slabs · hours per point</div>
                     <div class="pen-ladder" id="penLadder"></div>
                     <div class="pen-ladder-note" id="penLadderNote"></div>
                 </div>
@@ -326,7 +326,8 @@
 
         function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
         function num(n) { return Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
-        function rs(n) { return '₹' + num(n); }
+        // Penalty values are shown in hours (the stored numbers are unchanged).
+        function rs(n) { var v = Number(n || 0); return num(v) + (v === 1 ? ' hr' : ' hrs'); }
         function showError(msg) { var e = $('penError'); e.textContent = msg || ''; e.classList.toggle('pen-hidden', !msg); }
         function firstError(d) {
             if (d && d.errors) { var k = Object.keys(d.errors)[0]; return d.errors[k][0]; }
@@ -372,8 +373,8 @@
                 + '<div class="pen-badge-sub">' + (p === 0 ? 'no penalty points 🎉' : (p === 1 ? 'point' : 'points') + ' in the last 30 days') + '</div>'
                 + '<div class="pen-badge-emoji">' + (p === 0 ? '🌿' : '🚨') + '</div></div>'
                 + '<div class="pen-badge amount">'
-                + '<button type="button" class="pen-hist-dot" data-metric="amount" title="Penalty amount history" aria-label="Open penalty amount history"></button>'
-                + '<div class="pen-badge-label">Penalty amount · L30</div>'
+                + '<button type="button" class="pen-hist-dot" data-metric="amount" title="Penalty hours history" aria-label="Open penalty hours history"></button>'
+                + '<div class="pen-badge-label">Penalty hours · L30</div>'
                 + '<div class="pen-badge-value">' + esc(rs(d.l30_amount)) + '</div>'
                 + '<div class="pen-badge-sub">' + p + ' pts × ' + esc(rs(d.rate)) + ' per point</div>'
                 + '<div class="pen-badge-emoji">🪙</div></div>';
@@ -468,7 +469,7 @@
         function openChart(metric) {
             state.chartMetric = metric;
             $('penChart').classList.remove('pen-hidden');
-            $('penChartTitle').textContent = (metric === 'amount' ? 'Penalty amount' : 'Penalty count') + ' · L30 history';
+            $('penChartTitle').textContent = (metric === 'amount' ? 'Penalty hours' : 'Penalty count') + ' · L30 history';
             drawChart();
             $('penChart').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
@@ -488,7 +489,7 @@
                     var color = metric === 'amount' ? '#7c3aed' : '#dc2626';
                     chart = new ApexCharts($('penChartMount'), {
                         chart: { type: 'line', height: 280, toolbar: { show: true }, animations: { enabled: true, easing: 'easeinout', speed: 500 }, fontFamily: 'inherit' },
-                        series: [{ name: metric === 'amount' ? 'Penalty amount (₹)' : 'Penalty count', data: pts.map(function (p) { return { x: new Date(p.date + 'T12:00:00').getTime(), y: p.value }; }) }],
+                        series: [{ name: metric === 'amount' ? 'Penalty hours' : 'Penalty count', data: pts.map(function (p) { return { x: new Date(p.date + 'T12:00:00').getTime(), y: p.value }; }) }],
                         stroke: { curve: 'smooth', width: 3, colors: [color] },
                         markers: { size: 3, colors: [color], strokeColors: '#fff', strokeWidth: 2, hover: { size: 6 } },
                         colors: [color],
@@ -601,7 +602,7 @@
                         : '<input type="number" min="0" class="pen-input pen-slab-max" value="' + s.to + '" aria-label="Slab ' + s.position + ' upper limit">')
                     + '<input type="number" min="0" step="0.5" class="pen-input pen-slab-rate" value="' + s.rate + '" aria-label="Slab ' + s.position + ' rate"></div>';
             });
-            return '<div class="pen-slab-row" style="margin-bottom:2px"><label style="margin:0">From</label><label style="margin:0">Up to (points)</label><label style="margin:0">₹ per point</label></div>'
+            return '<div class="pen-slab-row" style="margin-bottom:2px"><label style="margin:0">From</label><label style="margin:0">Up to (points)</label><label style="margin:0">Hours per point</label></div>'
                 + rows
                 + '<div class="mt-2 pen-pending-flash"><button type="button" class="pen-btn" data-act="slabsave">Save slabs</button></div>'
                 + '<div class="pen-hint-small">Five slabs. Every point of a month total is priced at the rate of the slab the total falls in. Members can see these slabs.</div>';
