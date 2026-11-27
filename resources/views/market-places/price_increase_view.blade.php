@@ -463,12 +463,10 @@
         #ovl30ChannelsPushModal .chpush-input.chpush-pushed { color: #198754; font-weight: 700; }
         #ovl30ChannelsPushModal .chpush-input.chpush-notpushed { color: #dc3545; font-weight: 700; }
         #pi-pending-alert {
-            display: none; align-items: center; gap: 10px; flex-wrap: wrap;
-            margin: 8px 12px 0; padding: 8px 14px; border-radius: 6px;
-            background: #dc3545; color: #fff; font-weight: 600; font-size: 14px;
-            box-shadow: 0 2px 8px rgba(220,53,69,.35); cursor: pointer;
+            display: none; align-items: center; gap: 6px;
+            color: #dc3545; font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap;
         }
-        #pi-pending-alert .btn { font-weight: 600; }
+        #pi-pending-alert #pi-pending-view-btn { text-decoration: underline; }
         #ovl30ChannelsPushModal .chpush-btn { padding: 2px 8px; line-height: 1.3; }
         #ovl30ChannelsPushModal .chpush-col-btn { padding: 1px 8px; line-height: 1.3; }
         #ovl30ChannelsPushModal .chpush-btn.btn-success,
@@ -662,6 +660,13 @@
         }
 
         /* Toolbar: everything on ONE row (compact controls) */
+        /* Compact header: totals badges on one row, toolbar on the next (no extra header spacing) */
+        .summary-header-bar.d-flex { padding: 6px 12px !important; gap: 6px !important; }
+        .summary-header-bar .summary-chart-badge,
+        .summary-header-bar .summary-badge-only { padding: 2px 7px; font-size: 12px; gap: 4px; white-space: nowrap; }
+        .summary-header-bar .summary-badge-dot { width: 7px; height: 7px; }
+        @media (max-width: 1099px) { .summary-header-bar .pb-pre { display: none; } }
+        .card-body:has(> #pi-toolbar) { padding-top: 6px !important; padding-bottom: 6px !important; }
         #pi-toolbar { gap: 4px !important; }
         #pi-toolbar > * { flex: 0 0 auto; }
         @media (min-width: 1100px) { #pi-toolbar { flex-wrap: nowrap !important; } }
@@ -2405,15 +2410,15 @@
     <div class="row">
         <div class="card shadow-sm">
             <!-- Header Bar - Totals (badges with chart links) -->
-            <div class="summary-header-bar px-4 py-3 d-flex flex-wrap align-items-center gap-3 border-bottom">
+            <div class="summary-header-bar px-3 py-2 d-flex flex-wrap align-items-center gap-2 border-bottom">
                 <a href="#" class="summary-chart-badge" data-metric="inv" data-aggregate="1" title="Click to view Inv line graph">
                     <span class="summary-badge-dot" style="background-color: #4361ee;"></span>
-                    <span>Total INV:</span>
+                    <span><span class="pb-pre">Total </span>INV:</span>
                     <span class="summary-badge-value" id="total-inv-badge">0</span>
                 </a>
                 <a href="#" class="summary-chart-badge" data-metric="ov_l30" data-aggregate="1" title="Click to view OV L30 line graph">
                     <span class="summary-badge-dot" style="background-color: #28a745;"></span>
-                    <span>Total OV L30:</span>
+                    <span><span class="pb-pre">Total </span>OV L30:</span>
                     <span class="summary-badge-value" id="total-l30-badge">0</span>
                 </a>
                 <a href="#" class="summary-chart-badge" data-metric="dil" data-aggregate="1" title="Click to view DIL line graph">
@@ -2423,7 +2428,7 @@
                 </a>
                 <a href="#" class="summary-chart-badge" data-metric="total_views" data-aggregate="1" title="Click to view Total Views line graph">
                     <span class="summary-badge-dot" style="background-color: #17a2b8;"></span>
-                    <span>Total Views:</span>
+                    <span><span class="pb-pre">Total </span>Views:</span>
                     <span class="summary-badge-value" id="total-views-badge">0</span>
                 </a>
                 <a href="#" class="summary-chart-badge" data-metric="cvr" data-aggregate="1" title="Click to view CVR line graph">
@@ -2433,29 +2438,29 @@
                 </a>
                 <a href="#" class="summary-chart-badge" data-metric="price" data-aggregate="1" title="Click to view Avg Price line graph">
                     <span class="summary-badge-dot" style="background-color: #e83e8c;"></span>
-                    <span>Avg Price:</span>
+                    <span><span class="pb-pre">Avg </span>Price:</span>
                     <span class="summary-badge-value" id="avg-price-badge">$0.00</span>
                 </a>
-                <span class="summary-badge-only">
+                <span class="summary-badge-only" title="Avg LMP">
                     <span class="summary-badge-dot" style="background-color: #6c757d;"></span>
-                    <span>Avg LMP:</span>
+                    <span><span class="pb-pre">Avg </span>LMP:</span>
                     <span class="summary-badge-value" id="amz-lmp-badge">$0.00</span>
                 </span>
-                <span class="summary-badge-only">
+                <span class="summary-badge-only" title="AVG LQS">
                     <span class="summary-badge-dot" style="background-color: #6f42c1;"></span>
-                    <span>AVG LQS:</span>
+                    <span><span class="pb-pre">AVG </span>LQS:</span>
                     <span class="summary-badge-value" id="avg-lqs-badge">-</span>
                 </span>
             </div>
             {{-- Red alert while at least one channel price push is still pending (retried hourly, e-mailed to software5@5core.com) --}}
-            <div id="pi-pending-alert" role="alert" title="Click to see the pending pushes">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span id="pi-pending-alert-text"></span>
-                <button type="button" class="btn btn-sm btn-light ms-auto" id="pi-pending-view-btn">View list</button>
-            </div>
             <div class="card-body py-3">
              
                 <div id="pi-toolbar" class="d-flex align-items-center flex-wrap gap-2">
+                    <span id="pi-pending-alert" role="alert" title="Click to see the pending pushes">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span id="pi-pending-alert-text" class="d-none"></span>
+                        <span id="pi-pending-view-btn">View list</span>
+                    </span>
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: 80px;" title="Inventory: All / = 0 / &gt; 0">
                         <option value="all">All</option>
@@ -11147,7 +11152,7 @@
             if (!n) { $a.hide(); return; }
             $('#pi-pending-alert-text').text(n + ' channel price push' + (n > 1 ? 'es are' : ' is') + ' NOT pushed yet ('
                 + res.skus + ' SKU' + (res.skus > 1 ? 's' : '') + ') — retried every hour, alert sent to software5@5core.com');
-            $a.css('display', 'flex');
+            $a.attr('title', $('#pi-pending-alert-text').text()).css('display', 'inline-flex');
             const $b = $('#pi-pending-body');
             if ($b.length) {
                 $b.html((res.items || []).map(function(r) {
