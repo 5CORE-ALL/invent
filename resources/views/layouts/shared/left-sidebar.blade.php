@@ -3386,6 +3386,14 @@
                 </a>
             </li>
 
+            {{-- Reviews (all marketplaces → Shopify) --}}
+            <li class="side-nav-item">
+                <a href="{{ route('mpreviews.index') }}" class="side-nav-link {{ request()->routeIs('mpreviews.*') ? 'active' : '' }}">
+                    <i class="ri-chat-heart-line"></i>
+                    <span>Reviews</span>
+                </a>
+            </li>
+
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#salesDashboard" aria-expanded="false"
                     aria-controls="salesDashboard" class="side-nav-link">

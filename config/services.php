@@ -1172,6 +1172,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Judge.me (Shopify review app) — Reviews page pushes marketplace reviews here
+    |--------------------------------------------------------------------------
+    */
+    'judgeme' => [
+        'api_token' => env('JUDGEME_API_TOKEN'),
+        // Defaults to SHOPIFY_STORE_URL (your-store.myshopify.com).
+        'shop_domain' => env('JUDGEME_SHOP_DOMAIN'),
+        // Judge.me needs a reviewer email. Leave empty to use reviews+mp{id}@your-store-domain.
+        'reviewer_email' => env('JUDGEME_REVIEWER_EMAIL'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Apify (used for TikTok Shop competitor search — SerpApi has no TikTok
     | engine, so the /repricer/tiktok-search module hits an Apify Actor.
     |--------------------------------------------------------------------------

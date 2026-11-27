@@ -8886,6 +8886,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/refresh-summary', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'refreshSummary'])->name('refresh-summary');
     });
 
+    // =========================================================================
+    // REVIEWS (all marketplaces except Shopify) + push to Shopify (Judge.me)
+    // =========================================================================
+    Route::prefix('marketplace-reviews')->name('mpreviews.')->group(function () {
+        $c = \App\Http\Controllers\Reviews\MarketplaceReviewsController::class;
+        Route::get('/', [$c, 'index'])->name('index');
+        Route::get('/data', [$c, 'data'])->name('data');
+        Route::post('/fetch', [$c, 'fetch'])->name('fetch');
+        Route::post('/push', [$c, 'push'])->name('push');
+        Route::post('/import', [$c, 'import'])->name('import');
+        Route::post('/store', [$c, 'store'])->name('store');
+        Route::delete('/{id}', [$c, 'destroy'])->whereNumber('id')->name('destroy');
+    });
     Route::prefix('excel')->name('excel.')->group(function () {
         $excel = \App\Http\Controllers\ExcelImportController::class;
         Route::get('/', [$excel, 'index'])->name('index');
