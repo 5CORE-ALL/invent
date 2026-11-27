@@ -30,6 +30,22 @@ class AttendanceTimelineService
   }
 
   /**
+   * The attendance "day" that contains right now. Days start at $dayReset in $timezone, so before
+   * the reset time today's calendar date refers to a window that has not started yet (empty);
+   * the current attendance day is still the previous calendar date.
+   */
+  public static function currentDate(?string $timezone = null, ?string $dayReset = null): string
+  {
+    $timezone = $timezone ?: self::defaultTimezone();
+    $dayReset = $dayReset ?: self::defaultDayReset($timezone);
+
+    $now = now()->timezone($timezone);
+    $start = Carbon::parse($now->toDateString().' '.$dayReset, $timezone);
+
+    return ($now->lt($start) ? $now->copy()->subDay() : $now)->toDateString();
+  }
+
+  /**
    * @return array<string, string>
    */
   public static function timezoneOptions(): array
