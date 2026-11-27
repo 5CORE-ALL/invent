@@ -3965,6 +3965,13 @@
             </div>
         </form>
 
+        <div id="task-form-convert-wrap" style="display: none;">
+            <button type="button" id="tf-convert-btn" class="btn btn-sm w-100 mt-2" data-id=""
+                    style="background:#fd7e14;border-color:#fd7e14;color:#fff;">
+                <i class="mdi mdi-robot me-1"></i> Convert to Automated
+            </button>
+        </div>
+
         <div id="task-form-delete-wrap" style="display: none;">
             <button type="button" id="tf-delete-btn" class="btn btn-sm btn-outline-danger w-100 mt-2" data-id="">
                 <i class="mdi mdi-delete me-1"></i> Delete Task
@@ -8529,6 +8536,7 @@
                     $('#tf_method').val('');
                     $('#tf_task_id').val('');
                     $('#task-form-delete-wrap').hide();
+                    $('#task-form-convert-wrap').hide();
                     $('#task-form-assignee-note').hide();
 
                     tfSetVal('tf_group', '');
@@ -8590,6 +8598,13 @@
                     tfSetVal('tf_checklist_link', rowData.link7);
 
                     tfLoadExistingScreenshots(taskScreenshotNames(rowData));
+
+                    if (canConvertTaskToAutomated(rowData)) {
+                        $('#tf-convert-btn').data('id', id).attr('data-id', id);
+                        $('#task-form-convert-wrap').show();
+                    } else {
+                        $('#task-form-convert-wrap').hide();
+                    }
 
                     if (userCanDeleteTaskRow(rowData)) {
                         $('#tf-delete-btn').data('id', id).attr('data-id', id);
@@ -8884,10 +8899,22 @@
                 }
             }
 
+            // Edit Task panel: close it, then open the same convert popup.
+            $('#tf-convert-btn').on('click', function(e) {
+                e.preventDefault();
+                var taskId = String($(this).data('id'));
+                if (!taskId) return;
+                if (taskFormOffcanvas) taskFormOffcanvas.hide();
+                openConvertAutomatedModal(taskId);
+            });
+
             $(document).on('click', '.convert-to-automated', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                var taskId = String($(this).data('id'));
+                openConvertAutomatedModal(String($(this).data('id')));
+            });
+
+            function openConvertAutomatedModal(taskId) {
                 var row = null;
                 try { row = table.getRow(taskId); } catch (err) { row = null; }
                 var data = row ? row.getData() : null;
@@ -8903,7 +8930,7 @@
                 $('#ca-schedule-time').val('12:00');
                 caSetSchedule('daily');
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('convertAutomatedModal')).show();
-            });
+            }
 
             $(document).on('click', '#convertAutomatedModal .ca-freq-btn', function() {
                 caSetSchedule(String($(this).data('schedule')));
