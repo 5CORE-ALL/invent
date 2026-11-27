@@ -827,6 +827,8 @@
         function aeLiveRuleSprice(data) {
             if (!data || data.is_parent) return 0;
             try {
+                // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+                if (aeSpriceRule() === 'none') return 0;
                 // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP or Std rule.
                 if (window.chStdIsClearance && window.chStdIsClearance(data)) {
                     return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;
@@ -909,7 +911,8 @@
         // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
         window.spriceOnRuleSwitched = function() {
             aeRefreshSpriceCells();
-            if (typeof aeNotify === 'function') aeNotify('S PRC now follows ' + (aeSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'));
+            const rule = aeSpriceRule();
+            if (typeof aeNotify === 'function') aeNotify(rule === 'none' ? 'S PRC rules are OFF, S PRC is left as it is' : 'S PRC now follows ' + (rule === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'));
         };
         // A Sprc Dil edit (slab, Diff, LMP cap) was saved: the cells repaint from the new rule; the server saves it too.
         window.ebayOnDilRulesSaved = function() { aeRefreshSpriceCells(); };
@@ -2578,7 +2581,7 @@
                         editable: false,
                         cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
                         cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
-                        headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with Diff, Ship included, LMP cap by Dil band, Std Prc as the maximum; Dil above every slab = Std Prc, or LMP when Std Prc is above LMP) or Std prc vs dil (Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap). Turning one ON turns the other OFF. The server saves it right after a switch or rule edit and pushes at 04:15 and 20:15 IST. Blue triangle = S PRC ≠ Price. Red = capped at LMP, brown = capped at Std Prc. Hover for every rule used.",
+                        headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with Diff, Ship included, LMP cap by Dil band, Std Prc as the maximum; Dil above every slab = Std Prc, or LMP when Std Prc is above LMP) or Std prc vs dil (Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap). Each rule has its own Rule ON / OFF switch in its modal. Sprc Dil ON fills it from Sprc Dil, else Std prc vs dil ON fills it from Std prc vs dil. Both OFF: S PRC is left as it is. The server saves it right after a switch or rule edit and pushes at 04:15 and 20:15 IST. Blue triangle = S PRC ≠ Price. Red = capped at LMP, brown = capped at Std Prc. Hover for every rule used.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';

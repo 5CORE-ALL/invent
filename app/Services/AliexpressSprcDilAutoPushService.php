@@ -53,8 +53,22 @@ class AliexpressSprcDilAutoPushService
         int $cooldownMinutes = 120
     ): array {
         StdPrcVsDilPricer::flush();
+        // Sprc Dil and Std prc vs dil are ON / OFF on their own (modal switches). Both OFF: no rule prices anything, S PRC stays as it is and nothing is pushed.
+        if (SpriceActiveRule::forChannel('aliexpress') === 'none') {
+            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+
+            return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => [
+                'candidates' => 0,
+                'applied' => 0,
+                'pushed' => 0,
+                'skipped_unchanged' => 0,
+                'skipped' => 0,
+                'push_failed' => 0,
+                'errors' => [],
+            ]];
+        }
         $pricer = StdPrcVsDilPricer::forChannel('aliexpress');
-        // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + Diff + LMP cap by Dil band + Std max).
+        // Sprc Dil ON fills S PRC from the Sprc Dil modal (slab + Diff + LMP cap by Dil band + Std max), else Std prc vs dil ON fills it.
         $dilContext = SpriceActiveRule::usesStdPrc('aliexpress') ? null : $this->loadDilContext();
 
         $this->log($logger, $dilContext !== null
