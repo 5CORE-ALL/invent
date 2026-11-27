@@ -26,6 +26,9 @@ class Amz1DataService
 
     public const REMOVED_TABLE = 'amz1_removed_columns';
 
+    /** Browse category (shopper breadcrumb) of each SKU, read from the Amazon catalog. */
+    public const BROWSE_TABLE = 'amz1_browse_categories';
+
     /** Tables of the Amz Data page: a copy of each eBay 1 Data table (same columns and indexes), starting empty. */
     private const COPIED_TABLES = [
         'item_specifics', 'extra_columns', 'column_sources', 'column_groups',
@@ -89,6 +92,17 @@ class Amz1DataService
                     $table->unsignedBigInteger('removed_by')->nullable();
                     $table->timestamps();
                     $table->unique(['category_hash', 'name_key']);
+                });
+            }
+            if (! Schema::hasTable(self::BROWSE_TABLE)) {
+                Schema::create(self::BROWSE_TABLE, function (Blueprint $table) {
+                    $table->id();
+                    $table->string('sku', 191)->unique();
+                    $table->string('asin', 20)->nullable()->index();
+                    $table->string('node_id', 40)->nullable();
+                    $table->string('path', 500)->nullable();
+                    $table->timestamp('fetched_at')->nullable();
+                    $table->timestamps();
                 });
             }
         } catch (\Throwable $e) {
@@ -592,6 +606,265 @@ class Amz1DataService
         return ['ok' => false, 'message' => implode(' ', array_slice($issues, 0, 3))];
     }
 
+    // ---- Change the product type of a live listing ----
+
+    /** Attributes that belong to the offer (price, stock, shipping), not to the product: they are not part of a product type change. */
+    private const OFFER_ATTRIBUTES = '/(offer|price|quantity|fulfillment|shipping|merchant_|^map_|^condition|b2b|business_|max_order|^fnsku|^asin$)/i';
+
+    /**
+     * Moves one live listing to another product type: the product facts Amazon holds for the SKU are sent again under
+     * the new type (offer, price and stock are left alone). Amazon checks the submission first (VALIDATION_PREVIEW, which
+     * changes nothing); the real change is sent only when $apply is true AND that check found no error.
+     *
+     * @return array{ok: bool, applied: bool, old_type: string, new_type: string, message: string, issues: list<array{severity: string, message: string}>}
+     */
+    public function changeProductType(string $sellerSku, string $newType, bool $apply): array
+    {
+        $this->lastError = '';
+        $newType = strtoupper(trim($newType));
+        $result = ['ok' => false, 'applied' => false, 'old_type' => '', 'new_type' => $newType, 'message' => '', 'issues' => []];
+
+        if (preg_match(self::TYPE_PATTERN, $newType) !== 1) {
+            $result['message'] = '"'.$newType.'" is not an Amazon product type.';
+
+            return $result;
+        }
+        if (! $this->api->isConfigured()) {
+            $result['message'] = 'Amazon SP-API is not connected.';
+
+            return $result;
+        }
+        $listing = $this->fetchListing($sellerSku);
+        if ($listing === null) {
+            $result['message'] = $this->lastError !== '' ? $this->lastError : 'Amazon did not return the listing.';
+
+            return $result;
+        }
+        $result['old_type'] = $listing['product_type'];
+        if ($listing['product_type'] === $newType) {
+            $result['message'] = 'The listing already has the product type '.$newType.'.';
+
+            return $result;
+        }
+
+        $attributes = [];
+        foreach ($listing['attributes'] as $key => $entries) {
+            if (is_string($key) && preg_match(self::OFFER_ATTRIBUTES, $key) !== 1) {
+                $attributes[$key] = $entries;
+            }
+        }
+        $body = ['productType' => $newType, 'requirements' => 'LISTING_PRODUCT_ONLY', 'attributes' => (object) $attributes];
+
+        // 1. Amazon checks it; nothing is changed.
+        $check = $this->putListing($sellerSku, $body, true);
+        $result['issues'] = $check['issues'];
+        if (! $check['ok']) {
+            $result['message'] = 'Amazon would not accept '.$newType.' for this listing. Nothing was changed.';
+
+            return $result;
+        }
+        if (! $apply) {
+            $result['ok'] = true;
+            $result['message'] = 'Amazon accepts '.$newType.' for this listing. Nothing was changed yet.';
+
+            return $result;
+        }
+
+        // 2. The real change.
+        $real = $this->putListing($sellerSku, $body, false);
+        $result['issues'] = $real['issues'];
+        if (! $real['ok']) {
+            $result['message'] = 'Amazon refused the change: '.($real['message'] !== '' ? $real['message'] : 'no reason given').'.';
+
+            return $result;
+        }
+        $result['ok'] = true;
+        $result['applied'] = true;
+        $result['message'] = 'Amazon accepted the change from '.$listing['product_type'].' to '.$newType.'. It can take a few minutes to show on Amazon.';
+
+        return $result;
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array{ok: bool, message: string, issues: list<array{severity: string, message: string}>}
+     */
+    private function putListing(string $sellerSku, array $body, bool $previewOnly): array
+    {
+        $path = '/listings/2021-08-01/items/'.rawurlencode($this->sellerId()).'/'.rawurlencode($sellerSku);
+        $query = ['marketplaceIds' => $this->marketplaceId(), 'issueLocale' => 'en_US'];
+        if ($previewOnly) {
+            $query['mode'] = 'VALIDATION_PREVIEW';
+        }
+        $response = $this->call('PUT', $path, $query, $body, 60);
+        if ($response === null) {
+            return ['ok' => false, 'message' => $this->lastError !== '' ? $this->lastError : 'Amazon did not answer.', 'issues' => []];
+        }
+        $json = $response->json();
+        $json = is_array($json) ? $json : [];
+
+        $issues = [];
+        $hasError = false;
+        foreach ((array) ($json['issues'] ?? []) as $issue) {
+            if (! is_array($issue)) {
+                continue;
+            }
+            $severity = strtoupper((string) ($issue['severity'] ?? ''));
+            $message = trim((string) ($issue['message'] ?? $issue['code'] ?? ''));
+            if ($message === '') {
+                continue;
+            }
+            $names = array_filter((array) ($issue['attributeNames'] ?? []), 'is_string');
+            $issues[] = ['severity' => $severity !== '' ? $severity : 'ERROR', 'message' => $message.($names !== [] ? ' ['.implode(', ', $names).']' : '')];
+            if ($severity === 'ERROR' || $severity === '') {
+                $hasError = true;
+            }
+        }
+        $status = strtoupper((string) ($json['status'] ?? ''));
+        $okStatus = in_array($status, ['VALID', 'ACCEPTED'], true);
+        if ($response->successful() && $okStatus && ! $hasError) {
+            return ['ok' => true, 'message' => '', 'issues' => $issues];
+        }
+        $message = $issues === [] ? trim((string) ($json['errors'][0]['message'] ?? '')) : '';
+        if ($message === '' && $issues === []) {
+            $message = 'HTTP '.$response->status().($status !== '' ? ' '.$status : '');
+        }
+
+        return ['ok' => false, 'message' => $message, 'issues' => $issues];
+    }
+
+    // ---- Browse category (the breadcrumb a shopper sees, e.g. Musical Instruments > Microphones & Accessories > Microphones) ----
+    // It is not the product type: Amazon keeps both, and they can differ (a bundle listed as AUDIO_MIXING_CONSOLE can sit
+    // in the Microphones browse category). Tabs stay by product type; this is shown as its own column.
+
+    /**
+     * Browse category of up to many ASINs, read with the Catalog Items search (20 ASINs per call).
+     *
+     * @param  list<string>  $asins
+     * @return array<string, array{id: string, path: string}> keyed by ASIN
+     */
+    public function browseCategories(array $asins): array
+    {
+        $asins = array_values(array_unique(array_filter(array_map(
+            static fn ($a) => strtoupper(trim((string) $a)),
+            $asins
+        ), static fn ($a) => preg_match('/^[A-Z0-9]{10}$/', $a) === 1)));
+        $out = [];
+        foreach (array_chunk($asins, 20) as $i => $chunk) {
+            if ($i > 0) {
+                usleep(600000); // searchCatalogItems allows about 2 requests a second
+            }
+            $response = $this->call('GET', '/catalog/2022-04-01/items', [
+                'marketplaceIds' => $this->marketplaceId(),
+                'identifiersType' => 'ASIN',
+                'identifiers' => implode(',', $chunk),
+                'includedData' => 'classifications',
+                'pageSize' => 20,
+            ], null, 40);
+            if ($response === null) {
+                continue;
+            }
+            if ($response->status() === 429) {
+                sleep(2);
+                $response = $this->call('GET', '/catalog/2022-04-01/items', [
+                    'marketplaceIds' => $this->marketplaceId(),
+                    'identifiersType' => 'ASIN',
+                    'identifiers' => implode(',', $chunk),
+                    'includedData' => 'classifications',
+                    'pageSize' => 20,
+                ], null, 40);
+                if ($response === null) {
+                    continue;
+                }
+            }
+            if (! $response->successful()) {
+                $this->lastError = 'Amazon refused the catalog request (HTTP '.$response->status().').';
+
+                continue;
+            }
+            foreach ((array) ($response->json('items') ?? []) as $item) {
+                if (! is_array($item) || empty($item['asin'])) {
+                    continue;
+                }
+                $found = self::browseFromClassifications((array) ($item['classifications'] ?? []));
+                if ($found !== null) {
+                    $out[strtoupper((string) $item['asin'])] = $found;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * "Musical Instruments › Microphones & Accessories › Microphones" from the classification chain of a catalog item.
+     * The generic "Products" root Amazon puts in the chain is not shown on the product page, so it is left out.
+     *
+     * @param  array<int, mixed>  $classifications
+     * @return array{id: string, path: string}|null
+     */
+    public static function browseFromClassifications(array $classifications): ?array
+    {
+        foreach ($classifications as $block) {
+            foreach ((array) ($block['classifications'] ?? []) as $leaf) {
+                if (! is_array($leaf)) {
+                    continue;
+                }
+                $names = [];
+                $node = $leaf;
+                $guard = 0;
+                while (is_array($node) && $guard < 12) {
+                    $name = trim((string) ($node['displayName'] ?? ''));
+                    if ($name !== '' && strcasecmp($name, 'Products') !== 0) {
+                        array_unshift($names, $name);
+                    }
+                    $node = $node['parent'] ?? null;
+                    $guard++;
+                }
+                if ($names !== []) {
+                    return ['id' => trim((string) ($leaf['classificationId'] ?? '')), 'path' => implode(' › ', $names)];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Keeps the browse category of SKUs (sku key => ASIN) for the Amz Data page.
+     *
+     * @param  array<string, string>  $skuAsin  sku key => ASIN
+     * @param  array<string, array{id: string, path: string}>  $found  ASIN => browse category
+     */
+    public static function storeBrowseCategories(array $skuAsin, array $found): int
+    {
+        if (! Schema::hasTable(self::BROWSE_TABLE)) {
+            return 0;
+        }
+        $now = now();
+        $rows = [];
+        foreach ($skuAsin as $skuKey => $asin) {
+            $hit = $found[strtoupper($asin)] ?? null;
+            if ($hit === null || $hit['path'] === '') {
+                continue;
+            }
+            $rows[] = [
+                'sku' => (string) $skuKey,
+                'asin' => strtoupper($asin),
+                'node_id' => $hit['id'] !== '' ? $hit['id'] : null,
+                'path' => mb_substr($hit['path'], 0, 500),
+                'fetched_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        foreach (array_chunk($rows, 200) as $chunk) {
+            DB::table(self::BROWSE_TABLE)->upsert($chunk, ['sku'], ['asin', 'node_id', 'path', 'fetched_at', 'updated_at']);
+        }
+
+        return count($rows);
+    }
+
     // ---- Plumbing ----
 
     private function marketplaceId(): string
@@ -628,6 +901,7 @@ class Amz1DataService
                 $url = self::ENDPOINT.$path;
                 $response = match ($method) {
                     'PATCH' => $request->patch($url.'?'.http_build_query($query), $body ?? []),
+                    'PUT' => $request->put($url.'?'.http_build_query($query), $body ?? []),
                     default => $request->get($url, $query),
                 };
                 if (in_array($response->status(), [401, 403, 429, 500, 502, 503], true) && $attempt < 2) {

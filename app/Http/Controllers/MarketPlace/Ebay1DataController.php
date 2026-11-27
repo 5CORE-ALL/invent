@@ -354,7 +354,7 @@ class Ebay1DataController extends Controller
                     // The code itself is always given (a real code only): the Push UPC button and Auto Push send it
                     // even when the app thinks it was pushed before, and the server compares it with the live listing.
                     'upc_value' => ($this->hasUpcColumn() && preg_match('/^\d{8,14}$/', $upcDigits) === 1) ? $upcDigits : '',
-                ];
+                ] + $this->extraRowFields($key);
             }
 
             // Autofill rules, applied to every SKU of a category that has the column, missing listings included
@@ -2226,6 +2226,16 @@ class Ebay1DataController extends Controller
         } else {
             DB::table($this->t('settings'))->insert(['key' => $key, 'value' => $upc, 'created_at' => now(), 'updated_at' => now()]);
         }
+    }
+
+    /**
+     * Extra fields of a row for pages that show more than the eBay columns (Amz Data: the browse category).
+     *
+     * @return array<string, mixed>
+     */
+    protected function extraRowFields(string $skuKey): array
+    {
+        return [];
     }
 
     protected function skuKey(string $sku): string

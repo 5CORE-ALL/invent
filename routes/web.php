@@ -5208,7 +5208,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         '/add-column' => 'addColumn', '/push' => 'pushSpecifics', '/pull' => 'pullFromAmazon', '/load-attributes' => 'loadAttributes', '/cell-styles' => 'saveCellStyles',
         '/change-category' => 'changeCategory', '/missing-history' => 'saveMissingHistory', '/auto-push' => 'setAutoPush',
         '/nr-req' => 'saveNrReq', '/save-source' => 'saveSource', '/edit-column' => 'editColumn',
-        '/column-groups' => 'saveColumnGroups', '/delete-specific' => 'deleteSpecific',
+        '/column-groups' => 'saveColumnGroups', '/delete-specific' => 'deleteSpecific', '/change-product-type' => 'changeProductType',
     ] as $amzPath => $amzMethod) {
         Route::post('/amz-data'.$amzPath, [\App\Http\Controllers\MarketPlace\Amz1DataController::class, $amzMethod])->name('amz.item.data.post'.str_replace('/', '.', $amzPath));
     }

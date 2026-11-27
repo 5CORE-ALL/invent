@@ -338,6 +338,11 @@
                         <button type="button" class="btn btn-sm btn-dark" id="e1dCatBtn" title="Change Category: move the ticked rows (or the open tab) to another {{ $siteName }} category, picked from every {{ $siteName }} category{{ $isTemu ? ' (changed in the app; the live '.$siteName.' listing keeps its category)' : '' }}" aria-label="Change Category">
                             <i class="fas fa-tags"></i>
                         </button>
+                        @if ($isAmazon)
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="e1dPtBtn" title="Change product type on Amazon: moves ONE ticked listing to another Amazon product type on the live listing. Amazon checks it first; nothing changes until you confirm." aria-label="Change product type on Amazon">
+                                <i class="fas fa-exchange-alt"></i>
+                            </button>
+                        @endif
                         @if ($isTemu)
                             <button type="button" class="btn btn-sm btn-outline-dark" id="e1dPull" title="Pull from {{ $siteName }}: read the {{ $isAmazon ? 'product type' : 'category' }} and the item specifics of the ticked rows (or of the open tab) from the live {{ $isAmazon ? 'Amazon listings' : 'Temu 1 products' }}, exactly as {{ $siteName }} holds them">
                                 <i class="fas fa-cloud-download-alt"></i> Pull
@@ -490,6 +495,31 @@
             </div>
         </div>
     </div>
+
+    @if ($isAmazon)
+    <div class="e1d-modal" id="e1dPtModal" hidden>
+        <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dPtTitle">
+            <h5 id="e1dPtTitle" class="mb-2"><i class="fas fa-exchange-alt text-danger"></i> Change product type on Amazon</h5>
+            <div class="alert alert-warning small py-2 mb-2">
+                This changes the <b>live Amazon listing</b>, one SKU at a time. Amazon checks the change first and nothing is changed
+                until you press "Change on Amazon". Price and stock are not touched, but the new product type has its own required
+                fields, so Amazon may refuse it or ask for values the listing does not have yet.
+            </div>
+            <div class="small mb-1"><b>SKU</b>: <span id="e1dPtSku">-</span></div>
+            <div class="small mb-2"><b>Product type now</b>: <span id="e1dPtOld">-</span></div>
+            <label class="form-label small fw-bold" for="e1dPtType">Move it to this product type</label>
+            <input type="text" id="e1dPtType" class="form-control form-control-sm mb-1" list="e1dPtTypes" placeholder="e.g. MICROPHONE" autocomplete="off" spellcheck="false" style="text-transform:uppercase">
+            <datalist id="e1dPtTypes"></datalist>
+            <div class="small text-muted mb-2">Type the Amazon product type name (capital letters and underscores). The types already used on this page are suggested.</div>
+            <div class="small my-2" id="e1dPtResult"></div>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-sm btn-light" id="e1dPtCancel">Close</button>
+                <button type="button" class="btn btn-sm btn-outline-dark" id="e1dPtCheck">Check with Amazon</button>
+                <button type="button" class="btn btn-sm btn-danger" id="e1dPtGo" disabled>Change on Amazon</button>
+            </div>
+        </div>
+    </div>
+    @endif
 
     <div class="e1d-modal" id="e1dMissModal" hidden>
         <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dMissTitle">
@@ -1038,6 +1068,102 @@
                 await loadData(); // the tabs follow the new categories (an emptied tab goes away)
             }
 
+            // ---- Amz Data: change the product type of ONE live Amazon listing (Amazon checks first, then you confirm). ----
+            let ptRow = null;
+            let ptChecked = ''; // the product type Amazon accepted in the last check
+            let ptBusy = false;
+
+            function ptResult(html) { document.getElementById('e1dPtResult').innerHTML = html; }
+
+            function ptSync() {
+                const type = document.getElementById('e1dPtType').value.trim().toUpperCase();
+                document.getElementById('e1dPtCheck').disabled = ptBusy || !/^[A-Z][A-Z0-9_]{1,119}$/.test(type);
+                document.getElementById('e1dPtGo').disabled = ptBusy || ptChecked === '' || ptChecked !== type;
+            }
+
+            function openPtModal() {
+                const selected = table && tableReady ? table.getSelectedData() : [];
+                if (selected.length !== 1) {
+                    rowToast('Tick exactly one row: the product type is changed on one live listing at a time.', false);
+                    return;
+                }
+                ptRow = selected[0];
+                if (!String(ptRow.item_id || '').trim()) {
+                    rowToast('This SKU has no live Amazon listing (no ASIN).', false);
+                    return;
+                }
+                ptChecked = '';
+                document.getElementById('e1dPtSku').textContent = String(ptRow.sku);
+                document.getElementById('e1dPtOld').textContent = String(ptRow.category || '') || 'not read yet (use Pull)';
+                document.getElementById('e1dPtType').value = '';
+                ptResult('');
+                const types = new Set();
+                rows.forEach(function (r) {
+                    const t = String(r.category || '').trim().toUpperCase();
+                    if (/^[A-Z][A-Z0-9_]{1,119}$/.test(t)) types.add(t);
+                });
+                document.getElementById('e1dPtTypes').innerHTML = Array.from(types).sort().map(function (t) { return '<option value="' + esc(t) + '"></option>'; }).join('');
+                ptSync();
+                document.getElementById('e1dPtModal').hidden = false;
+                setTimeout(function () { document.getElementById('e1dPtType').focus(); }, 50);
+            }
+
+            function ptIssuesHtml(issues) {
+                if (!issues || !issues.length) return '';
+                return '<ul class="mb-0 mt-1 ps-3">' + issues.slice(0, 15).map(function (i) {
+                    return '<li class="' + (i.severity === 'ERROR' ? 'text-danger' : 'text-muted') + '">' + esc(i.severity) + ': ' + esc(i.message) + '</li>';
+                }).join('') + '</ul>' + (issues.length > 15 ? '<div class="text-muted">…and ' + (issues.length - 15) + ' more.</div>' : '');
+            }
+
+            async function ptRun(apply) {
+                if (ptBusy || !ptRow) return;
+                const type = document.getElementById('e1dPtType').value.trim().toUpperCase();
+                if (apply && !window.confirm('Change the LIVE Amazon listing of ' + ptRow.sku + ' to the product type ' + type + '?\n\nPrice and stock are not touched. This is a change on Amazon, not only in this app.')) return;
+                ptBusy = true;
+                ptChecked = '';
+                ptSync();
+                ptResult('<i class="fas fa-spinner fa-spin"></i> ' + (apply ? 'Changing on Amazon…' : 'Amazon is checking…'));
+                try {
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                    const res = await fetch('{{ $ebayCfg['base'] }}/change-product-type', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body: JSON.stringify({ sku: String(ptRow.sku), product_type: type, apply: !!apply }),
+                    });
+                    const json = await res.json().catch(function () { return {}; });
+                    const text = json.message || (res.ok ? '' : 'Could not reach Amazon.');
+                    if (json.success && json.applied) {
+                        ptResult('<div class="text-success fw-bold">' + esc(text) + '</div>' + ptIssuesHtml(json.issues));
+                        rowToast(ptRow.sku + ': product type changed to ' + type + ' on Amazon.', true);
+                        await loadData();
+                    } else if (json.success) {
+                        ptChecked = type;
+                        ptResult('<div class="text-success fw-bold">' + esc(text) + '</div>' + ptIssuesHtml(json.issues) + '<div class="mt-1">Press "Change on Amazon" to apply it.</div>');
+                    } else {
+                        ptResult('<div class="text-danger fw-bold">' + esc(text) + '</div>' + ptIssuesHtml(json.issues));
+                    }
+                } catch (e) {
+                    ptResult('<div class="text-danger fw-bold">' + esc(e.message || 'Failed') + '</div>');
+                } finally {
+                    ptBusy = false;
+                    ptSync();
+                }
+            }
+
+            function bindPtModal() {
+                const btn = document.getElementById('e1dPtBtn');
+                if (!btn) return;
+                btn.addEventListener('click', openPtModal);
+                document.getElementById('e1dPtCancel').addEventListener('click', function () { document.getElementById('e1dPtModal').hidden = true; });
+                document.getElementById('e1dPtCheck').addEventListener('click', function () { ptRun(false); });
+                document.getElementById('e1dPtGo').addEventListener('click', function () { ptRun(true); });
+                document.getElementById('e1dPtType').addEventListener('input', function () {
+                    this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+                    ptChecked = '';
+                    ptSync();
+                });
+            }
+
             function bindCatModal() {
                 document.getElementById('e1dCatBtn').addEventListener('click', openCatModal);
                 document.getElementById('e1dCatCancel').addEventListener('click', function () { document.getElementById('e1dCatModal').hidden = true; });
@@ -1232,7 +1358,7 @@
 
             // Red count on every header: how many rows of the open tab have no data in that column, missing listings included.
             // Views, click and reason columns are traffic data, not missing item specifics, so they stay out of the count.
-            const E1_NO_MISS = new Set(['_edit', '_copy', 'nr_req', 'listed', 'views', 'l7_views', 'l1_views', 'organic_clicks', 'inactive_reason']);
+            const E1_NO_MISS = new Set(['_edit', '_copy', 'nr_req', 'listed', 'views', 'l7_views', 'l1_views', 'organic_clicks', 'inactive_reason', 'browse_category']);
 
             function isMissingValue(value) {
                 if (value === null || value === undefined) return true;
@@ -3327,6 +3453,7 @@
             // The column heads of the channel: Temu renames some heads (Goods ID, Product name, Base price ...) and hides those it has no figure for.
             function baseColumns() {
                 return baseColumnDefs().filter(function (col) {
+                    if (col.field === 'browse_category' && !E1_AMAZON) return false;
                     return !(col.field && E1_COL_HIDE.indexOf(col.field) !== -1);
                 }).map(function (col) {
                     if (col.field && E1_COL_TITLES[col.field]) col.title = E1_COL_TITLES[col.field];
@@ -3413,6 +3540,16 @@
                         { title: 'Reason', field: 'inactive_reason',  formatter: textFormatter },
                         { title: 'Report date', field: 'report_date',  formatter: textFormatter },
                         { title: 'Category', field: 'category',  formatter: textFormatter },
+                        // Amz Data: the breadcrumb on the Amazon product page. The product type above is what the tabs follow.
+                        {
+                            title: 'Amazon category', field: 'browse_category', minWidth: 170,
+                            formatter: function (cell) {
+                                const v = String(cell.getValue() || '').trim();
+                                if (!v) return '<span class="e1d-muted">—</span>';
+                                const leaf = v.split(' › ').pop();
+                                return '<span title="' + esc(v) + '">' + esc(leaf) + '</span>';
+                            },
+                        },
                 ];
             }
 
@@ -4252,6 +4389,7 @@
                 });
                 document.getElementById('e1dMissCancel').addEventListener('click', function () { document.getElementById('e1dMissModal').hidden = true; });
                 bindCatModal();
+                bindPtModal();
                 const pullBtn = document.getElementById('e1dPull');
                 if (pullBtn) pullBtn.addEventListener('click', function () { runPull(false); });
                 const fetchCatsBtn = document.getElementById('e1dFetchCats');

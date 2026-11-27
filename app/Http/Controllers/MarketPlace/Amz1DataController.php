@@ -254,6 +254,25 @@ class Amz1DataController extends Ebay1DataController
         return $out;
     }
 
+    // ---- Browse category: the breadcrumb on the Amazon product page (not the product type) ----
+
+    /** @var array<string, string>|null sku key => "Musical Instruments › Microphones & Accessories › Microphones" */
+    private ?array $browseMemo = null;
+
+    protected function extraRowFields(string $skuKey): array
+    {
+        if ($this->browseMemo === null) {
+            $this->browseMemo = [];
+            if (Schema::hasTable(Amz1DataService::BROWSE_TABLE)) {
+                foreach (DB::table(Amz1DataService::BROWSE_TABLE)->select(['sku', 'path'])->get() as $row) {
+                    $this->browseMemo[(string) $row->sku] = (string) $row->path;
+                }
+            }
+        }
+
+        return ['browse_category' => $this->browseMemo[$skuKey] ?? ''];
+    }
+
     // ---- Categories are Amazon product types ----
 
     /** @var array<string, string>|null normalized seller SKU => product type (from the listings report) */
@@ -748,6 +767,13 @@ class Amz1DataController extends Ebay1DataController
                     continue;
                 }
                 $columns = $service->columnsFor($type);
+                // The browse category (shopper breadcrumb) is read together with the product type; a failure here is not a pull failure.
+                try {
+                    Amz1DataService::storeBrowseCategories([$this->skuKey($sku) => $asin], $service->browseCategories([$asin]));
+                    $this->browseMemo = null;
+                } catch (\Throwable $e) {
+                    Log::info('AmzData: browse category not read', ['sku' => $sku, 'error' => $e->getMessage()]);
+                }
                 $filled = $this->storePulled($sku, $asin, $type, $columns, $listing['attributes'], $service, $pending[$this->skuKey($sku)] ?? []);
                 $note = $columns === [] ? ' No fields could be loaded for this product type'.($service->lastError !== '' ? ': '.$service->lastError : '.') : '';
                 $results[] = [
@@ -1235,6 +1261,62 @@ class Amz1DataController extends Ebay1DataController
             'fetched_at' => '',
             'note' => $note,
         ]);
+    }
+
+    /**
+     * POST /amz-data/change-product-type   { sku, product_type, apply }
+     * Changes the product type of ONE live Amazon listing. Without apply, Amazon only checks the change (nothing is
+     * changed). With apply, the change is sent only after that same check found no error. The app's copy follows
+     * once Amazon accepted it.
+     */
+    public function changeProductType(Request $request)
+    {
+        $data = $request->validate([
+            'sku' => 'required|string|max:191',
+            'product_type' => 'required|string|max:120',
+            'apply' => 'nullable|boolean',
+        ]);
+        $sku = trim((string) $data['sku']);
+        $type = strtoupper(trim((string) $data['product_type']));
+        $apply = (bool) ($data['apply'] ?? false);
+
+        if ($this->liveItemId($sku) === '') {
+            return response()->json(['success' => false, 'message' => 'This SKU has no live Amazon listing.', 'issues' => []], 422);
+        }
+        $api = app(AmazonSpApiService::class);
+        if (! $api->isConfigured()) {
+            return response()->json(['success' => false, 'message' => 'Amazon SP-API is not connected.', 'issues' => []], 500);
+        }
+
+        $service = new Amz1DataService($api);
+        @set_time_limit(180);
+        $result = $service->changeProductType($this->sellerSkuFor($sku), $type, $apply);
+
+        if ($result['applied']) {
+            Log::warning('AmzData: product type changed on Amazon', [
+                'user' => $request->user()?->email,
+                'sku' => $sku,
+                'from' => $result['old_type'],
+                'to' => $result['new_type'],
+            ]);
+            if (Schema::hasTable($this->t('item_specifics'))) {
+                $key = $this->skuKey($sku);
+                $now = now();
+                $updated = DB::table($this->t('item_specifics'))->where('sku', $key)->update(['category_path' => $type, 'updated_at' => $now]);
+                if ($updated === 0) {
+                    DB::table($this->t('item_specifics'))->insert([
+                        'sku' => $key,
+                        'category_path' => $type,
+                        'specifics' => json_encode((object) []),
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                }
+            }
+            $this->pulledMemo = null;
+        }
+
+        return response()->json(['success' => $result['ok']] + $result, $result['ok'] || $result['issues'] !== [] ? 200 : 422);
     }
 
     /**

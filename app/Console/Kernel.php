@@ -423,6 +423,13 @@ class Kernel extends ConsoleKernel
                 ->name('lqs-sync-'.$lqsSlug)
                 ->appendOutputTo($log);
         }
+        // Amz Data "Amazon category" column: the shopper breadcrumb of new SKUs (and of SKUs read over a week ago).
+        $schedule->command('amz-data:browse-categories')
+            ->dailyAt('03:40')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->name('amz-data-browse-categories')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)
