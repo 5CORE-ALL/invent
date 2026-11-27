@@ -47,6 +47,13 @@ class PricePushPendingService
             return false;
         }
 
+        // Marketplace is reviewing the listing / a previous change ("PUB_BIZCHECK_PRODUCT_IN_AUDITING … under review",
+        // "modification record under review", "wait for Temu to review your last application"): clears by itself, the
+        // hourly retry goes through once the review is done.
+        if (preg_match('/in_auditing|under\s+review|wait\s+for\s+(?:the\s+)?(?:\w+\s+to\s+)?review/i', $err)) {
+            return false;
+        }
+
         // Amazon: "did not accept the price update (status: INVALID) … product type specified is invalid or not supported"
         // is a problem in the Amazon listing data itself, not something the hourly retry can fix.
         if (self::key((string) $row->marketplace) === 'amazon'
