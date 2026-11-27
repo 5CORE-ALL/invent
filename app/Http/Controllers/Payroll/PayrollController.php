@@ -244,6 +244,7 @@ class PayrollController extends Controller
         $salaryUsers = User::query()
             ->where('is_active', true)
             ->where('show_in_salary', true)
+            ->with('userSalary')
             ->orderBy('name')
             ->get()
             ->map(fn (User $u) => [
@@ -251,6 +252,10 @@ class PayrollController extends Controller
                 'name' => $u->name,
                 'region' => $u->salaryRegion(),
                 'avatar_url' => $this->incrementAvatarUrl($u),
+                // Stored salary (PP + Incr) used when the month has no sheet row for this user yet.
+                'current_salary' => $u->userSalary
+                    ? round((float) $u->userSalary->salary_pp + (float) $u->userSalary->increment, 2)
+                    : null,
             ])
             ->values();
 
@@ -263,6 +268,8 @@ class PayrollController extends Controller
                     'region' => $r->user->salaryRegion(),
                     'avatar_url' => $this->incrementAvatarUrl($r->user),
                     'increment' => round((float) $r->increment, 2),
+                    // Salary of this month = Salary PP + Incr (same as the Salary page / My Salary window).
+                    'current_salary' => round((float) $r->salary_pp + (float) $r->increment, 2),
                 ])
                 ->keyBy('user_id');
 
@@ -276,6 +283,7 @@ class PayrollController extends Controller
                             'region' => $u['region'],
                             'avatar_url' => $u['avatar_url'],
                             'increment' => 0.0,
+                            'current_salary' => $u['current_salary'],
                         ]);
                     }
                 }

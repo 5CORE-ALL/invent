@@ -50,12 +50,14 @@ class SalaryFabController extends Controller
             ->values();
         $position = $months->pluck('id')->flip();
 
-        // "Current" month = the month the Salary page opens on (last calendar month); when that month
-        // has no sheet yet, the newest payroll month. "Next" month = the one right after it.
-        $defaultLabel = app(PayrollService::class)->defaultMonthLabel();
-        $anchor = $months->firstWhere('month_label', $defaultLabel) ?? $months->last();
+        // "Current" month = the running calendar month (e.g. November); when that month has no sheet
+        // yet, the newest payroll month. "Next" month = the following calendar month (e.g. December),
+        // whose increment is whatever is entered for it on the Payroll → Increment page.
+        $currentLabel = now()->format('F Y');
+        $nextLabel = now()->startOfMonth()->addMonth()->format('F Y');
+        $anchor = $months->firstWhere('month_label', $currentLabel) ?? $months->last();
         $anchorPos = $anchor ? (int) $position->get($anchor->id) : -1;
-        $next = $anchor ? $months->get($anchorPos + 1) : null;
+        $next = $months->firstWhere('month_label', $nextLabel);
 
         $rows = PayrollEmployeeSalary::query()
             ->select('payroll_employee_salaries.*', 'payroll_months.month_label as month_label')
@@ -80,7 +82,7 @@ class SalaryFabController extends Controller
             $nextRow = $nextRows->get($userId);
             $inc = $nextRow ? (float) $nextRow->increment : 0.0;
 
-            $row->setAttribute('next_month_label', $next?->month_label);
+            $row->setAttribute('next_month_label', $nextLabel);
             $row->setAttribute('next_increment', $inc > 0 ? $inc : null);
             // Next month's pay rate = carried-forward base (this month's PP + Incr, unless the sheet
             // has a manual PP override) + the approved increment.

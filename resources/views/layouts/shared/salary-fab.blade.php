@@ -38,6 +38,9 @@
 
     /* ---------- modal shell ---------- */
     #salaryFabModal .modal-content { border-radius: 28px; border: 0; overflow: hidden; background: #f6f5fb; box-shadow: 0 30px 80px rgba(76, 29, 149, .35); }
+    /* full-height modal */
+    #salaryFabModal .modal-dialog { height: 100%; max-height: 100%; margin-top: 0; margin-bottom: 0; }
+    #salaryFabModal .modal-content { height: 100%; max-height: 100%; border-radius: 0; }
     #salaryFabModal .modal-header {
         position: relative; overflow: hidden; border-bottom: 0; color: #fff; padding: 20px 22px 26px;
         background: #1e1b4b;
@@ -62,6 +65,7 @@
         box-shadow: 0 14px 34px rgba(76, 29, 149, .3);
     }
     #salaryFabModal .sal-hero svg { display: block; width: 100%; height: auto; }
+    #salaryFabModal .sal-hero { max-width: 520px; margin-left: auto; margin-right: auto; }
     #salaryFabModal .sal-hero-top { position: absolute; left: 16px; top: 14px; z-index: 2; }
     #salaryFabModal .sal-pct { font-size: 2.3rem; font-weight: 900; letter-spacing: -.03em; line-height: 1; }
     #salaryFabModal .sal-pct small { font-size: 1rem; font-weight: 800; opacity: .8; }

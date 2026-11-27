@@ -1544,8 +1544,9 @@
         const dir = incSort.dir === 'desc' ? -1 : 1;
         const byName = (a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base', numeric: true });
         return users.slice().sort((a, b) => {
-            if (incSort.key === 'increment') {
-                const d = (Number(a.increment || 0) - Number(b.increment || 0)) * dir;
+            if (incSort.key === 'increment' || incSort.key === 'current_salary') {
+                const k = incSort.key;
+                const d = (Number(a[k] || 0) - Number(b[k] || 0)) * dir;
                 return d !== 0 ? d : byName(a, b);
             }
             return byName(a, b) * dir;
@@ -1607,8 +1608,10 @@
 
         const totals = {};
         let entries = 0;
+        let pending = 0;
         months.forEach((m) => {
             entries += m.withInc;
+            pending += m.users.length - m.withInc;
             Object.keys(m.totals).forEach((r) => { totals[r] = (totals[r] || 0) + m.totals[r]; });
         });
 
@@ -1638,6 +1641,8 @@
             summary.innerHTML = '<div class="inc-stats">'
                 + '<div class="inc-stat is-primary"><div class="k">Total Increment</div><div class="v">' + esc(formatTotals(totals)) + '</div></div>'
                 + '<div class="inc-stat"><div class="k">Employees with increment</div><div class="v">' + entries + '</div></div>'
+                + '<div class="inc-stat"><div class="k">Increment pending</div><div class="v" style="color:' + (pending ? '#b45309' : '#047857') + ';">' + pending + '</div>'
+                + '<div class="small text-muted mt-1">' + (pending ? 'employees with no increment yet' : 'all employees done') + '</div></div>'
                 + monthCard
                 + '</div>';
         }
@@ -1660,21 +1665,22 @@
                     : '') + '</td>' : '')
                 + '<td class="idx">' + (i + 1) + '</td>'
                 + '<td><span class="inc-person">' + avatarHtml(u) + esc(u.name) + '</span></td>'
+                + '<td class="num">' + (u.current_salary === null || u.current_salary === undefined ? '<span class="inc-zero">—</span>' : '<span style="font-weight:600;color:#374151;">' + esc(fmt(u.current_salary, u.region)) + '</span>') + '</td>'
                 + '<td class="num"><span class="' + (Number(u.increment) ? 'inc-amt' : 'inc-zero') + '">' + esc(fmt(u.increment || 0, u.region)) + '</span></td>'
                 + (canManage ? '<td class="act">' + (editable
                     ? '<button type="button" class="inc-icon-btn inc-edit" title="' + (Number(u.increment) ? 'Edit (applies to all ticked rows if several are selected)' : 'Add increment (applies to all ticked rows if several are selected)') + '" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="' + (Number(u.increment) ? 'ri-pencil-line' : 'ri-add-circle-line') + '"></i></button>'
                     + (Number(u.increment) ? '<button type="button" class="inc-icon-btn danger inc-remove" title="Remove increment" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="ri-delete-bin-line"></i></button>' : '')
                     : '<span class="text-muted" title="Month is locked">🔒</span>') + '</td>' : '')
                 + '</tr>').join('');
-            const emptyRow = m.users.length ? '' : '<tr><td colspan="' + (canManage ? 5 : 3) + '" class="text-center text-muted py-4">No employees in this month.</td></tr>';
+            const emptyRow = m.users.length ? '' : '<tr><td colspan="' + (canManage ? 6 : 4) + '" class="text-center text-muted py-4">No employees in this month.</td></tr>';
             return '<div class="inc-card" data-month="' + m.month_id + '">'
-                + '<div class="inc-card-head"><span><span class="m">' + esc(m.month_label) + '</span><span class="c">' + m.withInc + ' of ' + m.users.length + ' with increment</span></span>'
+                + '<div class="inc-card-head"><span><span class="m">' + esc(m.month_label) + '</span><span class="c">' + m.withInc + ' of ' + m.users.length + ' with increment' + (m.users.length > m.withInc ? ' · ' + (m.users.length - m.withInc) + ' pending' : '') + '</span></span>'
                 + '<span class="t">' + esc(formatTotals(m.totals)) + '</span></div>'
                 + '<table class="inc-table"><thead><tr>'
                 + (canManage ? '<th class="chk">' + (editable ? '<input type="checkbox" class="inc-card-all" title="Select all">' : '') + '</th>' : '')
-                + '<th class="idx">#</th>' + incSortTh('Employee', 'name') + incSortTh('Increment', 'increment', 'num')
+                + '<th class="idx">#</th>' + incSortTh('Employee', 'name') + incSortTh('Current Salary (' + m.month_label + ')', 'current_salary', 'num') + incSortTh('Increment', 'increment', 'num')
                 + (canManage ? '<th class="act"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + emptyRow + '</tbody>'
-                + (m.users.length > 1 ? '<tfoot><tr>' + (canManage ? '<td></td>' : '') + '<td></td><td>Total</td><td class="num">' + esc(formatTotals(m.totals)) + '</td>' + (canManage ? '<td></td>' : '') + '</tr></tfoot>' : '')
+                + (m.users.length > 1 ? '<tfoot><tr>' + (canManage ? '<td></td>' : '') + '<td></td><td>Total</td><td></td><td class="num">' + esc(formatTotals(m.totals)) + '</td>' + (canManage ? '<td></td>' : '') + '</tr></tfoot>' : '')
                 + '</table></div>';
         }).join('');
         box.innerHTML = '';
@@ -1938,7 +1944,7 @@
             incSort.dir = incSort.dir === 'asc' ? 'desc' : 'asc';
         } else {
             // Names start A-Z; amounts start highest first.
-            incSort = { key, dir: key === 'increment' ? 'desc' : 'asc' };
+            incSort = { key, dir: key === 'name' ? 'asc' : 'desc' };
         }
         renderIncrements();
     });
