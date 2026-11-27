@@ -706,7 +706,7 @@ class AuditMasterController extends Controller
             $latestReturnsMap,   $prevReturnsMap,
             $nextValueMap, $nextReturnsValueMap,
             $sLinkMap, $rLinkMap,
-            $pendingMap, $pendingService
+            $pendingMap, $pendingService, $page
         ) {
             $scope = $ahmController->definitionScopeForChannel($c);
 
