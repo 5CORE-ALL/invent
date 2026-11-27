@@ -786,7 +786,7 @@
 
     function masterListingSlug(name) {
         const key = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const channels = { alibaba: 'alibaba', aliexpress: 'aliexpress', wayfair: 'wayfair', topdawg: 'topdawg', shein: 'shein' };
+        const channels = { alibaba: 'alibaba', aliexpress: 'aliexpress', wayfair: 'wayfair', topdawg: 'topdawg', shein: 'shein', bestbuy: 'bestbuy', bestbuyusa: 'bestbuy', macy: 'macys', macys: 'macys', purchasingpower: 'purchasingpower' };
         return channels[key] || '';
     }
 

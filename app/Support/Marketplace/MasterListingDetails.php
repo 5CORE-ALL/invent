@@ -34,6 +34,11 @@ class MasterListingDetails
             'wayfair' => 'Wayfair',
             'topdawg' => 'TopDawg',
             'shein' => 'Shein',
+            'bestbuy' => 'Best Buy',
+            'bestbuyusa' => 'Best Buy',
+            'macy' => "Macy's",
+            'macys' => "Macy's",
+            'purchasingpower' => 'Purchasing Power',
         ];
     }
 
