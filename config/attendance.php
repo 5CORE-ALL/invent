@@ -141,6 +141,8 @@ return [
         // Lowest severity that shows the triangle: low | medium | high. Low alerts stay visible
         // on the employee page only (e.g. a single network hiccup should not shame anyone).
         'alert_min_severity' => env('ATTENDANCE_CHECKUP_MIN_SEVERITY', 'medium'),
+        // These people never get a fraud alert / red triangle.
+        'alert_exempt_emails' => ['tech-support@5core.com'],
         // How many recent days the scheduled run re-checks (today counts as 1).
         'run_days' => (int) env('ATTENDANCE_CHECKUP_RUN_DAYS', 2),
         // A single session this long with (almost) no break: machine left running / never clocked out.

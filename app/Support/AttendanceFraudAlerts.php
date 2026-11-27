@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\AttendanceAiFlag;
+use App\Models\User;
 use Illuminate\Support\Collection;
 
 /**
@@ -56,6 +57,11 @@ class AttendanceFraudAlerts
      */
     public static function openFraudFlags(array $userIds): Collection
     {
+        $userIds = array_values(array_diff($userIds, self::exemptUserIds()));
+        if ($userIds === []) {
+            return new Collection();
+        }
+
         $days = max(1, (int) config('attendance.checkup.lookback_days', 30));
         $cutoff = now()->subDays($days - 1)->toDateString();
 
@@ -76,6 +82,10 @@ class AttendanceFraudAlerts
      */
     public static function openFlagsByDate(int $userId, string $from, string $to): array
     {
+        if (in_array($userId, self::exemptUserIds(), true)) {
+            return [];
+        }
+
         if ($from > $to) {
             [$from, $to] = [$to, $from];
         }
@@ -114,6 +124,34 @@ class AttendanceFraudAlerts
         }
 
         return $byDate;
+    }
+
+    /**
+     * User ids that never get a fraud alert (config attendance.checkup.alert_exempt_emails,
+     * e.g. tech-support@5core.com).
+     *
+     * @return array<int, int>
+     */
+    public static function exemptUserIds(): array
+    {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        $emails = array_values(array_filter(array_map(
+            fn ($e) => strtolower(trim((string) $e)),
+            (array) config('attendance.checkup.alert_exempt_emails', [])
+        )));
+        if ($emails === []) {
+            return $cache = [];
+        }
+
+        return $cache = User::query()
+            ->whereIn(\DB::raw('LOWER(email)'), $emails)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
     }
 
     public static function meetsThreshold(string $level): bool
