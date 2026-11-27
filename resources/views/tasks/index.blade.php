@@ -2487,6 +2487,40 @@
     </div>
 </div>
 
+<!-- CL Report modal — read-only view of all CL form data (opened from the green dot in the Report column) -->
+<div class="modal fade" id="clReportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #198754 0%, #28a745 100%); color: #fff;">
+                <h5 class="modal-title mb-0"><i class="mdi mdi-clipboard-check-outline me-2"></i>CL Report</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="small text-muted">Task</div>
+                    <div class="fw-semibold" id="cl-report-task-title">—</div>
+                    <div class="small text-muted">
+                        CL ID: <span id="cl-report-cl-id">—</span>
+                        <span class="mx-1">·</span>Form: <span id="cl-report-form-title">—</span>
+                        <span class="mx-1">·</span>Status: <span id="cl-report-status">—</span>
+                    </div>
+                </div>
+                <div id="cl-report-loading" class="text-muted small mb-3 d-none"><i class="mdi mdi-loading mdi-spin me-1"></i>Loading…</div>
+                <div id="cl-report-error" class="alert alert-danger d-none mb-3"></div>
+                <div id="cl-report-note" class="alert py-2 small d-none mb-3" role="status"></div>
+                <div id="cl-report-questions" class="vstack gap-3"></div>
+                <div id="cl-report-extra" class="mt-3 d-none">
+                    <h6 class="text-success mb-2"><i class="mdi mdi-text-box-check-outline me-1"></i>Completion report</h6>
+                    <div id="cl-report-text" class="p-3 rounded border" style="background:#f8f9fa;white-space:pre-wrap;font-size:14px;line-height:1.6;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Task Links Modal — read-only list of the links on a task (opened from the ACTION column link button) -->
 <div class="modal fade" id="taskLinksModal" tabindex="-1" aria-labelledby="taskLinksModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-scrollable">
@@ -4211,11 +4245,16 @@
                 return activeRows.slice(start, Math.min(start + size, activeRows.length));
             }
 
-            function formatTaskClSlot(rowData) {
+            function taskHasChecklist(rowData) {
                 var hasForm = !!(rowData.has_checklist_form && rowData.automate_task_id);
                 if (!hasForm && rowData.automate_task_id && /^CL-\d+$/i.test(String(rowData.cl_id || rowData.link7 || ''))) {
                     hasForm = true;
                 }
+                return hasForm;
+            }
+
+            function formatTaskClSlot(rowData) {
+                var hasForm = taskHasChecklist(rowData);
                 var escAttr = function(t) {
                     return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
                 };
@@ -4772,7 +4811,37 @@
                             return formatTaskClSlot(cell.getRow().getData());
                         }
                     });
-                    linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
+                    // Report: tasks that carry a CL show a green dot that opens the CL form data;
+                    // otherwise (or in addition) the plain report link icon is shown.
+                    cols.push({
+                        title: "Report",
+                        field: "link6",
+                        width: 50,
+                        minWidth: 44,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-link-icon",
+                        headerClass: "tasks-col-link-icon",
+                        hozAlign: "center",
+                        headerTooltip: "Form report / CL report",
+                        formatter: function(cell) {
+                            var d = cell.getRow().getData();
+                            var linkHtml = formatNamedLinkSlot(d, function(x) { return x.link6 || x.form_report_link; });
+                            if (!taskHasChecklist(d)) {
+                                return linkHtml;
+                            }
+                            var esc = function(t) {
+                                return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                            };
+                            var clId = d.cl_id ? String(d.cl_id) : '';
+                            var dot = '<button type="button" class="btn btn-link p-0 border-0 shadow-none task-cl-report-open" ' +
+                                'data-task-id="' + esc(d.id) + '" data-task-title="' + esc(d.title || '') + '" data-cl-id="' + esc(clId) + '" ' +
+                                'title="View CL report' + (clId ? ' (' + esc(clId) + ')' : '') + '" aria-label="View CL report" style="line-height:1;">' +
+                                '<span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:#28a745;box-shadow:0 2px 4px rgba(0,0,0,0.25);"></span></button>';
+                            var hasLink = linkHtml.indexOf('<a ') !== -1;
+                            return '<div style="display:flex;align-items:center;justify-content:center;gap:4px;">' + dot +
+                                (hasLink ? '<span style="transform:scale(0.6);transform-origin:center;display:inline-flex;margin:-8px -6px;">' + linkHtml + '</span>' : '') + '</div>';
+                        }
+                    });
                     
                     // STATUS
                     cols.push({
@@ -7187,6 +7256,72 @@
                 e.preventDefault();
                 e.stopPropagation();
                 openFiredChecklistModal($(this).data('automate-task-id'), $(this).data('task-title'), $(this).data('cl-id'), $(this).data('task-id'), $(this).data('task-status'));
+            });
+
+            // CL Report (green dot in the Report column): read-only view of all CL form data.
+            async function openClReportModal(taskId, taskTitle, clIdHint) {
+                if (!taskId) return;
+                $('#viewTaskModal').modal('hide');
+                $('#cl-report-task-title').text(taskTitle || ('Task #' + taskId));
+                $('#cl-report-cl-id').text(clIdHint || '—');
+                $('#cl-report-form-title').text('—');
+                $('#cl-report-status').text('—');
+                $('#cl-report-questions').empty();
+                $('#cl-report-error').addClass('d-none').text('');
+                $('#cl-report-note').addClass('d-none').text('');
+                $('#cl-report-extra').addClass('d-none');
+                $('#cl-report-text').text('');
+                $('#cl-report-loading').removeClass('d-none');
+                $('#clReportModal').modal('show');
+                try {
+                    var res = await fetch('/tasks/' + taskId + '/done-checklist-review', {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin'
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    $('#cl-report-loading').addClass('d-none');
+                    if (!res.ok) {
+                        $('#cl-report-error').removeClass('d-none').text(data.message || 'Failed to load CL report');
+                        return;
+                    }
+                    var form = data.form || {};
+                    if (!data.has_checklist) {
+                        $('#cl-report-note').removeClass('d-none alert-success').addClass('alert-warning')
+                            .text('No CL form is attached to this task.');
+                        return;
+                    }
+                    $('#cl-report-cl-id').text(form.cl_id || clIdHint || '—');
+                    $('#cl-report-form-title').text(form.title || '—');
+                    $('#cl-report-status').text(data.status || '—');
+                    renderFiredChecklistQuestions(form.questions ? form.questions.slice() : [], {
+                        box: $('#cl-report-questions'),
+                        answers: data.answers || {},
+                        readOnly: true,
+                        idPrefix: 'clrep'
+                    });
+                    if (data.has_saved_answers) {
+                        $('#cl-report-note').removeClass('d-none alert-warning').addClass('alert-success')
+                            .html('<i class="mdi mdi-checkbox-marked-circle-outline me-1"></i>Submitted CL form data.');
+                    } else {
+                        $('#cl-report-note').removeClass('d-none alert-success').addClass('alert-warning')
+                            .html('<i class="mdi mdi-alert-outline me-1"></i>The CL form has not been submitted for this task yet.');
+                    }
+                    var row = (typeof table !== 'undefined' && table) ? (table.getRow(String(taskId)) || table.getRow(parseInt(taskId, 10))) : null;
+                    var report = row ? String((row.getData() || {}).report || '').trim() : '';
+                    if (report) {
+                        $('#cl-report-text').text(report);
+                        $('#cl-report-extra').removeClass('d-none');
+                    }
+                } catch (err) {
+                    $('#cl-report-loading').addClass('d-none');
+                    $('#cl-report-error').removeClass('d-none').text('Failed to load CL report');
+                }
+            }
+
+            $(document).on('click', '.task-cl-report-open', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openClReportModal($(this).data('task-id'), $(this).data('task-title'), $(this).data('cl-id'));
             });
 
             $(document).on('click', '#fired-checklist-copy-cl-id', function(e) {
