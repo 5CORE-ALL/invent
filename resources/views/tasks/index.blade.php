@@ -1796,6 +1796,267 @@
         cursor: pointer;
     }
 
+    /* ============================================================
+       MOBILE REDESIGN (phones, <768px). Kept last so it overrides the
+       earlier mobile rules above. Desktop is untouched.
+       ============================================================ */
+    @media (max-width: 767.98px) {
+        html, body { overflow-x: clip; max-width: 100%; }
+
+        /* Shared topbar: it was stacking on top of the fixed mobile header and
+           overflowing the screen. Turn it into a swipeable shortcut strip that
+           sits directly below the mobile header. */
+        .navbar-custom {
+            position: static !important;
+            margin-top: 56px;
+            height: auto !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            background: #fff;
+            border-bottom: 1px solid #e9ecef;
+            box-shadow: none !important;
+        }
+        .navbar-custom .topbar {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            align-items: center;
+            gap: 10px;
+            height: auto !important;
+            padding: 8px 12px !important;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .navbar-custom .topbar::-webkit-scrollbar { display: none; }
+        .navbar-custom .topbar > *,
+        .navbar-custom .topbar-brand-row,
+        .navbar-custom .topbar-menu { flex: 0 0 auto; flex-wrap: nowrap !important; }
+        .navbar-custom .topbar-brand-row { gap: 8px !important; }
+        .navbar-custom .button-toggle-menu,
+        .navbar-custom .logo-topbar { display: none !important; }
+        .navbar-custom .topbar-menu { margin: 0; padding: 0; gap: 8px !important; }
+
+        /* Content now starts right under the strip (no 71px spacer) */
+        body .content-page .content { padding-top: 6px !important; }
+
+        /* Edge-to-edge: the theme stacks ~32px of padding per side on phones */
+        body .content-page { padding-left: 0 !important; padding-right: 0 !important; }
+        body .content-page .container-fluid { padding-left: 0 !important; padding-right: 0 !important; }
+        body .content-page .container-fluid > .row { margin-left: 0 !important; margin-right: 0 !important; }
+        body .content-page .container-fluid > .row > .col-12 { padding-left: 0 !important; padding-right: 0 !important; }
+
+        /* Mobile header already shows the page title */
+        .row:has(> .col-12 > .page-title-box) { display: none !important; }
+
+        /* Global floating buttons cover the list on phones: keep them behind one launcher */
+        body:not(.tasks-fabs-open) #penaltyFab,
+        body:not(.tasks-fabs-open) #salaryFab,
+        body:not(.tasks-fabs-open) #kpiFab,
+        body:not(.tasks-fabs-open) #mrqFab { display: none !important; }
+        .mobile-fab-launcher {
+            position: fixed;
+            right: 12px;
+            bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+            z-index: 1041;
+            width: 46px;
+            height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 50%;
+            background: #2c3e50;
+            color: #fff;
+            font-size: 22px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        body.tasks-fabs-open .mobile-fab-launcher { background: #dc3545; }
+
+        /* ---- Stats: swipeable pill strip ---- */
+        .stats-row.mobile-stats-strip {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            gap: 8px;
+            margin: 0 !important;
+            padding: 8px 12px 4px !important;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scroll-snap-type: x proximity;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .stats-row.mobile-stats-strip::-webkit-scrollbar { display: none; }
+        .stats-row.mobile-stats-strip > .col {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            max-width: none !important;
+            padding: 0 !important;
+            scroll-snap-align: start;
+        }
+        .stats-row.mobile-stats-strip .stat-card {
+            min-width: 88px;
+            min-height: 0 !important;
+            height: auto !important;
+            padding: 8px 14px !important;
+            margin: 0 !important;
+            border-radius: 12px !important;
+            border-top: 0 !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14) !important;
+        }
+        .stats-row.mobile-stats-strip .stat-card::before { display: none; }
+        .stats-row.mobile-stats-strip .stat-card-ca { border: 1.5px solid #dc3545 !important; }
+        .stats-row.mobile-stats-strip .stat-content {
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 0 !important;
+        }
+        .stats-row.mobile-stats-strip .stat-label {
+            font-size: 10px !important;
+            letter-spacing: 0.4px !important;
+            white-space: nowrap;
+            margin: 0 !important;
+        }
+        .stats-row.mobile-stats-strip .stat-value {
+            font-size: 20px !important;
+            line-height: 1.15 !important;
+            margin: 0 !important;
+        }
+
+        /* ---- Action buttons ---- */
+        .task-magnify-icon { width: 16px; height: 16px; object-fit: contain; display: inline-block; vertical-align: middle; }
+        .mobile-action-buttons { padding: 8px 12px 6px; margin-bottom: 0; }
+        .mobile-action-btn { min-height: 38px; }
+        .mobile-action-btn.btn-add-task {
+            background: linear-gradient(135deg, #ff7a45 0%, #ee0979 100%);
+            font-weight: 700;
+        }
+
+        /* ---- Quick filter chips ---- */
+        .mobile-quick-filters { padding: 6px 12px 10px; margin-bottom: 0; }
+
+        /* ---- Search + collapsible filters ---- */
+        .task-toolbar-wrap { padding: 0; }
+        .filter-section.task-toolbar-filters {
+            --bs-gutter-x: 0;
+            --bs-gutter-y: 0;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px !important;
+            margin: 0 12px 12px !important;
+            padding: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border-radius: 16px !important;
+        }
+        .filter-section.task-toolbar-filters.mobile-filters-open {
+            padding: 12px !important;
+            background: #fff !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08) !important;
+        }
+        .filter-section.task-toolbar-filters > .toolbar-field {
+            width: auto !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            min-width: 0;
+        }
+        .filter-section.task-toolbar-filters > .toolbar-field:not(.toolbar-field-search) { display: none; }
+        .filter-section.task-toolbar-filters.mobile-filters-open > .toolbar-field:not(.toolbar-field-search) { display: block; }
+        .filter-section.task-toolbar-filters > .toolbar-field-search { grid-column: 1 / -1; position: relative; }
+        .filter-section.task-toolbar-filters > .toolbar-field:has(#filter-assignor),
+        .filter-section.task-toolbar-filters > .toolbar-field:has(#filter-assignee),
+        .filter-section.task-toolbar-filters > .toolbar-field:last-child { grid-column: 1 / -1; }
+
+        .task-toolbar-filters .form-select,
+        .task-toolbar-filters .form-control {
+            font-size: 14px !important;
+            min-height: 44px !important;
+            height: auto;
+            padding: 8px 12px !important;
+            border-radius: 10px !important;
+        }
+        .task-toolbar-filters #filter-search {
+            font-size: 15px !important;
+            min-height: 46px !important;
+            padding: 10px 56px 10px 18px !important;
+            border-radius: 24px !important;
+            background: #fff !important;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.12);
+        }
+        .filter-section.task-toolbar-filters .task-filter-user-select + .select2-container--bootstrap-5 {
+            width: 100% !important;
+        }
+        .filter-section.task-toolbar-filters .task-filter-user-select + .select2-container--bootstrap-5 .select2-selection {
+            min-height: 44px !important;
+            padding: 8px 12px !important;
+            font-size: 14px !important;
+            border: 2px solid #e3e6f0 !important;
+            border-radius: 10px !important;
+        }
+        .mobile-filter-toggle {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 50%;
+            background: #eef0ff;
+            color: #667eea;
+            font-size: 20px;
+            padding: 0;
+        }
+        .mobile-filter-toggle.has-active,
+        .mobile-filters-open .mobile-filter-toggle { background: #667eea; color: #fff; }
+        .mobile-filter-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 9px;
+            background: #dc3545;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 18px;
+            text-align: center;
+        }
+        .mobile-filter-badge[hidden] { display: none; }
+
+        /* ---- Task cards ---- */
+        .pull-to-refresh-hint { padding: 4px; }
+        .mobile-results-count {
+            padding: 0 16px 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #6c757d;
+            letter-spacing: 0.3px;
+        }
+        #mobile-tasks-container { padding: 0 12px calc(96px + env(safe-area-inset-bottom, 0px)); }
+        .mobile-task-card { padding: 14px; margin-bottom: 10px; overflow-wrap: anywhere; }
+        .mobile-task-meta { flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+        .mobile-task-info {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 14px;
+            margin-bottom: 4px;
+            font-size: 12.5px;
+        }
+        .mobile-task-info > div { display: flex; align-items: center; margin: 0; white-space: nowrap; }
+        .mobile-task-actions .btn { min-height: 40px; padding: 8px 6px; }
+    }
+
     </style>
     <script>
         (function () {
@@ -1909,8 +2170,8 @@
             </div>
         </div>
 
-        <!-- Statistics Cards (Hidden on mobile) - all in one line -->
-        <div class="row mb-2 stats-row d-none d-md-flex align-items-stretch flex-nowrap" style="flex-wrap: nowrap !important;">
+        <!-- Statistics Cards - one line on desktop, swipeable pill strip on mobile -->
+        <div class="row mb-2 stats-row mobile-stats-strip d-flex align-items-stretch flex-nowrap" style="flex-wrap: nowrap !important;">
             <!-- Total Tasks -->
             <div class="col">
                 <div class="stat-card stat-card-blue task-stat-trigger" data-metric="total" data-value="{{ $stats['total'] }}" title="Click to view history">
@@ -2038,6 +2299,11 @@
                             <div class="col-sm-12">
                                 <!-- Mobile Action Buttons -->
                                 <div class="d-md-none mobile-action-buttons">
+                                    <button type="button" class="mobile-action-btn btn-add-task" id="add-task-btn-mobile" title="Add a new task">
+                                        <i class="mdi mdi-plus"></i>
+                                        <span>Task</span>
+                                    </button>
+
                                     <div class="dropdown d-inline-block">
                                         <button type="button" class="mobile-action-btn btn-success dropdown-toggle" id="csv-actions-btn-mobile" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" title="CSV: upload, template, export">
                                             <i class="mdi mdi-file-delimited"></i>
@@ -2188,9 +2454,13 @@
                                 </div>
                             </div>
 
-                            <div class="row g-2 mb-2 py-2 px-2 filter-section filter-section-eq align-items-center task-toolbar-filters">
+                            <div class="row g-2 mb-2 py-2 px-2 filter-section filter-section-eq align-items-center task-toolbar-filters" id="task-toolbar-filters">
                             <div class="col-12 mb-2 toolbar-field toolbar-field-search">
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
+                                <button type="button" class="mobile-filter-toggle d-md-none" id="mobile-filter-toggle" aria-expanded="false" aria-controls="task-toolbar-filters" title="Show / hide filters">
+                                    <i class="mdi mdi-tune-variant"></i>
+                                    <span class="mobile-filter-badge" id="mobile-filter-badge" hidden>0</span>
+                                </button>
                             </div>
                             <div class="col-12 mb-2 toolbar-field toolbar-field-ca">
                                 <select id="filter-ca" class="form-select form-select-sm" title="Corrective Action">
@@ -2255,7 +2525,7 @@
                                 </select>
                             </div>
                             
-                            <div class="col-12 mb-2 toolbar-field toolbar-field-select d-none d-md-block">
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-select">
                                 <select id="filter-priority" class="form-select form-select-sm">
                                     <option value="">Priority All</option>
                                     <option value="low">Low</option>
@@ -2285,6 +2555,7 @@
                                     <div class="pull-to-refresh-hint d-md-none">
                                         <i class="mdi mdi-chevron-down"></i> Pull down to refresh
                                     </div>
+                                    <div class="mobile-results-count d-md-none" id="mobile-results-count" aria-live="polite"></div>
                                     
                                     <div id="mobile-tasks-container">
                                         <!-- Tasks will be loaded here via JavaScript -->
@@ -2303,6 +2574,11 @@
         <!-- end row -->
 
     </div> <!-- container -->
+
+    <!-- Mobile: one launcher that reveals the global floating buttons (Penalty / Salary / KPI / Meeting) -->
+    <button type="button" class="mobile-fab-launcher d-md-none" id="mobile-fab-launcher" aria-expanded="false" title="Quick actions">
+        <i class="mdi mdi-dots-grid"></i>
+    </button>
     
     <!-- History Chart Modal -->
     <div class="modal fade" id="taskHistoryChartModal" tabindex="-1" aria-labelledby="taskHistoryChartModalLabel" aria-hidden="true">
@@ -3964,6 +4240,7 @@
             function renderMobileTasks(tasks) {
                 console.log('📱 renderMobileTasks called with', tasks.length, 'tasks');
                 const container = $('#mobile-tasks-container');
+                $('#mobile-results-count').text(tasks && tasks.length ? tasks.length + (tasks.length === 1 ? ' task' : ' tasks') : '');
                 
                 if (!container.length) {
                     console.error('❌ mobile-tasks-container not found!');
@@ -6298,6 +6575,39 @@
             // ==========================================
             // MOBILE QUICK FILTER CHIPS
             // ==========================================
+            // Mobile: "+ Task" opens the same task form the topbar button opens.
+            $('#add-task-btn-mobile').on('click', function () {
+                var topbarBtn = document.getElementById('open-task-form-btn');
+                if (topbarBtn) topbarBtn.click();
+            });
+
+            // Mobile: launcher toggles the global floating buttons.
+            $('#mobile-fab-launcher').on('click', function () {
+                var open = document.body.classList.toggle('tasks-fabs-open');
+                $(this).attr('aria-expanded', open ? 'true' : 'false');
+                $(this).find('i').toggleClass('mdi-dots-grid', !open).toggleClass('mdi-close', open);
+            });
+
+            // Mobile: collapsible filter panel + active-filter count badge.
+            var mobileFilterIds = ['#filter-ca', '#filter-overdue', '#filter-group', '#filter-task',
+                '#filter-assignor', '#filter-assignee', '#filter-task-type', '#filter-status', '#filter-priority'];
+            function updateMobileFilterBadge() {
+                var n = 0;
+                mobileFilterIds.forEach(function (sel) {
+                    var v = $(sel).val();
+                    if (v !== null && v !== undefined && String(v).trim() !== '') n++;
+                });
+                $('#mobile-filter-toggle').toggleClass('has-active', n > 0);
+                $('#mobile-filter-badge').text(n).prop('hidden', n === 0);
+            }
+            $('#mobile-filter-toggle').on('click', function () {
+                var open = $('#task-toolbar-filters').toggleClass('mobile-filters-open').hasClass('mobile-filters-open');
+                $(this).attr('aria-expanded', open ? 'true' : 'false');
+            });
+            $('#task-toolbar-filters').on('input change', updateMobileFilterBadge);
+            $(document).on('click', '.quick-filter-chip', function () { setTimeout(updateMobileFilterBadge, 80); });
+            updateMobileFilterBadge();
+
             $('.quick-filter-chip').on('click', function() {
                 const filterType = $(this).data('filter');
 

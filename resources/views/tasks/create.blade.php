@@ -37,6 +37,30 @@
             }
         }
         
+        /* Quick-search Assign To (Select2) - large touch-friendly look on phones */
+        @media (max-width: 767.98px) {
+            .mobile-view .select2-container--bootstrap-5 .select2-selection {
+                min-height: 48px;
+                padding: 0.5rem 0.75rem;
+                font-size: 16px;
+                border-radius: 8px;
+            }
+            .mobile-view .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+                line-height: 1.6;
+            }
+            .select2-container--open .select2-dropdown { border-radius: 10px; }
+            .select2-container--bootstrap-5 .select2-search__field {
+                font-size: 16px; /* prevents iOS zoom */
+                min-height: 44px;
+            }
+            .select2-container--bootstrap-5 .select2-results__option {
+                padding: 12px 14px;
+                font-size: 16px;
+            }
+            .select2-container--bootstrap-5 .select2-results__options { max-height: 45vh; }
+            .select2-container--open { z-index: 2000; }
+        }
+
         /* Desktop View - ensure it's hidden on mobile */
         @media (max-width: 767.98px) {
             .desktop-view {
@@ -128,6 +152,8 @@
                             <!-- Multiple Assignees (Hidden by default) -->
                             <div id="multiple-assignees-section" style="display: none; margin-top: 10px;">
                                 <label class="form-label fw-bold">Select Multiple Users:</label>
+                                <input type="search" id="multi-assignee-search" class="form-control mb-2"
+                                       placeholder="Quick search people..." autocomplete="off">
                                 <div class="border rounded p-3" style="background: #f8f9fa; max-height: 200px; overflow-y: auto;">
                                     @foreach($users as $user)
                                         <div class="form-check mb-2">
@@ -143,6 +169,7 @@
                                         </div>
                                     @endforeach
                                 </div>
+                                <div id="multi-no-match" class="text-muted small mt-2" style="display: none;">No matching people</div>
                                 <div id="multi-selected-count" class="mt-2"></div>
                             </div>
                         </div>
@@ -445,6 +472,38 @@
                 placeholder: 'Please Select'
             });
 
+            // ==========================================
+            // QUICK SEARCH: mobile "Assign To" dropdown
+            // ==========================================
+            $('#assignee_id').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                placeholder: 'Select Person',
+                allowClear: false,
+                minimumResultsForSearch: 0,
+                language: { noResults: function () { return 'No matching people'; } }
+            });
+            // Select2 4.1 no longer focuses the search box by itself: do it so the keyboard opens ready to type.
+            $(document).on('select2:open', function () {
+                var field = document.querySelector('.select2-container--open .select2-search__field');
+                if (field) {
+                    field.setAttribute('placeholder', 'Type a name...');
+                    field.focus();
+                }
+            });
+
+            // Quick search inside the "assign to multiple users" checkbox list
+            $('#multi-assignee-search').on('input', function () {
+                var q = $.trim($(this).val()).toLowerCase();
+                var shown = 0;
+                $('#multiple-assignees-section .form-check').each(function () {
+                    var match = !q || $(this).text().toLowerCase().indexOf(q) !== -1;
+                    $(this).toggle(match);
+                    if (match) shown++;
+                });
+                $('#multi-no-match').toggle(shown === 0);
+            });
+
             // Toggle Additional Fields
             $('#toggle-additional-fields').on('click', function() {
                 $('#additional-fields').slideToggle(200);
@@ -681,7 +740,7 @@
                 if ($(this).is(':checked')) {
                     // Show multiple selection, make single optional
                     $('#multiple-assignees-section').slideDown();
-                    $('#assignee_id').prop('disabled', true).prop('required', false).val('');
+                    $('#assignee_id').prop('disabled', true).prop('required', false).val('').trigger('change');
                     console.log('✓ Multiple assignee mode - single dropdown not required');
                 } else {
                     // Show single selection, make it required again
