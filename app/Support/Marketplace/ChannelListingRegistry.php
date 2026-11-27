@@ -1675,11 +1675,18 @@ class ChannelListingRegistry
         $cutoff = now()->subDays(14);
         foreach ($rows as $row) {
             $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
-            if (empty($value['pending_offer']) || empty($value['published_at'])) {
+            // Rows written before pending_offer existed: the app marked the SKU "Listed" right after the offer
+            // import was queued (category_code is only written by the publish flow). Same 14-day grace.
+            $legacyPublish = empty($value['published_at']) && empty($value['pending_offer'])
+                && ($value['listed'] ?? '') === 'Listed'
+                && trim((string) ($value['category_code'] ?? '')) !== ''
+                && trim((string) ($value['listing_id'] ?? '')) !== '';
+            if (empty($value['pending_offer']) && ! $legacyPublish) {
                 continue;
             }
             try {
-                if (\Illuminate\Support\Carbon::parse((string) $value['published_at'])->lt($cutoff)) {
+                $when = $legacyPublish ? ($row->updated_at ?? null) : ($value['published_at'] ?? null);
+                if ($when === null || \Illuminate\Support\Carbon::parse((string) $when)->lt($cutoff)) {
                     continue;
                 }
             } catch (\Throwable $e) {
