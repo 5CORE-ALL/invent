@@ -614,7 +614,7 @@
         .lossx-sort.is-on { background: linear-gradient(135deg, var(--g1), var(--g2)); color: #fff; border-color: transparent; }
         .lossx-item { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.07); border-radius: 18px; margin-bottom: 10px; overflow: hidden; transition: border-color .15s, transform .15s; }
         .lossx-item:hover { border-color: rgba(255,255,255,.2); }
-        .lossx-row { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; cursor: pointer; }
+        .lossx-row { display: grid; grid-template-columns: var(--lossx-cols); gap: 8px; align-items: center; padding: 8px 12px; cursor: pointer; }
         .lossx-rank { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, var(--g1), var(--g2)); color: #fff; font-size: .9rem; }
         .lossx-sku { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: .92rem; color: #fff; }
         .lossx-title { font-size: .76rem; color: rgba(233,234,255,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
@@ -637,7 +637,75 @@
         .lossx-neg { color: #ff7a93; font-weight: 800; }
         .lossx-empty { text-align: center; padding: 40px 10px; color: rgba(233,234,255,.6); }
         .lossx-empty big { display: block; font-size: 2.4rem; margin-bottom: 6px; }
-        @media (max-width: 640px) { .lossx-row { grid-template-columns: 34px minmax(0,1fr); } .lossx-nums { grid-column: 1 / -1; justify-content: flex-start; } }
+
+        /* ---------- Loss modal as a table: image first, no title, INV / L30 / Dil%, LMP by Channel, SPRICE $ (from /price-increase) ---------- */
+        .lossx-modal .modal-dialog { max-width: min(1500px, 97vw); }
+        .lossx-body { max-height: 68vh; overflow: auto; }
+        .lossx-grid { --lossx-cols: 52px minmax(120px, 1fr) repeat(6, 58px) repeat(3, 50px) minmax(170px, 1.1fr) minmax(310px, 1.4fr) minmax(250px, 1.1fr); min-width: 1620px; }
+        .lossx-colhead { display: grid; grid-template-columns: var(--lossx-cols); gap: 8px; align-items: end; padding: 6px 12px; margin-bottom: 6px; position: sticky; top: 0; z-index: 3; background: #0d0e1c; border-bottom: 1px solid rgba(255,255,255,.12); }
+        .lossx-colhead span { font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: rgba(233,234,255,.55); text-align: center; line-height: 1.15; }
+        .lossx-colhead span.is-left { text-align: left; }
+        .lossx-c { text-align: center; font-weight: 800; font-size: .88rem; font-variant-numeric: tabular-nums; min-width: 0; }
+        .lossx-c.is-loss { color: #ff7a93; }
+        .lossx-dim { color: rgba(233,234,255,.35); font-weight: 600; }
+        .lossx-imgbox { position: relative; width: 52px; height: 52px; }
+        .lossx-img { width: 52px; height: 52px; object-fit: cover; border-radius: 12px; background: #fff; display: block; }
+        .lossx-img.is-missing { display: grid; place-items: center; background: rgba(255,255,255,.08); color: rgba(255,255,255,.4); }
+        .lossx-imgbox .lossx-rank { position: absolute; left: -5px; top: -5px; width: 20px; height: 20px; border-radius: 7px; font-size: .62rem; border: 2px solid #0d0e1c; }
+        .lossx-item.is-sib { background: rgba(255,255,255,.02); border-style: dashed; margin-left: 22px; }
+        .lossx-item.is-sib .lossx-row { cursor: default; padding-top: 5px; padding-bottom: 5px; }
+        .lossx-item.is-sib .lossx-img, .lossx-item.is-sib .lossx-imgbox { width: 40px; height: 40px; }
+        .lossx-sibtag { font-size: .58rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: 1px 6px; border-radius: 99px; background: rgba(125,211,252,.16); color: #7dd3fc; margin-left: 6px; vertical-align: middle; }
+        .lossx-fam-gap { height: 6px; }
+        .lossx-lmp-wrap { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+        .lossx-lmp { font-size: .7rem; font-weight: 700; padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
+        .lossx-sp { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap; }
+        .lossx-sp-in { width: 78px; height: 28px; font-size: .82rem; font-weight: 700; text-align: right; padding: 2px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.07); color: #fff; outline: none; }
+        .lossx-sp-in:focus { border-color: var(--g2); box-shadow: 0 0 0 3px rgba(236,72,153,.25); }
+        .lossx-sp-in.is-below { color: #ff7a93; }
+        .lossx-sp-go { height: 28px; width: 30px; padding: 0; line-height: 1; border-radius: 8px; border: 1px solid #22c55e; background: rgba(34,197,94,.16); color: #4ade80; cursor: pointer; flex: 0 0 auto; }
+        .lossx-sp-go:hover:not(:disabled) { background: #22c55e; color: #fff; }
+        .lossx-sp-go:disabled { opacity: .7; cursor: progress; }
+        .lossx-chips { display: inline-flex; align-items: center; gap: 3px; margin-left: 3px; padding-left: 6px; border-left: 1px solid rgba(255,255,255,.18); }
+        .lossx-chip2 { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 5px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: .68rem; font-weight: 700; color: #111; }
+        .lossx-chip2 i { font-style: normal; font-size: .54rem; font-weight: 700; color: #64748b; }
+        .lossx-more { display: block; margin: 8px auto 0; }
+        .lossx-estrow { display: flex; align-items: center; gap: 6px; }
+        .lossx-hbtn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(0,0,0,.22); color: #fff; font-size: .68rem; cursor: pointer; transition: background .12s, transform .12s; }
+        .lossx-hbtn:hover, .lossx-hbtn:focus-visible { background: rgba(0,0,0,.42); transform: scale(1.1); outline: none; }
+        .lossx-player { display: inline-flex; align-items: center; gap: 6px; background: #f1f3f5; border-radius: 99px; padding: 4px 8px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+        .lossx-player button { border: 0; border-radius: 50%; width: 30px; height: 30px; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; background: #e4e7ea; color: #5b6168; font-size: .72rem; transition: transform .12s, background .12s; }
+        .lossx-player button:hover:not(:disabled) { transform: scale(1.08); background: #d5d9dd; }
+        .lossx-player button:disabled { opacity: .4; cursor: default; }
+        .lossx-player .lossx-play { width: 38px; height: 38px; background: #19b5d8; color: #fff; font-size: .9rem; }
+        .lossx-player .lossx-play:hover:not(:disabled) { background: #12a0c0; }
+        .lossx-player .lossx-play.is-on { background: #f59e0b; }
+        .lossx-player .lossx-pcount { font-size: .74rem; font-weight: 800; color: #3d434a; min-width: 48px; text-align: center; display: none; }
+        .lossx-player.is-active .lossx-pcount { display: inline-block; }
+        .lossx-player .lossx-pexit { display: none; }
+        .lossx-player.is-active .lossx-pexit { display: inline-flex; }
+        .lossx-chev { margin-left: 6px; font-size: .7rem; }
+        .lossx-filter { border: 1px solid rgba(255,255,255,.14); background: #1a1b30; color: #cfd1ff; border-radius: 99px; padding: 6px 12px; font-size: .78rem; font-weight: 700; outline: none; }
+        .lossx-act { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+        .lossx-act select { height: 28px; max-width: 128px; font-size: .74rem; font-weight: 700; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: #1a1b30; color: #fff; padding: 0 4px; outline: none; }
+        .lossx-act select:focus { border-color: var(--g2); }
+        .lossx-act select.is-fixed { border-color: #22c55e; color: #4ade80; }
+        .lossx-act select.is-ignored { border-color: #94a3b8; color: #cbd5e1; }
+        .lossx-act select.is-need { border-color: #f59e0b; }
+        .lossx-hist-btn { height: 28px; width: 28px; padding: 0; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #cfd1ff; cursor: pointer; }
+        .lossx-hist-btn:hover { background: rgba(255,255,255,.1); }
+        .lossx-act-by { flex-basis: 100%; font-size: .62rem; color: rgba(233,234,255,.5); line-height: 1.1; }
+        .lossx-item.is-fixed { border-left: 3px solid #22c55e; }
+        .lossx-item.is-ignored { border-left: 3px solid #64748b; }
+        .lossx-item.is-ignored .lossx-row > *:not(.lossx-act-cell) { opacity: .55; }
+        .lossx-histbox { display: none; padding: 0 14px 12px; }
+        .lossx-item.is-hist .lossx-histbox { display: block; }
+        .lossx-histbox table { width: 100%; font-size: .74rem; border-collapse: separate; border-spacing: 0 3px; }
+        .lossx-histbox th { color: rgba(233,234,255,.5); font-weight: 700; text-transform: uppercase; font-size: .6rem; letter-spacing: .06em; padding: 0 8px; text-align: left; }
+        .lossx-histbox td { background: rgba(255,255,255,.05); padding: 5px 8px; }
+        .lossx-status { font-size: .72rem; color: rgba(233,234,255,.6); margin: 0 0 8px; min-height: 1em; }
+        .lossx-toast { position: fixed; right: 18px; bottom: 18px; z-index: 2000; max-width: 380px; padding: 10px 14px; border-radius: 12px; background: #16a34a; color: #fff; font-size: .82rem; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+        .lossx-toast.is-err { background: #dc2626; }
     </style>
 @endsection
 
@@ -658,7 +726,10 @@
                                 <div class="lossx-big"><span data-f="loss_orders">0</span><small>loss orders</small></div>
                                 <div class="lossx-sub" data-f="sub">&nbsp;</div>
                                 <div class="lossx-bar"><i data-f="bar"></i></div>
-                                <span class="lossx-chip" data-f="amount">&nbsp;</span>
+                                <div class="lossx-estrow">
+                                    <span class="lossx-chip" data-f="amount">&nbsp;</span>
+                                    <span class="lossx-hbtn" role="button" tabindex="0" data-hist="{{ $lossKey }}" title="History: Fixed / Ignore actions by users ({{ $lossLabel }})" aria-label="Action history ({{ $lossLabel }})"><i class="fas fa-history" aria-hidden="true"></i></span>
+                                </div>
                                 <div class="lossx-mini">
                                     <span class="lossx-chip" title="Net ROI % for all orders in this period (amount-weighted)">NROI% <b data-f="nroi">—</b></span>
                                     <span class="lossx-chip" title="Net profit % for all orders in this period (amount-weighted)">NPRFT% <b data-f="npft">—</b></span>
@@ -774,8 +845,40 @@
                         <button type="button" class="lossx-sort is-on" data-sort="orders">Most orders</button>
                         <button type="button" class="lossx-sort" data-sort="loss">Biggest loss</button>
                         <button type="button" class="lossx-sort" data-sort="pct">Worst %</button>
+                        <select class="lossx-filter" id="lossxFilter" title="Show products by their action">
+                            <option value="all">All actions</option>
+                            <option value="open">Open (no action)</option>
+                            <option value="fixed">Fixed</option>
+                            <option value="ignored">Ignored</option>
+                        </select>
+                        <div class="lossx-player" id="lossxPlayer" title="Show the loss products one by one, starting with #1">
+                            <button type="button" id="lossxPrev" title="Previous product" aria-label="Previous product"><i class="fas fa-step-backward" aria-hidden="true"></i></button>
+                            <button type="button" class="lossx-play" id="lossxPlay" title="Play — auto-advance every 5 seconds" aria-label="Play"><i class="fas fa-play" aria-hidden="true"></i></button>
+                            <button type="button" id="lossxNext" title="Next product" aria-label="Next product"><i class="fas fa-step-forward" aria-hidden="true"></i></button>
+                            <span class="lossx-pcount" id="lossxPcount">1 / 1</span>
+                            <button type="button" class="lossx-pexit" id="lossxPexit" title="Back to the full list" aria-label="Back to the full list"><i class="fas fa-times" aria-hidden="true"></i></button>
+                        </div>
                     </div>
+                    <div class="lossx-status" id="lossxStatus"></div>
                     <div id="lossxList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="lossxHistModal" tabindex="-1" aria-labelledby="lossxHistTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title" id="lossxHistTitle">Action history</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="lossxHistAll">
+                        <label class="form-check-label small" for="lossxHistAll">Show every SKU (not only the loss products of this period)</label>
+                    </div>
+                    <div id="lossxHistBody" class="small"></div>
                 </div>
             </div>
         </div>
@@ -1788,8 +1891,13 @@
 
     const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const num = (n) => Number(n || 0).toLocaleString();
-    const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Number(n || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const pct = (n) => (n === null || n === undefined || isNaN(Number(n))) ? '—' : Number(n).toFixed(1) + '%';
+    // Rounded to whole dollars / whole percent (pass d = 2 for cents)
+    const money = (n, d) => {
+        d = d || 0;
+        const v = Number(Number(n || 0).toFixed(d));
+        return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+    };
+    const pct = (n) => (n === null || n === undefined || isNaN(Number(n))) ? '—' : (Math.round(Number(n)) || 0) + '%';
 
     function countUp(el, to) {
         const start = performance.now();
@@ -1867,6 +1975,399 @@
         return Array.from(groups.values());
     }
 
+    // ---------- extra columns taken from /price-increase: image, INV, L30, Dil%, LMP by Channel, SPRICE $ (+ siblings) ----------
+    const PRODUCTS_URL = @json(route('sales.loss.order.products'));
+    const PI_URL = @json(url('/price-increase'));
+    const PUSH_STATUS_URL = @json(url('/price-push-status'));
+    const ACTIONS_URL = @json(route('sales.loss.order.actions'));
+    const ACTION_HISTORY_URL = @json(route('sales.loss.order.actions.history'));
+    const REASONS_URL = @json(route('sales.loss.order.reasons'));
+    const CSRF = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    const NPFT_BELOW = 10;   // NPRFT% under this = loss sell
+    const NROI_BELOW = 30;   // NROI% under this = loss sell
+    const FAMILY_PAGE = 40;  // families (loss SKU + its siblings) drawn at a time
+
+    const piRows = new Map();     // SKU (UPPER) -> row from /price-increase (incl. siblings)
+    const piByParent = new Map(); // PARENT (UPPER) -> [rows]
+    const piAsked = new Set();    // SKUs already asked from the server
+    const typed = {};             // SKU (UPPER) -> price typed in SPRICE $ and not pushed yet
+    const pushing = {};           // SKU (UPPER) -> { startedAt, price } while its push is being prepared
+    const openRows = new Set();   // SKUs whose orders are expanded
+    let piLoading = false;
+    let shownFamilies = FAMILY_PAGE;
+    const skuKey = (s) => String(s === null || s === undefined ? '' : s).trim().toUpperCase();
+
+    const LMP_CHANNELS = [
+        ['amazon', 'Amazon', 'A', 'background:transparent;color:#ff9900;border:1px solid #ff9900;'],
+        ['ebay', 'eBay', 'E', 'background:#0dcaf0;color:#000;'],
+        ['google', 'Google', 'G', 'background:#198754;color:#fff;'],
+        ['bestbuy', 'BestBuy', 'B', 'background:#0046be;color:#fff;'],
+        ['macy', 'Macy', 'M', 'background:#e21a2c;color:#fff;'],
+        ['reverb', 'Reverb', 'R', 'background:#d9281d;color:#fff;'],
+        ['temu', 'Temu', 'T', 'background:#fb7701;color:#fff;'],
+        ['aliexpress', 'AliExpress', 'AE', 'background:#ff4747;color:#fff;'],
+        ['tiktok', 'TikTok', 'TK', 'background:#111;color:#fff;border:1px solid rgba(255,255,255,.35);']
+    ];
+
+    function toast(msg, isErr) {
+        const el = document.createElement('div');
+        el.className = 'lossx-toast' + (isErr ? ' is-err' : '');
+        el.textContent = msg;
+        document.body.appendChild(el);
+        setTimeout(function () { el.remove(); }, 6000);
+    }
+
+    function setStatus(html) {
+        const el = document.getElementById('lossxStatus');
+        if (el) el.innerHTML = html || '';
+    }
+
+    function indexParents() {
+        piByParent.clear();
+        piRows.forEach(function (r) {
+            const p = skuKey(r.parent);
+            if (!p) return;
+            if (!piByParent.has(p)) piByParent.set(p, []);
+            piByParent.get(p).push(r);
+        });
+        piByParent.forEach(function (rows) { rows.sort(function (a, b) { return String(a.sku).localeCompare(String(b.sku)); }); });
+    }
+
+    /** Ask the server for the /price-increase data of every loss SKU of this period and all their siblings. */
+    function loadProducts() {
+        const need = [];
+        periodGroups(current).forEach(function (g) {
+            const k = skuKey(g.sku);
+            if (k && k !== '(NO SKU)' && !piAsked.has(k)) need.push(g.sku);
+        });
+        if (!need.length || piLoading) return;
+        piLoading = true;
+        need.forEach(function (s) { piAsked.add(skuKey(s)); });
+        setStatus('<i class="fas fa-spinner fa-spin"></i> Loading image, INV, L30, Dil%, LMP by Channel, SPRICE $ and siblings from /price-increase… (the first load can take a minute)');
+        fetch(PRODUCTS_URL, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({ skus: need })
+        }).then(function (r) { return r.json(); }).then(function (json) {
+            if (!json || !json.success) throw new Error((json && json.message) || 'failed');
+            (json.rows || []).forEach(function (r) { piRows.set(skuKey(r.sku), r); });
+            indexParents();
+            setStatus('');
+        }).catch(function (e) {
+            need.forEach(function (s) { piAsked.delete(skuKey(s)); });
+            setStatus('<span class="lossx-neg">Could not load the /price-increase data' + (e && e.message ? ' (' + esc(e.message) + ')' : '') + '.</span> <button type="button" class="lossx-sort" data-retry="1">Retry</button>');
+        }).finally(function () {
+            piLoading = false;
+            if (data) renderModal();
+        });
+    }
+
+    function lowestLmp(pi) {
+        let low = 0;
+        Object.keys((pi && pi.lmp) || {}).forEach(function (k) {
+            const v = Number(pi.lmp[k]);
+            if (v > 0 && (!low || v < low)) low = v;
+        });
+        return low;
+    }
+
+    /** LMP by Channel — every channel's marketplace price, lowest first (same badges as /price-increase). */
+    function lmpHtml(pi) {
+        if (!pi) return '<span class="lossx-dim">—</span>';
+        const found = [];
+        LMP_CHANNELS.forEach(function (c) {
+            const v = Number(pi.lmp && pi.lmp[c[0]]);
+            if (v > 0) found.push({ c: c, v: v });
+        });
+        if (!found.length) return '<span class="lossx-dim">—</span>';
+        found.sort(function (a, b) { return a.v - b.v; });
+        const tip = found.map(function (x) { return x.c[1] + ' $' + x.v.toFixed(2); }).join(' · ');
+        return '<div class="lossx-lmp-wrap" title="LMP by channel, lowest first: ' + esc(tip) + '">' + found.map(function (x, i) {
+            return '<span class="lossx-lmp" style="' + x.c[3] + (i === 0 ? '' : 'font-size:.6rem;padding:2px 4px;font-weight:600;opacity:.92;') + '" title="' + esc(x.c[1]) + '">' +
+                x.c[2] + ' $' + x.v.toFixed(2) + '</span>';
+        }).join('') + '</div>';
+    }
+
+    /** The price the SPRICE $ box shows: its own saved price, else the saved Amazon SPRICE (same as /price-increase). */
+    function spriceSaved(pi) {
+        const own = Number(pi && pi.box_sprice);
+        if (own > 0) return own;
+        const seed = Number(pi && pi.amazon_sprice);
+        return seed > 0 ? seed : 0;
+    }
+
+    /** GPFT / GROI / NPFT / NROI of Amazon at this price — same formulas as the /price-increase SPRICE $ column. */
+    function spriceMetrics(price, pi) {
+        price = Number(price) || 0;
+        const lp = Number(pi && pi.lp) || 0;
+        const ship = Number(pi && pi.ship) || 0;
+        const ads = Number(pi && pi.ads) || 0;
+        const margin = Number(pi && pi.margin) > 0 ? Number(pi.margin) : 0.8;
+        if (!(price > 0) || !(lp > 0)) return null;
+        const gross = price * 0.80 - ship - lp;
+        const gpft = gross / price * 100;
+        return { gpft: gpft, groi: gross / lp * 100, npft: gpft - ads, nroi: (price * margin - ship - lp - price * (ads / 100)) / lp * 100 };
+    }
+
+    function chipsHtml(price, pi) {
+        const m = spriceMetrics(price, pi);
+        const defs = [['GPFT', m && m.gpft, 'gpft'], ['GROI', m && m.groi, 'groi'], ['NPFT', m && m.npft, 'npft'], ['NROI', m && m.nroi, 'nroi']];
+        const title = m ? 'Amazon percentages at this price' : 'Enter a price (needs LP) to see GPFT / GROI / NPFT / NROI';
+        return defs.map(function (v) {
+            let val = '<span class="lossx-dim">-</span>';
+            if (m) {
+                val = window.MetricPctColors
+                    ? window.MetricPctColors.htmlFor(v[2], v[1], { decimals: 0, empty: '0%' })
+                    : '<span style="color:#dc3545;font-weight:700;">' + Math.round(v[1]) + '%</span>';
+            }
+            return '<span class="lossx-chip2" title="' + title + '"><i>' + v[0] + '</i>' + val + '</span>';
+        }).join('');
+    }
+
+    /** SPRICE $ — editable price + ✓ (Push All, same as /price-increase) + profit chips. */
+    function spHtml(pi) {
+        if (!pi) return '<span class="lossx-dim" title="This SKU is not on /price-increase">—</span>';
+        const key = skuKey(pi.sku);
+        const saved = spriceSaved(pi);
+        const t = Object.prototype.hasOwnProperty.call(typed, key) ? typed[key] : null;
+        const shown = t !== null ? t : (saved > 0 ? saved.toFixed(2) : '');
+        const p = parseFloat(shown);
+        const low = lowestLmp(pi);
+        const below = p > 0 && low > 0 && p < low - 0.004;
+        const busy = !!pushing[key];
+        return '<div class="lossx-sp" data-key="' + esc(key) + '">' +
+            '<input type="number" class="lossx-sp-in' + (below ? ' is-below' : '') + '" step="0.01" min="0.01" placeholder="0.00" value="' + esc(shown) + '"' +
+                ' title="SPRICE $ — press ✓ or Enter to fill every channel, save and push (Push All)' + (low > 0 ? '\nLowest LMP $' + low.toFixed(2) : '') + '">' +
+            '<button type="button" class="lossx-sp-go"' + (busy ? ' disabled' : '') + ' title="Push All — fills every channel by its column rule, then saves and pushes them (same as the ✓ on /price-increase)" aria-label="Push all channels with this SPRICE">' +
+                '<i class="fas ' + (busy ? 'fa-spinner fa-spin' : 'fa-check') + '"></i></button>' +
+            '<span class="lossx-chips">' + chipsHtml(p > 0 ? p : saved, pi) + '</span></div>';
+    }
+
+    function refreshSp(key) {
+        const pi = piRows.get(key);
+        if (!pi) return;
+        document.querySelectorAll('#lossxList .lossx-sp').forEach(function (el) {
+            if (el.dataset.key !== key) return;
+            const tmp = document.createElement('div');
+            tmp.innerHTML = spHtml(pi);
+            if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
+        });
+    }
+
+    function imgHtml(pi, rank) {
+        const src = pi && pi.image ? pi.image : '';
+        const img = src
+            ? '<img class="lossx-img" loading="lazy" src="' + esc(src) + '" alt="">'
+            : '<div class="lossx-img is-missing"><i class="fas fa-image"></i></div>';
+        return '<div class="lossx-imgbox">' + img + (rank ? '<div class="lossx-rank">' + rank + '</div>' : '') + '</div>';
+    }
+
+    function numCells(o) {
+        const dash = '<span class="lossx-dim">—</span>';
+        const bad = function (v, lim) { return v !== null && v !== undefined && !isNaN(Number(v)) && Number(v) < lim; };
+        const has = function (v) { return v !== null && v !== undefined && !isNaN(Number(v)); };
+        return '<div class="lossx-c">' + (o.orders ? num(o.orders) : dash) + '</div>' +
+            '<div class="lossx-c">' + (o.units ? num(o.units) : dash) + '</div>' +
+            '<div class="lossx-c is-loss">' + (has(o.worst) ? pct(o.worst) : dash) + '</div>' +
+            '<div class="lossx-c' + (bad(o.nroi, NROI_BELOW) ? ' is-loss' : '') + '">' + (has(o.nroi) ? pct(o.nroi) : dash) + '</div>' +
+            '<div class="lossx-c' + (bad(o.npft, NPFT_BELOW) ? ' is-loss' : '') + '">' + (has(o.npft) ? pct(o.npft) : dash) + '</div>' +
+            '<div class="lossx-c is-loss">' + (o.loss ? money(o.loss) : dash) + '</div>';
+    }
+
+    function invCells(pi) {
+        if (!pi) return '<div class="lossx-c lossx-dim">—</div><div class="lossx-c lossx-dim">—</div><div class="lossx-c lossx-dim">—</div>';
+        return '<div class="lossx-c">' + num(pi.inv) + '</div><div class="lossx-c">' + num(pi.l30) + '</div><div class="lossx-c">' + Math.round(Number(pi.dil) || 0) + '%</div>';
+    }
+
+    // ---------- Action column: Fixed / Ignore (+ reason) with a per-SKU history ----------
+    let actionMap = {};                 // SKU (UPPER) -> { action: fixed|ignored, reason, user, at }
+    let reasons = ['Clearance'];
+    const needReason = new Set();       // SKUs where Ignore was chosen but no reason picked yet
+    let actionFilter = 'all';
+
+    function actState(key) {
+        if (needReason.has(key)) return 'ignored-pending';
+        const st = actionMap[key];
+        return st ? st.action : '';
+    }
+
+    function actClass(key) {
+        const s = actState(key);
+        return s === 'fixed' ? ' is-fixed' : (s === 'ignored' ? ' is-ignored' : '');
+    }
+
+    function actCellHtml(key, sku) {
+        const st = actionMap[key];
+        const need = needReason.has(key);
+        const sel = need ? 'ignored' : (st ? st.action : '');
+        let h = '<div class="lossx-act lossx-act-cell" data-key="' + esc(key) + '" data-sku="' + esc(sku) + '">' +
+            '<select class="lossx-act-sel' + (sel ? ' is-' + sel : '') + '" aria-label="Action">' +
+                '<option value=""' + (sel === '' ? ' selected' : '') + '>Action…</option>' +
+                '<option value="fixed"' + (sel === 'fixed' ? ' selected' : '') + '>Fixed</option>' +
+                '<option value="ignored"' + (sel === 'ignored' ? ' selected' : '') + '>Ignore</option>' +
+            '</select>';
+        if (sel === 'ignored') {
+            const cur = !need && st ? (st.reason || '') : '';
+            h += '<select class="lossx-reason-sel' + (cur ? '' : ' is-need') + '" aria-label="Reason">' +
+                '<option value=""' + (cur ? '' : ' selected') + '>Reason…</option>' +
+                reasons.map(function (r) { return '<option value="' + esc(r) + '"' + (r === cur ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('') +
+                '<option value="__new">＋ Add new reason…</option></select>';
+        }
+        h += '<button type="button" class="lossx-hist-btn" title="History of this SKU" aria-label="History"><i class="fas fa-history" aria-hidden="true"></i></button>';
+        if (st && !need) h += '<div class="lossx-act-by">' + esc(st.user || '—') + ' · ' + esc(String(st.at || '').slice(0, 16)) + '</div>';
+        return h + '</div>';
+    }
+
+    function refreshAct(key) {
+        document.querySelectorAll('#lossxList .lossx-item').forEach(function (item) {
+            if (item.dataset.key !== key) return;
+            const cell = item.querySelector('.lossx-act-cell');
+            if (cell) cell.outerHTML = actCellHtml(key, cell.dataset.sku);
+            const s = actState(key);
+            item.classList.toggle('is-fixed', s === 'fixed');
+            item.classList.toggle('is-ignored', s === 'ignored');
+        });
+    }
+
+    function postJson(url, body) {
+        return fetch(url, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify(body)
+        }).then(function (r) {
+            return r.json().catch(function () { throw new Error('Request failed (' + r.status + ')'); }).then(function (j) {
+                if (!r.ok || !j || !j.success) throw new Error((j && j.message) || ('Request failed (' + r.status + ')'));
+                return j;
+            });
+        });
+    }
+
+    function loadHist(item) {
+        const box = item.querySelector('.lossx-histbox');
+        if (!box) return;
+        box.innerHTML = '<div class="lossx-title"><i class="fas fa-spinner fa-spin"></i> Loading history…</div>';
+        fetch(ACTION_HISTORY_URL + '?sku=' + encodeURIComponent(item.dataset.key), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                const rows = (j && j.history) || [];
+                if (!rows.length) { box.innerHTML = '<div class="lossx-title">No actions recorded for this SKU yet.</div>'; return; }
+                const label = { fixed: 'Fixed', ignored: 'Ignored', open: 'Cleared' };
+                box.innerHTML = '<table><thead><tr><th>When</th><th>User</th><th>Action</th><th>Reason</th></tr></thead><tbody>' +
+                    rows.map(function (r) {
+                        return '<tr><td>' + esc(String(r.at || '').slice(0, 16)) + '</td><td>' + esc(r.user || '—') + '</td><td>' +
+                            esc(label[r.action] || r.action) + '</td><td>' + esc(r.reason || '—') + '</td></tr>';
+                    }).join('') + '</tbody></table>';
+            })
+            .catch(function () { box.innerHTML = '<div class="lossx-title">Could not load the history.</div>'; });
+    }
+
+    function saveAction(key, sku, action, reason) {
+        postJson(ACTIONS_URL, { sku: sku, action: action, reason: reason || '' }).then(function (j) {
+            needReason.delete(key);
+            if (j.state) actionMap[key] = j.state; else delete actionMap[key];
+            if (actionFilter !== 'all') renderModal(); else refreshAct(key);
+            document.querySelectorAll('#lossxList .lossx-item.is-hist').forEach(function (it) { if (it.dataset.key === key) loadHist(it); });
+            toast(sku + ': ' + (action === 'open' ? 'action cleared' : (action === 'fixed' ? 'marked Fixed' : 'ignored — ' + reason)));
+        }).catch(function (err) {
+            toast((err && err.message) || 'Could not save the action', true);
+            refreshAct(key);
+        });
+    }
+
+    function loadActions() {
+        fetch(ACTIONS_URL, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!j) return;
+                if (j.reasons && j.reasons.length) reasons = j.reasons;
+                if (j.success) { actionMap = j.actions || {}; renderModal(); }
+            }).catch(function () {});
+    }
+    function lossItemHtml(g, rank, pi) {
+        const channels = Object.keys(g.channels).sort().map(function (c) {
+            return '<span class="lossx-tag">' + esc(c) + ' · ' + g.channels[c] + '</span>';
+        }).join('');
+        const orders = g.orders.slice().sort(function (a, b) { return (a.pct ?? 0) - (b.pct ?? 0); }).slice(0, 60).map(function (o) {
+            return '<tr><td>' + esc(o.channel) + '</td><td>' + esc(o.order_id) + '</td><td>' + esc(o.date) + '</td><td>' + esc(o.qty) +
+                '</td><td>' + (o.amount === null ? '—' : money(o.amount, 2)) + '</td><td class="lossx-neg">' + pct(o.pct) +
+                '</td><td>' + pct(o.nroi) + '</td><td>' + pct(o.npft) +
+                '</td><td class="lossx-neg">' + (o.loss ? money(o.loss) : '—') + '</td></tr>';
+        }).join('');
+        const more = g.orders.length > 60 ? '<div class="lossx-title mt-1">Showing the 60 worst of ' + g.orders.length + ' lines.</div>' : '';
+        const open = openRows.has(skuKey(g.sku));
+        return '<div class="lossx-item' + (open ? ' is-open' : '') + actClass(skuKey(g.sku)) + '" data-key="' + esc(skuKey(g.sku)) + '">' +
+            '<div class="lossx-row" role="button" tabindex="0">' +
+                imgHtml(pi, rank) +
+                '<div style="min-width:0"><div class="lossx-sku" title="' + esc(g.title || g.sku) + '">' + esc(g.sku) + '<i class="fas fa-chevron-down lossx-chev" aria-hidden="true"></i></div>' +
+                    '<div class="lossx-tags">' + channels + '</div></div>' +
+                numCells({ orders: g.orderKeys.size, units: g.qty, worst: g.worst, nroi: g.nroi, npft: g.npft, loss: g.loss }) +
+                invCells(pi) +
+                '<div>' + lmpHtml(pi) + '</div>' +
+                '<div>' + spHtml(pi) + '</div>' +
+                actCellHtml(skuKey(g.sku), g.sku) +
+            '</div>' +
+            '<div class="lossx-histbox"></div>' +
+            '<div class="lossx-orders"><table><thead><tr><th>Channel</th><th>Order</th><th>Date</th><th>Qty</th><th>Amount</th><th>Profit %</th><th>NROI%</th><th>NPRFT%</th><th>Est. loss</th></tr></thead><tbody>' +
+                orders + '</tbody></table>' + more + '</div></div>';
+    }
+
+    /** Sales of a sibling SKU in the period (all its orders, not only the loss ones). */
+    function sibStats(pi, p) {
+        const o = { orders: 0, units: 0, worst: null, nroi: null, npft: null, loss: 0 };
+        let w = 0, nr = 0, np = 0;
+        const days = pi.days || {};
+        Object.keys(days).forEach(function (d) {
+            if (d < p.from || d > p.to) return;
+            const a = days[d];
+            o.orders += a[0]; o.units += a[1]; w += a[2]; nr += a[3]; np += a[4]; o.loss += a[5];
+        });
+        if (w > 0) { o.nroi = nr / w; o.npft = np / w; }
+        return o;
+    }
+
+    function sibItemHtml(pi, p) {
+        return '<div class="lossx-item is-sib' + actClass(skuKey(pi.sku)) + '" data-key="' + esc(skuKey(pi.sku)) + '">' +
+            '<div class="lossx-row">' +
+                imgHtml(pi, 0) +
+                '<div style="min-width:0"><div class="lossx-sku">' + esc(pi.sku) + '<span class="lossx-sibtag">sibling</span></div></div>' +
+                numCells(sibStats(pi, p)) +
+                invCells(pi) +
+                '<div>' + lmpHtml(pi) + '</div>' +
+                '<div>' + spHtml(pi) + '</div>' +
+                actCellHtml(skuKey(pi.sku), pi.sku) +
+            '</div><div class="lossx-histbox"></div></div>';
+    }
+
+    /** Loss SKUs grouped by parent: the family = its loss SKUs first, then every other SKU of that parent. */
+    function buildFamilies(groups) {
+        const fams = [];
+        const byParent = new Map();
+        const lossKeys = new Set(groups.map(function (g) { return skuKey(g.sku); }));
+        groups.forEach(function (g) {
+            const pi = piRows.get(skuKey(g.sku));
+            const parent = pi && pi.parent ? skuKey(pi.parent) : '';
+            let fam = parent ? byParent.get(parent) : null;
+            if (!fam) {
+                fam = { parent: parent, losses: [], sibs: [] };
+                fams.push(fam);
+                if (parent) byParent.set(parent, fam);
+            }
+            fam.losses.push(g);
+        });
+        fams.forEach(function (fam) {
+            if (!fam.parent) return;
+            (piByParent.get(fam.parent) || []).forEach(function (r) {
+                if (!lossKeys.has(skuKey(r.sku))) fam.sibs.push(r);
+            });
+        });
+        return fams;
+    }
+
+    const COLHEAD = '<div class="lossx-colhead"><span>Image</span><span class="is-left">SKU</span><span>Orders</span><span>Units</span><span>Worst</span>' +
+        '<span>NROI%</span><span>NPRFT%</span><span>Est. loss</span><span>INV</span><span>L30</span><span>DIL%</span>' +
+        '<span class="is-left">LMP by Channel</span><span class="is-left">SPRICE $</span><span class="is-left">Action</span></div>';
+
     function renderModal() {
         const p = data.periods[current];
         const content = document.getElementById('lossxContent');
@@ -1874,7 +2375,7 @@
         content.style.setProperty('--g1', gradients[current][0]);
         content.style.setProperty('--g2', gradients[current][1]);
         document.getElementById('lossxPeriod').textContent = p.label;
-        document.getElementById('lossxRange').textContent = (p.from === p.to ? p.from : p.from + ' → ' + p.to) + ' · EDT · net profit below 0% (gross when net is missing) · cancelled orders excluded';
+        document.getElementById('lossxRange').textContent = (p.from === p.to ? p.from : p.from + ' → ' + p.to) + ' · EDT · loss sell = NPRFT% below ' + NPFT_BELOW + ' or NROI% below ' + NROI_BELOW + ' (gross profit when net is missing) · cancelled orders excluded';
         document.getElementById('lossxStatOrders').textContent = num(p.loss_orders);
         document.getElementById('lossxStatSkus').textContent = num(p.skus);
         document.getElementById('lossxStatLoss').textContent = money(p.loss_amount);
@@ -1890,6 +2391,12 @@
                     || Object.keys(g.channels).some(function (c) { return c.toLowerCase().includes(q); });
             });
         }
+        if (actionFilter !== 'all') {
+            groups = groups.filter(function (g) {
+                const st = actionMap[skuKey(g.sku)];
+                return (st ? st.action : 'open') === actionFilter;
+            });
+        }
         groups.sort(function (a, b) {
             if (sortBy === 'loss') return a.loss - b.loss;
             if (sortBy === 'pct') return (a.worst === null ? 1e9 : a.worst) - (b.worst === null ? 1e9 : b.worst);
@@ -1898,48 +2405,120 @@
 
         const list = document.getElementById('lossxList');
         if (!groups.length) {
+            player.total = 0;
+            playerSync();
             list.innerHTML = '<div class="lossx-empty"><i class="fas fa-circle-check fa-2x mb-2" aria-hidden="true"></i><div><b>' +
-                (q ? 'No products match that search.' : 'No orders sold at a loss in this period.') + '</b></div></div>';
+                (q || actionFilter !== 'all' ? 'No products match that search / filter.' : 'No orders sold at a loss in this period.') + '</b></div></div>';
             return;
         }
 
-        list.innerHTML = groups.map(function (g, i) {
-            const channels = Object.keys(g.channels).sort().map(function (c) {
-                return '<span class="lossx-tag">' + esc(c) + ' · ' + g.channels[c] + '</span>';
-            }).join('');
-            const orders = g.orders.slice().sort(function (a, b) { return (a.pct ?? 0) - (b.pct ?? 0); }).slice(0, 60).map(function (o) {
-                return '<tr><td>' + esc(o.channel) + '</td><td>' + esc(o.order_id) + '</td><td>' + esc(o.date) + '</td><td>' + esc(o.qty) +
-                    '</td><td>' + (o.amount === null ? '—' : money(o.amount)) + '</td><td class="lossx-neg">' + pct(o.pct) +
-                    '</td><td>' + pct(o.nroi) + '</td><td>' + pct(o.npft) +
-                    '</td><td class="lossx-neg">' + (o.loss ? money(o.loss) : '—') + '</td></tr>';
-            }).join('');
-            const more = g.orders.length > 60 ? '<div class="lossx-title mt-1">Showing the 60 worst of ' + g.orders.length + ' lines.</div>' : '';
-            return '<div class="lossx-item" data-i="' + i + '">' +
-                '<div class="lossx-row" role="button" tabindex="0">' +
-                    '<div class="lossx-rank">' + (i + 1) + '</div>' +
-                    '<div style="min-width:0"><div class="lossx-sku">' + esc(g.sku) + '</div>' +
-                        (g.title ? '<div class="lossx-title" title="' + esc(g.title) + '">' + esc(g.title) + '</div>' : '') +
-                        '<div class="lossx-tags">' + channels + '</div></div>' +
-                    '<div class="lossx-nums">' +
-                        '<div class="lossx-num"><b>' + num(g.orderKeys.size) + '</b><span>Orders</span></div>' +
-                        '<div class="lossx-num"><b>' + num(g.qty) + '</b><span>Units</span></div>' +
-                        '<div class="lossx-num is-loss"><b>' + pct(g.worst) + '</b><span>Worst</span></div>' +
-                        '<div class="lossx-num"><b>' + pct(g.nroi) + '</b><span>NROI%</span></div>' +
-                        '<div class="lossx-num"><b>' + pct(g.npft) + '</b><span>NPRFT%</span></div>' +
-                        '<div class="lossx-num is-loss"><b>' + (g.loss ? money(g.loss) : '—') + '</b><span>Est. loss</span></div>' +
-                        '<i class="fas fa-chevron-down lossx-chev" aria-hidden="true"></i>' +
-                    '</div></div>' +
-                '<div class="lossx-orders"><table><thead><tr><th>Channel</th><th>Order</th><th>Date</th><th>Qty</th><th>Amount</th><th>Profit %</th><th>NROI%</th><th>NPRFT%</th><th>Est. loss</th></tr></thead><tbody>' +
-                    orders + '</tbody></table>' + more + '</div></div>';
+        const fams = buildFamilies(groups);
+        if (player.active) {
+            // Player mode: one loss product at a time (with its siblings), numbered from #1
+            const flat = [];
+            fams.forEach(function (fam) { fam.losses.forEach(function (g) { flat.push({ fam: fam, g: g }); }); });
+            player.total = flat.length;
+            player.idx = Math.max(0, Math.min(player.idx, flat.length - 1));
+            const cur = flat[player.idx];
+            openRows.add(skuKey(cur.g.sku));
+            let one = lossItemHtml(cur.g, player.idx + 1, piRows.get(skuKey(cur.g.sku)));
+            cur.fam.sibs.forEach(function (r) { one += sibItemHtml(r, p); });
+            list.innerHTML = '<div class="lossx-grid">' + COLHEAD + '<div class="lossx-fam">' + one + '</div></div>';
+            playerSync();
+            return;
+        }
+        player.total = fams.reduce(function (n, fam) { return n + fam.losses.length; }, 0);
+        playerSync();
+        const slice = fams.slice(0, shownFamilies);
+        let rank = 0;
+        const body = slice.map(function (fam) {
+            let h = '';
+            fam.losses.forEach(function (g) { h += lossItemHtml(g, ++rank, piRows.get(skuKey(g.sku))); });
+            fam.sibs.forEach(function (r) { h += sibItemHtml(r, p); });
+            return '<div class="lossx-fam">' + h + '</div><div class="lossx-fam-gap"></div>';
         }).join('');
+        const left = fams.length - slice.length;
+        list.innerHTML = '<div class="lossx-grid">' + COLHEAD + body +
+            (left > 0 ? '<button type="button" class="lossx-sort lossx-more" id="lossxMore">Show more (' + num(left) + ' more product' + (left === 1 ? '' : 's') + ')</button>' : '') +
+            '</div>';
     }
+
+    // ---------- Player: ⏮ ▶ ⏭ — loss products one by one, starting with #1 ----------
+    const PLAY_MS = 5000;
+    const player = { active: false, idx: 0, total: 0, playing: false, timer: null };
+
+    function playerSync() {
+        const box = document.getElementById('lossxPlayer');
+        if (!box) return;
+        box.classList.toggle('is-active', player.active);
+        document.getElementById('lossxPcount').textContent = (player.active ? player.idx + 1 : 0) + ' / ' + player.total;
+        const pl = document.getElementById('lossxPlay');
+        pl.classList.toggle('is-on', player.playing);
+        pl.innerHTML = '<i class="fas fa-' + (player.playing ? 'pause' : 'play') + '" aria-hidden="true"></i>';
+        pl.title = player.playing ? 'Pause' : 'Play — auto-advance every ' + (PLAY_MS / 1000) + ' seconds';
+        pl.setAttribute('aria-label', player.playing ? 'Pause' : 'Play');
+        document.getElementById('lossxPrev').disabled = player.active && player.idx <= 0;
+        document.getElementById('lossxNext').disabled = player.active && player.idx >= player.total - 1;
+        pl.disabled = player.total === 0;
+    }
+
+    function playerPause() {
+        if (player.timer) { clearInterval(player.timer); player.timer = null; }
+        player.playing = false;
+    }
+
+    /** Leave player mode (no re-render): used when search / sort / filter / modal change. */
+    function playerOff() {
+        playerPause();
+        player.active = false;
+        player.idx = 0;
+    }
+
+    function playerShow(idx) {
+        player.active = true;
+        player.idx = Math.max(0, Math.min(player.total - 1, idx));
+        renderModal();
+        const body = document.querySelector('#lossxModal .lossx-body');
+        if (body) body.scrollTop = 0;
+    }
+
+    function playerStep(d) {
+        if (!player.total) return;
+        const wasPlaying = player.playing;
+        playerPause();
+        playerShow(player.active ? player.idx + d : 0);
+        if (wasPlaying) playerPlay(true);
+    }
+
+    function playerPlay(keepIdx) {
+        if (!player.total) return;
+        if (!keepIdx && (!player.active || player.idx >= player.total - 1)) playerShow(0);
+        player.playing = true;
+        player.timer = setInterval(function () {
+            if (player.idx >= player.total - 1) { playerPause(); playerSync(); return; }
+            playerShow(player.idx + 1);
+        }, PLAY_MS);
+        playerSync();
+    }
+
+    document.getElementById('lossxPlay')?.addEventListener('click', function () {
+        if (player.playing) { playerPause(); playerSync(); } else playerPlay(false);
+    });
+    document.getElementById('lossxPrev')?.addEventListener('click', function () { playerStep(-1); });
+    document.getElementById('lossxNext')?.addEventListener('click', function () { playerStep(1); });
+    document.getElementById('lossxPexit')?.addEventListener('click', function () { playerOff(); renderModal(); });
+    document.getElementById('lossxModal')?.addEventListener('hidden.bs.modal', function () { playerOff(); });
 
     function openModal(key) {
         if (!data) { load(false); return; }
         current = key;
+        playerOff();
         query = '';
+        shownFamilies = FAMILY_PAGE;
         document.getElementById('lossxSearch').value = '';
         renderModal();
+        loadProducts();
+        loadActions();
         const el = document.getElementById('lossxModal');
         if (window.bootstrap && bootstrap.Modal) {
             bootstrap.Modal.getOrCreateInstance(el).show();
@@ -1948,25 +2527,274 @@
         }
     }
 
+    // ==================== SPRICE $ ✓ = Push All (same as /price-increase) ====================
+    // The push engine IS the /price-increase page: it is loaded once in a hidden frame and does exactly what its own
+    // SPRICE $ ✓ does — fills every channel by its column rule, saves each channel's SPRICE and the SPRICE $ box value,
+    // and pushes in a tracked server background job (failed pushes are retried hourly + e-mailed).
+    let bridgeFrame = null;
+    let bridgeReady = false;
+    let bridgeWaiters = [];
+
+    function ensureBridge() {
+        return new Promise(function (resolve, reject) {
+            if (bridgeReady) { resolve(); return; }
+            bridgeWaiters.push({ resolve: resolve, reject: reject });
+            if (bridgeFrame) return;
+            bridgeFrame = document.createElement('iframe');
+            bridgeFrame.src = PI_URL;
+            bridgeFrame.setAttribute('aria-hidden', 'true');
+            bridgeFrame.tabIndex = -1;
+            bridgeFrame.style.cssText = 'position:fixed;left:-10000px;top:0;width:1280px;height:800px;border:0;opacity:0;pointer-events:none;';
+            document.body.appendChild(bridgeFrame);
+            setTimeout(function () {
+                if (bridgeReady) return;
+                const w = bridgeWaiters; bridgeWaiters = [];
+                w.forEach(function (x) { x.reject(new Error('The push engine (/price-increase) did not load — try again')); });
+                if (bridgeFrame) { bridgeFrame.remove(); bridgeFrame = null; }
+            }, 120000);
+        });
+    }
+
+    /** After the job started: follow the server's tracked pushes of this SKU and report the outcome. */
+    function followPush(sku, startedAt) {
+        const url = PUSH_STATUS_URL + '?sku=' + encodeURIComponent(sku);
+        let tries = 0;
+        (function poll() {
+            fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    const rows = Object.values((res && res.rows) || {}).filter(function (r) {
+                        return r && r.at && (new Date(r.at).getTime() >= startedAt - 120000);
+                    });
+                    const waiting = rows.filter(function (r) { return r.status === 'pending' && /^Queued/i.test(String(r.error || '')); });
+                    if (waiting.length && ++tries < 400) { setTimeout(poll, 3000); return; }
+                    const pushed = rows.filter(function (r) { return r.status === 'pushed'; }).length;
+                    const failed = rows.length - pushed - waiting.length;
+                    toast(sku + ': pushed ' + pushed + ' channel(s)' + (failed > 0 ? (', ' + failed + ' failed (see Push Pending)') : ''), failed > 0);
+                })
+                .catch(function () { if (++tries < 400) setTimeout(poll, 5000); });
+        })();
+    }
+
+    window.addEventListener('message', function (ev) {
+        if (ev.origin !== window.location.origin) return;
+        const m = ev.data;
+        if (!m) return;
+        if (m.type === 'pi-bridge-ready') {
+            bridgeReady = true;
+            const w = bridgeWaiters; bridgeWaiters = [];
+            w.forEach(function (x) { x.resolve(); });
+            return;
+        }
+        if (m.type !== 'pi-box-push-result') return;
+        const key = skuKey(m.sku);
+        const job = pushing[key];
+        if (!job) return;
+        delete pushing[key];
+        if (!m.ok) {
+            refreshSp(key);
+            toast(m.message || ('Could not push ' + m.sku), true);
+            return;
+        }
+        // The engine saved the SPRICE $ box value too (shared with /price-increase)
+        delete typed[key];
+        const pi = piRows.get(key);
+        if (pi) pi.box_sprice = job.price;
+        refreshSp(key);
+        toast(m.sku + ': SPRICE $' + job.price.toFixed(2) + ' saved, pushing to all channels…');
+        followPush(m.sku, job.startedAt);
+    });
+
+    /** ✓ / Enter: Push All for this SKU. */
+    function pushSku(box) {
+        if (!box) return;
+        const key = box.dataset.key;
+        const pi = piRows.get(key);
+        const input = box.querySelector('.lossx-sp-in');
+        if (!pi || !input) return;
+        const price = parseFloat(String(input.value === null ? '' : input.value).replace(/[$,\s]/g, '').replace(',', '.'));
+        if (!isFinite(price) || !(price > 0)) {
+            toast('Enter SPRICE $ greater than 0', true);
+            input.focus();
+            return;
+        }
+        if (pushing[key]) { toast('A push for ' + pi.sku + ' is still being prepared', true); return; }
+        const value = Math.max(0.01, +price.toFixed(2));
+        pushing[key] = { startedAt: Date.now(), price: value };
+        refreshSp(key);
+        if (!bridgeReady) toast('Loading the push engine (/price-increase) — the first push can take a moment…');
+        ensureBridge().then(function () {
+            bridgeFrame.contentWindow.postMessage({
+                type: 'pi-box-push', sku: pi.sku, price: value,
+                data: { inventory: Number(pi.inv) || 0, overall_l30: Number(pi.l30) || 0, dil_percent: Number(pi.dil) || 0, image_path: pi.image || '' }
+            }, window.location.origin);
+        }).catch(function (err) {
+            delete pushing[key];
+            refreshSp(key);
+            toast((err && err.message) || 'Could not start the push', true);
+        });
+    }
+
+    // ---------- History button beside "Est." on every period card: who marked what Fixed / Ignored ----------
+    let histKey = 'l30';
+    let histRows = null;
+
+    function histRender() {
+        const body = document.getElementById('lossxHistBody');
+        if (histRows === null) { body.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading…</div>'; return; }
+        let rows = histRows;
+        if (!document.getElementById('lossxHistAll').checked) {
+            const keys = new Set(periodGroups(histKey).map(function (g) { return skuKey(g.sku); }));
+            rows = rows.filter(function (r) { return keys.has(skuKey(r.sku)); });
+        }
+        if (!rows.length) { body.innerHTML = '<div class="text-muted">No Fixed / Ignore actions recorded yet.</div>'; return; }
+        const label = { fixed: 'Fixed', ignored: 'Ignored', open: 'Cleared' };
+        body.innerHTML = '<table class="table table-sm align-middle mb-0"><thead><tr><th>When</th><th>User</th><th>SKU</th><th>Action</th><th>Reason</th></tr></thead><tbody>' +
+            rows.map(function (r) {
+                return '<tr><td class="text-nowrap">' + esc(String(r.at || '').slice(0, 16)) + '</td><td>' + esc(r.user || '—') + '</td><td>' + esc(r.sku || '') +
+                    '</td><td><span class="badge ' + (r.action === 'fixed' ? 'bg-success' : (r.action === 'ignored' ? 'bg-secondary' : 'bg-light text-dark')) + '">' +
+                    esc(label[r.action] || r.action) + '</span></td><td>' + esc(r.reason || '—') + '</td></tr>';
+            }).join('') + '</tbody></table>';
+    }
+
+    function openHistory(key) {
+        histKey = key;
+        histRows = null;
+        const name = { l30: 'L30', l7: 'L7', yesterday: 'Yesterday', today: 'Today' }[key] || key;
+        document.getElementById('lossxHistTitle').textContent = 'Action history — ' + name;
+        histRender();
+        const el = document.getElementById('lossxHistModal');
+        if (window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).show();
+        else if (window.jQuery) window.jQuery(el).modal('show');
+        const go = function () {
+            fetch(ACTION_HISTORY_URL, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (j) { histRows = (j && j.history) || []; histRender(); })
+                .catch(function () { document.getElementById('lossxHistBody').innerHTML = '<div class="text-danger">Could not load the history.</div>'; });
+        };
+        // the period data (to know which SKUs belong to the period) may still be loading
+        if (data) go(); else setTimeout(go, 600);
+    }
+
+    document.getElementById('lossxHistAll')?.addEventListener('change', histRender);
+
     document.getElementById('lossx-strip')?.addEventListener('click', function (e) {
+        const hb = e.target.closest('.lossx-hbtn');
+        if (hb) { e.stopPropagation(); openHistory(hb.dataset.hist); return; }
         const card = e.target.closest('.lossx-card');
         if (card) openModal(card.dataset.p);
     });
+    document.getElementById('lossx-strip')?.addEventListener('keydown', function (e) {
+        const hb = e.target.closest ? e.target.closest('.lossx-hbtn') : null;
+        if (hb && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); openHistory(hb.dataset.hist); }
+    });
     document.getElementById('lossxSearch')?.addEventListener('input', function (e) {
         query = e.target.value || '';
+        playerOff();
+        shownFamilies = FAMILY_PAGE;
         renderModal();
     });
     document.querySelectorAll('.lossx-sort').forEach(function (btn) {
+        if (!btn.dataset.sort) return;
         btn.addEventListener('click', function () {
             sortBy = btn.dataset.sort;
-            document.querySelectorAll('.lossx-sort').forEach(function (b) { b.classList.toggle('is-on', b === btn); });
+            playerOff();
+            shownFamilies = FAMILY_PAGE;
+            document.querySelectorAll('.lossx-sort[data-sort]').forEach(function (b) { b.classList.toggle('is-on', b === btn); });
             renderModal();
         });
     });
-    document.getElementById('lossxList')?.addEventListener('click', function (e) {
-        const row = e.target.closest('.lossx-row');
-        if (row) row.parentElement.classList.toggle('is-open');
+    document.getElementById('lossxStatus')?.addEventListener('click', function (e) {
+        if (e.target.closest('[data-retry]')) loadProducts();
     });
+
+    const listEl = document.getElementById('lossxList');
+    document.getElementById('lossxFilter')?.addEventListener('change', function (e) {
+        actionFilter = e.target.value || 'all';
+        playerOff();
+        shownFamilies = FAMILY_PAGE;
+        renderModal();
+    });
+    listEl?.addEventListener('click', function (e) {
+        const go = e.target.closest('.lossx-sp-go');
+        if (go) { e.preventDefault(); pushSku(go.closest('.lossx-sp')); return; }
+        if (e.target.closest('#lossxMore')) { shownFamilies += FAMILY_PAGE; renderModal(); return; }
+        const hb = e.target.closest('.lossx-hist-btn');
+        if (hb) {
+            const it = hb.closest('.lossx-item');
+            if (it && it.classList.toggle('is-hist')) loadHist(it);
+            return;
+        }
+        if (e.target.closest('.lossx-sp, .lossx-act, a, input, button, select')) return;
+        const row = e.target.closest('.lossx-row');
+        const item = row && row.parentElement;
+        if (!item || !item.querySelector('.lossx-orders')) return;
+        const open = item.classList.toggle('is-open');
+        const k = item.dataset.key;
+        if (open) openRows.add(k); else openRows.delete(k);
+    });
+    // Using a control of the shown product pauses the auto-advance
+    listEl?.addEventListener('focusin', function (e) {
+        if (player.playing && e.target.closest && e.target.closest('select, input, button')) { playerPause(); playerSync(); }
+    });
+    listEl?.addEventListener('change', function (e) {
+        const cell = e.target.closest ? e.target.closest('.lossx-act-cell') : null;
+        if (!cell) return;
+        const key = cell.dataset.key, sku = cell.dataset.sku, v = e.target.value;
+        if (e.target.classList.contains('lossx-act-sel')) {
+            if (v === 'ignored') {
+                const st = actionMap[key];
+                if (!(st && st.action === 'ignored')) needReason.add(key);
+                refreshAct(key);
+            } else if (v === 'fixed') {
+                needReason.delete(key);
+                saveAction(key, sku, 'fixed', '');
+            } else {
+                needReason.delete(key);
+                if (actionMap[key]) saveAction(key, sku, 'open', ''); else refreshAct(key);
+            }
+            return;
+        }
+        if (!e.target.classList.contains('lossx-reason-sel')) return;
+        if (v === '__new') {
+            const name = (window.prompt('New reason for ignoring this product:') || '').trim();
+            if (!name) { refreshAct(key); return; }
+            postJson(REASONS_URL, { name: name }).then(function (j) {
+                reasons = j.reasons || reasons;
+                renderModal();   // every row's Reason dropdown now lists it
+                saveAction(key, sku, 'ignored', j.reason);
+            }).catch(function (err) { toast((err && err.message) || 'Could not add the reason', true); refreshAct(key); });
+            return;
+        }
+        if (!v) { refreshAct(key); return; }
+        saveAction(key, sku, 'ignored', v);
+    });    listEl?.addEventListener('input', function (e) {
+        const inp = e.target.closest('.lossx-sp-in');
+        if (!inp) return;
+        const box = inp.closest('.lossx-sp');
+        const key = box.dataset.key;
+        typed[key] = inp.value;
+        const pi = piRows.get(key);
+        if (!pi) return;
+        const price = parseFloat(inp.value);
+        box.querySelector('.lossx-chips').innerHTML = chipsHtml(price > 0 ? price : spriceSaved(pi), pi);
+        const low = lowestLmp(pi);
+        inp.classList.toggle('is-below', price > 0 && low > 0 && price < low - 0.004);
+    });
+    listEl?.addEventListener('keydown', function (e) {
+        const inp = e.target.closest ? e.target.closest('.lossx-sp-in') : null;
+        if (inp && e.key === 'Enter') { e.preventDefault(); pushSku(inp.closest('.lossx-sp')); }
+    });
+    // A product picture that does not load becomes the placeholder
+    listEl?.addEventListener('error', function (e) {
+        const img = e.target;
+        if (img && img.tagName === 'IMG' && img.classList.contains('lossx-img')) {
+            const ph = document.createElement('div');
+            ph.className = 'lossx-img is-missing';
+            ph.innerHTML = '<i class="fas fa-image"></i>';
+            img.replaceWith(ph);
+        }
+    }, true);
 
     load(false);
 })();
