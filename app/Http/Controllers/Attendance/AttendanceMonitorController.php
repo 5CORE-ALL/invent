@@ -95,7 +95,7 @@ class AttendanceMonitorController extends Controller
         return view('attendance.employee-detail', [
             'fraud_alert' => AttendanceFraudAlerts::forUsers([(int) $user->id])[(int) $user->id] ?? null,
             'fraud_detail' => $fraudDetail,
-            'lookback_days' => (int) config('attendance.checkup.lookback_days', 7),
+            'lookback_days' => (int) config('attendance.checkup.lookback_days', 30),
             'can_review_flags' => AttendanceAccess::canAdmin(),
             'title' => $user->name.' — Activity',
             'employee' => $user,

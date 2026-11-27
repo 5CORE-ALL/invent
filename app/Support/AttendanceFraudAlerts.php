@@ -56,7 +56,7 @@ class AttendanceFraudAlerts
      */
     public static function openFraudFlags(array $userIds): Collection
     {
-        $days = max(1, (int) config('attendance.checkup.lookback_days', 7));
+        $days = max(1, (int) config('attendance.checkup.lookback_days', 30));
         $cutoff = now()->subDays($days - 1)->toDateString();
 
         return AttendanceAiFlag::query()

@@ -137,7 +137,7 @@ return [
     */
     'checkup' => [
         // Open alerts from the last N days count towards the triangle.
-        'lookback_days' => (int) env('ATTENDANCE_CHECKUP_LOOKBACK_DAYS', 7),
+        'lookback_days' => (int) env('ATTENDANCE_CHECKUP_LOOKBACK_DAYS', 30),
         // Lowest severity that shows the triangle: low | medium | high. Low alerts stay visible
         // on the employee page only (e.g. a single network hiccup should not shame anyone).
         'alert_min_severity' => env('ATTENDANCE_CHECKUP_MIN_SEVERITY', 'medium'),
