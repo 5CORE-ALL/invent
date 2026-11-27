@@ -9134,6 +9134,12 @@
                     setTimeout(waitLoaded, 200);
                     return;
                 }
+                // /sales-loss-order passes its Siblings tick (the same per-SKU switch as this window's Siblings checkbox)
+                if (typeof job.siblings === 'boolean') {
+                    $('#modal-siblings-apply-cb').prop('checked', job.siblings);
+                    if (job.siblings && job.siblingAdd !== undefined) $('#modal-sprice-bump-input').val(job.siblingAdd);
+                    saveSiblingsSettingsNow();
+                }
                 // Same as typing the price in the modal's SPRICE $ box, then pressing its ✓
                 $('#modal-sprice-same-input').val(job.price.toFixed(2));
                 samePriceDirty = true; // never overwritten by the saved-price prefill that is still arriving
@@ -9175,6 +9181,8 @@
             piBoxPushBusySkus[key] = true;
             piBoxPushQueue.push({
                 sku: sku, key: key, price: Math.max(0.01, +price.toFixed(2)), data: m.data || {},
+                siblings: (typeof m.siblings === 'boolean') ? m.siblings : undefined,
+                siblingAdd: (m.siblingAdd === undefined || m.siblingAdd === null) ? undefined : String(m.siblingAdd),
                 onStaged: function(started) { reply(started, started ? 'Push started' : 'Could not start the push for ' + sku, true); }
             });
             piBoxPushNext();
