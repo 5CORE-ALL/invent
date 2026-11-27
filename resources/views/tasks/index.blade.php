@@ -4627,6 +4627,31 @@
                         }
                     });
 
+                    // Img — screenshot thumbnail (first one; badge shows the count when several)
+                    cols.push({
+                        title: "Img",
+                        field: "image",
+                        width: 56,
+                        minWidth: 50,
+                        widthGrow: 0,
+                        hozAlign: "center",
+                        headerSort: false,
+                        headerTooltip: "Screenshots",
+                        formatter: function(cell) {
+                            var names = taskScreenshotNames(cell.getRow().getData());
+                            if (!names.length) {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            var url = '/uploads/tasks/' + encodeURIComponent(names[0]);
+                            var badge = names.length > 1
+                                ? '<span style="position:absolute;top:-4px;right:-4px;background:#0d6efd;color:#fff;border-radius:8px;font-size:9px;line-height:1;padding:2px 4px;">' + names.length + '</span>'
+                                : '';
+                            return '<a href="' + url + '" target="_blank" rel="noopener" title="' + names.length + ' screenshot(s) - click to open" style="position:relative;display:inline-block;">' +
+                                '<img src="' + url + '" alt="Screenshot" loading="lazy" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #dee2e6;display:block;">' +
+                                badge + '</a>';
+                        }
+                    });
+
                     // ETC (Estimated Time) — whole minutes
                     cols.push({
                         title: "ETC",
@@ -4892,25 +4917,6 @@
                             if (ra === undefined) ra = 1;
                             if (rb === undefined) rb = 1;
                             return ra - rb;
-                        }
-                    });
-                    
-                    // IMG (Screenshot/Image) - Hidden
-                    cols.push({
-                        title: "IMG", 
-                        field: "image", 
-                        width: 60,
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var names = taskScreenshotNames(row);
-                            if (names.length) {
-                                return `<a href="/uploads/tasks/${names[0]}" target="_blank" title="${names.length} screenshot(s)">
-                                    <i class="mdi mdi-camera text-primary" style="font-size: 18px; cursor: pointer;"></i>${names.length > 1 ? '<small>' + names.length + '</small>' : ''}
-                                </a>`;
-                            }
-                            return '-';
                         }
                     });
                     
