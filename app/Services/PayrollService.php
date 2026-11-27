@@ -1056,9 +1056,28 @@ class PayrollService
         return $changed;
     }
 
+    /**
+     * Penalty hours per user for a payroll month (Penalty window monthly totals). They are taken off
+     * Hours LM before the salary is calculated.
+     *
+     * @return array<int, float> user id => penalty hours
+     */
+    public function penaltyHoursByUser(PayrollMonth $month): array
+    {
+        try {
+            $ym = $month->period_start?->format('Y-m')
+                ?? Carbon::parse('first day of '.$month->month_label)->format('Y-m');
+
+            return \App\Support\Penalty::monthHoursByUser($ym);
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
     public function recalculateMonth(PayrollMonth $month): void
     {
         $rows = PayrollEmployeeSalary::where('payroll_month_id', $month->id)->get();
+        $penaltyHours = $this->penaltyHoursByUser($month);
 
         foreach ($rows as $row) {
             $calc = $this->teamSalary->calculateFromValues(
@@ -1068,7 +1087,8 @@ class PayrollService
                 (float) $row->other,
                 (float) $row->adv_inc_other,
                 (float) $row->incentive,
-                (float) $row->deduction
+                (float) $row->deduction,
+                (float) ($penaltyHours[$row->user_id] ?? 0)
             );
 
             $userId = $row->user_id;
@@ -1452,7 +1472,8 @@ class PayrollService
             (float) $row->other,
             (float) $row->adv_inc_other,
             (float) $row->incentive,
-            (float) $row->deduction
+            (float) $row->deduction,
+            (float) ($this->penaltyHoursByUser($month)[$userId] ?? 0)
         );
 
         $components = PayrollSalaryComponent::where('payroll_month_id', $month->id)
@@ -1483,6 +1504,8 @@ class PayrollService
             'deduction' => $calc['deduction'],
             'deduction_reason' => $row->deduction_reason,
             'hours_worked' => $calc['hours_lm'],
+            'hours_logged' => $calc['hours_logged'],
+            'penalty_hours' => $calc['penalty_hours'],
             'amount_lm' => $calc['amount_lm'],
             'amount_lm_display' => $calc['amount_lm_display'],
             'amount_p' => $calc['amount_p'],

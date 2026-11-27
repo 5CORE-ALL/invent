@@ -842,8 +842,8 @@
             { title: 'Incr', field: 'increment', minWidth: 64, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Other', field: 'other', minWidth: 64, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Incentive', field: 'incentive', minWidth: 78, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Penalty', field: 'penalty_hours', minWidth: 70, hozAlign: 'center',
-                headerTooltip: 'Penalty hours of this month (from the Penalty window: points × slab rate)',
+            { title: 'Penalty H', field: 'penalty_hours', minWidth: 70, hozAlign: 'center',
+                headerTooltip: 'Penalty hours of this month (Penalty window: points × slab rate). Deducted from Hours LM before the salary is calculated.',
                 formatter: (c) => {
                     const v = parseFloat(c.getValue());
                     if (isNaN(v) || v <= 0) return '—';

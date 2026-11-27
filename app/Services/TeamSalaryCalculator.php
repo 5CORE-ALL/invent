@@ -138,10 +138,15 @@ class TeamSalaryCalculator
         float $other = 0,
         float $advIncOther = 0,
         float $incentive = 0,
-        float $deduction = 0
+        float $deduction = 0,
+        float $penaltyHours = 0
     ): array {
         $divisor = $this->hoursDivisor();
         $salaryLm = $salaryPp + $increment;
+        // Penalty hours are taken off the logged hours; pay is calculated on the reduced hours.
+        $hoursLogged = $hoursLm;
+        $penaltyHours = max(0.0, $penaltyHours);
+        $hoursLm = max(0.0, $hoursLogged - $penaltyHours);
         $amountLm = ($hoursLm * $salaryLm) / $divisor;
         // Amount = ((Salary PP + Increment) * Hours LM / 200) - Advance + Other + Incentive - Deduction
         $amountP = $amountLm - $advIncOther + $other + $incentive - $deduction;
@@ -152,6 +157,8 @@ class TeamSalaryCalculator
             'increment' => $increment,
             'salary_lm' => $salaryLm,
             'hours_lm' => $hoursLm,
+            'hours_logged' => $hoursLogged,
+            'penalty_hours' => $penaltyHours,
             'other' => $other,
             'adv_inc_other' => $advIncOther,
             'incentive' => $incentive,

@@ -128,6 +128,8 @@ class PayrollController extends Controller
             $this->payroll->syncCarryForwardSalaries($payrollMonth);
             $this->payroll->syncBankDetails($payrollMonth);
             $this->payroll->refreshLiveHours($payrollMonth);
+            // Penalty hours can change any time (Penalty window), so keep the open month's amounts current.
+            $this->payroll->recalculateMonth($payrollMonth);
         }
 
         // Always drop zero-hour rows (including locked months / inactive leavers).
