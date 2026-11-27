@@ -5885,6 +5885,26 @@ class AliExpressApiService
     }
 
     /**
+     * One page of buyer reviews (aliexpress.social.product.evaluation.query): stars, text, date, images.
+     *
+     * @return array{success: bool, data?: array, message?: string, request_id?: mixed}
+     */
+    public function fetchProductEvaluations(string $productId, int $page = 1, int $pageSize = 20): array
+    {
+        $params = ['product_id' => $productId, 'page' => max(1, $page), 'page_size' => max(1, min(20, $pageSize))];
+        $raw = $this->callTopRouter('aliexpress.social.product.evaluation.query', $params);
+        if (empty($raw['success'])) {
+            $rest = $this->callRestGateway('aliexpress.social.product.evaluation.query', $params);
+            if (! empty($rest['success'])) {
+                return $rest;
+            }
+            $raw['message'] = trim(($raw['message'] ?? '').' | rest: '.($rest['message'] ?? ''));
+        }
+
+        return $raw;
+    }
+
+    /**
      * Product review count + average rating.
      * Primary: aliexpress.social.product.evaluation.query (total_number).
      * Fallback: aliexpress.solution.product.info.get (evaluation_count / avg_evaluation_rating).

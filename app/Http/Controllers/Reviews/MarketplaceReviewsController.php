@@ -164,7 +164,27 @@ class MarketplaceReviewsController extends Controller
             ], 422);
         }
 
-        $skus = $this->fetchableSkus($marketplace, trim((string) ($data['sku'] ?? '')));
+        // eBay / Reverb: the whole seller feedback list, a couple of pages per call.
+        if (MarketplaceReviewFetcher::isAccountWide($marketplace)) {
+            if (! Schema::hasTable('marketplace_reviews')) {
+                return response()->json(['success' => false, 'message' => 'marketplace_reviews table is missing, run php artisan migrate'], 422);
+            }
+            $page = max(1, (int) ($data['offset'] ?? 0) + 1);
+            $res = $fetcher->fetchAccountPages($marketplace, $page, 2);
+
+            return response()->json([
+                'success' => true,
+                'unit' => 'pages',
+                'total_skus' => $res['total_pages'],
+                'processed' => $res['next_page'] === null ? $res['total_pages'] : $res['next_page'] - 1,
+                'next_offset' => $res['next_page'] === null ? null : $res['next_page'] - 1,
+                'fetched' => $res['fetched'],
+                'new' => $res['new'],
+                'errors' => $res['error'] ? [$res['error']] : [],
+            ]);
+        }
+
+        $skus = $fetcher->fetchableSkus($marketplace, trim((string) ($data['sku'] ?? '')));
         $offset = (int) ($data['offset'] ?? 0);
         $batch = array_slice($skus, $offset, 5);
 
@@ -253,6 +273,89 @@ class MarketplaceReviewsController extends Controller
         ]);
     }
 
+    /**
+     * Download reviews as a Judge.me CSV (same columns as a Judge.me export), to upload in
+     * Judge.me → Reviews → Import. Works without an API token.
+     */
+    public function export(Request $request, JudgeMeReviewPusher $pusher)
+    {
+        @set_time_limit(300);
+        $marketplace = strtolower(trim((string) $request->query('marketplace', '')));
+        $shopify = trim((string) $request->query('shopify', 'pending'));
+        $mark = $request->boolean('mark');
+
+        $query = MarketplaceReview::query()->whereNotNull('rating');
+        if ($marketplace !== '' && $marketplace !== 'all') {
+            $query->where('marketplace', $marketplace);
+        }
+        if (in_array($shopify, ['pending', 'pushed', 'failed', 'skipped'], true)) {
+            $query->where('shopify_status', $shopify);
+        }
+        $ids = array_filter(array_map('intval', (array) $request->query('ids', [])));
+        if ($ids !== []) {
+            $query->whereIn('id', $ids);
+        }
+        // Positive only = 4 and 5 stars.
+        $minRating = (int) $request->query('min_rating', 0);
+        if ($minRating >= 1 && $minRating <= 5) {
+            $query->where('rating', '>=', $minRating);
+        }
+
+        $headers = ['title', 'body', 'rating', 'review_date', 'source', 'curated', 'reviewer_name', 'reviewer_email', 'product_id',
+            'product_handle', 'reply', 'reply_date', 'picture_urls', 'ip_address', 'location', 'metaobject_handle', 'status'];
+
+        $name = 'reviews-judgeme-'.($minRating >= 4 ? 'positive-' : '').($marketplace !== '' ? $marketplace : 'all').'-'.now()->format('Y-m-d-His').'.csv';
+
+        return response()->streamDownload(function () use ($query, $pusher, $headers, $mark) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, $headers);
+            $handles = [];
+            $query->orderBy('id')->chunkById(500, function ($chunk) use ($out, $pusher, &$handles, $mark) {
+                $need = $chunk->pluck('sku')->unique()->diff(array_keys($handles))->values()->all();
+                if ($need !== []) {
+                    foreach (ShopifySku::mapByProductSkus($need) as $sku => $row) {
+                        $handles[(string) $sku] = preg_match('#/products/([^/?\#]+)#', (string) ($row->product_link ?? ''), $m) ? $m[1] : '';
+                    }
+                    foreach ($need as $sku) {
+                        $handles[(string) $sku] ??= '';
+                    }
+                }
+                $done = [];
+                foreach ($chunk as $r) {
+                    $handle = $handles[$r->sku] ?? '';
+                    if ($handle === '') {
+                        continue; // not a Shopify product, Judge.me could not attach it
+                    }
+                    fputcsv($out, [
+                        (string) ($r->title ?? ''),
+                        (string) ($r->body ?? ''),
+                        (int) $r->rating,
+                        ($r->reviewed_at ?? $r->created_at)->utc()->format('Y-m-d H:i:s').' UTC',
+                        'web',
+                        'ok',
+                        trim((string) $r->reviewer_name) !== '' ? $r->reviewer_name : 'Verified Buyer',
+                        $pusher->emailFor($r),
+                        '',
+                        $handle,
+                        '', '',
+                        is_array($r->images) ? implode(',', $r->images) : '',
+                        '', '', '',
+                        'Published',
+                    ]);
+                    $done[] = $r->id;
+                }
+                if ($mark && $done !== []) {
+                    MarketplaceReview::query()->whereIn('id', $done)->update([
+                        'shopify_status' => MarketplaceReview::SHOPIFY_PUSHED,
+                        'shopify_pushed_at' => now(),
+                        'shopify_error' => 'Exported in a Judge.me CSV',
+                    ]);
+                }
+            });
+            fclose($out);
+        }, $name, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     public function import(Request $request, MarketplaceReviewFetcher $fetcher): JsonResponse
     {
         $request->validate([
@@ -272,7 +375,20 @@ class MarketplaceReviewsController extends Controller
         }
         $header = array_map(static fn ($h) => strtolower(trim(str_replace(["\xEF\xBB\xBF", ' '], ['', '_'], (string) $h))), $header);
 
+        // Judge.me exports can hold tens of thousands of rows: read and save them in chunks.
+        @set_time_limit(600);
+        $stats = ['saved' => 0, 'skipped' => 0, 'errors' => 0];
         $rows = [];
+        $flush = function () use (&$rows, &$stats, $fetcher, $request): void {
+            if ($rows === []) {
+                return;
+            }
+            $part = $fetcher->importRows($rows, $request->input('marketplace'));
+            foreach ($part as $k => $v) {
+                $stats[$k] += $v;
+            }
+            $rows = [];
+        };
         while (($line = fgetcsv($handle)) !== false) {
             if ($line === [null] || count(array_filter($line, static fn ($v) => trim((string) $v) !== '')) === 0) {
                 continue;
@@ -282,10 +398,12 @@ class MarketplaceReviewsController extends Controller
                 $assoc[$name] = $line[$i] ?? '';
             }
             $rows[] = $assoc;
+            if (count($rows) >= 500) {
+                $flush();
+            }
         }
         fclose($handle);
-
-        $stats = $fetcher->importRows($rows, $request->input('marketplace'));
+        $flush();
 
         return response()->json(['success' => true] + $stats);
     }
@@ -336,6 +454,8 @@ class MarketplaceReviewsController extends Controller
         if (! isset($out['walmart'])) {
             $out['walmart'] = ['slug' => 'walmart', 'label' => 'Walmart', 'auto' => true];
         }
+        // Reviews that came in through a Judge.me CSV (their marketplace is not known).
+        $out['judgeme'] = ['slug' => 'judgeme', 'label' => 'Judge.me import', 'auto' => false];
 
         return array_values($out);
     }
@@ -351,25 +471,6 @@ class MarketplaceReviewsController extends Controller
         }
 
         return $map;
-    }
-
-    /**
-     * @return list<string>
-     */
-    protected function fetchableSkus(string $marketplace, string $onlySku): array
-    {
-        if ($marketplace === 'walmart') {
-            $q = WalmartPriceData::query()->whereNotNull('item_id')->where('item_id', '!=', '');
-        } else {
-            $q = AmazonDatasheet::query()->whereNotNull('asin')->where('asin', '!=', '');
-        }
-        $q->whereNotNull('sku')->where('sku', '!=', '');
-        if ($onlySku !== '') {
-            $q->where('sku', $onlySku);
-        }
-
-        return $q->orderBy('sku')->distinct()->pluck('sku')
-            ->map(static fn ($s) => trim((string) $s))->filter()->unique()->values()->all();
     }
 
     /**

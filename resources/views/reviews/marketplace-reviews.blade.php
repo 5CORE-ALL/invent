@@ -132,6 +132,8 @@
                 <button class="rv-btn" id="rv-add">＋ Add review</button>
                 <button class="rv-btn" id="rv-import">⬆ Import CSV</button>
                 <button class="rv-btn" id="rv-template">⬇ CSV template</button>
+                <button class="rv-btn" id="rv-export-pos" title="One file with every waiting 4★ and 5★ review from ALL marketplaces, in Judge.me format">💚 Positive only (all)</button>
+                <button class="rv-btn" id="rv-export" title="Download in Judge.me format, then upload it in Judge.me → Reviews → Import">🧾 Judge.me CSV</button>
                 <button class="rv-btn" id="rv-fetch">⚡ Fetch reviews</button>
                 <button class="rv-btn primary" id="rv-push">🚀 Push to Shopify</button>
                 <input type="file" id="rv-file" accept=".csv,text/csv" style="display:none">
@@ -219,6 +221,7 @@
                 fetch: @json(route('mpreviews.fetch')),
                 push: @json(route('mpreviews.push')),
                 import: @json(route('mpreviews.import')),
+                export: @json(route('mpreviews.export')),
                 store: @json(route('mpreviews.store')),
                 destroy: @json(url('marketplace-reviews')),
             };
@@ -370,7 +373,7 @@
                     : [state.marketplace];
                 const allowed = targets.filter((slug) => (MARKETPLACES.find((m) => m.slug === slug) || {}).auto);
                 if (!allowed.length) {
-                    alert('This marketplace has no automatic review source (its API only returns a star average). Use ⬆ Import CSV or ＋ Add review.');
+                    alert('This marketplace has no automatic review source (its API has no review/feedback endpoint). Use ⬆ Import CSV or ＋ Add review.');
                     return;
                 }
                 setBusy(true);
@@ -383,11 +386,11 @@
                             newTotal += r.new;
                             (r.errors || []).forEach((e) => errs.push(slug + ' · ' + e));
                             const pct = r.total_skus ? Math.round((r.processed / r.total_skus) * 100) : 100;
-                            progress('⚡ ' + slug + ': ' + r.processed + ' / ' + r.total_skus + ' products · ' + newTotal + ' new reviews', pct);
+                            progress('⚡ ' + slug + ': ' + r.processed + ' / ' + r.total_skus + (r.unit === 'pages' ? ' pages' : ' products') + ' · ' + newTotal + ' new reviews', pct);
                             offset = r.next_offset;
                         }
                     }
-                    progress('Done — ' + newTotal + ' new review' + (newTotal === 1 ? '' : 's') + (errs.length ? ' · ' + errs.length + ' product(s) had no reviews or an error (e.g. ' + errs[0] + ')' : ''), 100);
+                    progress('Done — ' + newTotal + ' new review' + (newTotal === 1 ? '' : 's') + (errs.length ? ' · ' + errs.length + ' item(s) had no reviews or an error (e.g. ' + errs[0] + ')' : ''), 100);
                 } catch (e) {
                     progress('Fetch stopped: ' + e.message, 0);
                 } finally {
@@ -437,6 +440,26 @@
             $('rv-group').addEventListener('change', (e) => table.setGroupBy(e.target.value || false));
             $('rv-fetch').addEventListener('click', () => { if (!busy) { runFetch(); } });
             $('rv-push').addEventListener('click', () => { if (!busy) { runPush(); } });
+
+            $('rv-export').addEventListener('click', () => {
+                const selected = table.getSelectedData().map((d) => d.id);
+                const scope = selected.length
+                    ? selected.length + ' selected review(s)'
+                    : 'all waiting reviews' + (state.marketplace === 'all' ? ' from every marketplace' : ' from ' + state.marketplace);
+                if (!confirm('Download ' + scope + ' as a Judge.me CSV?\n\nUpload it in Judge.me → Reviews → Import. These reviews will then be marked "on Shopify" here so they are not exported twice.\n(Reviews of products that are not on Shopify are left out.)')) { return; }
+                const qs = new URLSearchParams({ marketplace: state.marketplace, shopify: selected.length ? '' : 'pending', mark: '1' });
+                selected.forEach((id) => qs.append('ids[]', id));
+                window.location = URLS.export + '?' + qs.toString();
+                setTimeout(load, 4000);
+            });
+
+            // One shot: every waiting 4★/5★ review from every marketplace, ignoring the chips and filters.
+            $('rv-export-pos').addEventListener('click', () => {
+                if (!confirm('Download ALL positive reviews (4★ and 5★) from ALL marketplaces as one Judge.me CSV?\n\nOnly reviews not yet on Shopify are included, and they will be marked "on Shopify" here afterwards.\n(Reviews of products that are not on Shopify are left out.)')) { return; }
+                const qs = new URLSearchParams({ marketplace: 'all', shopify: 'pending', min_rating: '4', mark: '1' });
+                window.location = URLS.export + '?' + qs.toString();
+                setTimeout(load, 5000);
+            });
 
             $('rv-import').addEventListener('click', () => $('rv-file').click());
             $('rv-file').addEventListener('change', async (e) => {

@@ -137,7 +137,7 @@ class JudgeMeReviewPusher
         return ['success' => false, 'message' => $message];
     }
 
-    protected function emailFor(MarketplaceReview $review): string
+    public function emailFor(MarketplaceReview $review): string
     {
         $configured = trim((string) config('services.judgeme.reviewer_email', ''));
         if ($configured !== '') {

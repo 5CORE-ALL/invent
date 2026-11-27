@@ -680,6 +680,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-loss-order', [SalesLossOrderController::class, 'index'])->name('sales.loss.order');
     Route::get('/sales-loss-order/data', [SalesLossOrderController::class, 'data'])->name('sales.loss.order.data');
     Route::get('/sales-loss-order/loss-summary', [SalesLossOrderController::class, 'lossSummary'])->name('sales.loss.order.summary');
+    // GOFO Exceptions (tracking number -> order / SKU / image / loss, manual mail response + proof)
+    Route::get('/gofo-exceptions', [\App\Http\Controllers\Channels\GofoExceptionController::class, 'gePage'])->name('gofo.exceptions');
+    Route::get('/gofo-exceptions/data', [\App\Http\Controllers\Channels\GofoExceptionController::class, 'geData'])->name('gofo.exceptions.data');
+    Route::post('/gofo-exceptions', [\App\Http\Controllers\Channels\GofoExceptionController::class, 'geStore'])->name('gofo.exceptions.store');
+    Route::post('/gofo-exceptions/{id}/update', [\App\Http\Controllers\Channels\GofoExceptionController::class, 'geUpdate'])->whereNumber('id')->name('gofo.exceptions.update');
+    Route::post('/gofo-exceptions/{id}/files', [\App\Http\Controllers\Channels\GofoExceptionController::class, 'geUpload'])->whereNumber('id')->name('gofo.exceptions.files.upload');
+    Route::post('/gofo-exceptions/{id}/files/delete', [\App\Http\Controllers\Channels\GofoExceptionController::class, 'geDeleteFile'])->whereNumber('id')->name('gofo.exceptions.files.delete');
+    Route::post('/gofo-exceptions/{id}/delete', [\App\Http\Controllers\Channels\GofoExceptionController::class, 'geDestroy'])->whereNumber('id')->name('gofo.exceptions.destroy');
     Route::get('/cancelled-orders', [SalesCancelledOrderController::class, 'index'])->name('sales.cancelled.order');
     Route::get('/cancelled-orders/data', [SalesCancelledOrderController::class, 'data'])->name('sales.cancelled.order.data');
     Route::get('/veeqo-billing', [\App\Http\Controllers\Channels\VeeqoBillingController::class, 'index'])->name('veeqo.billing');
@@ -8893,6 +8901,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         $c = \App\Http\Controllers\Reviews\MarketplaceReviewsController::class;
         Route::get('/', [$c, 'index'])->name('index');
         Route::get('/data', [$c, 'data'])->name('data');
+        Route::get('/export', [$c, 'export'])->name('export');
         Route::post('/fetch', [$c, 'fetch'])->name('fetch');
         Route::post('/push', [$c, 'push'])->name('push');
         Route::post('/import', [$c, 'import'])->name('import');
