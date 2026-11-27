@@ -53,11 +53,15 @@ class LqsMarketplacePageService
             ->get()
             ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
+        // Same SKU matching every other Shopify-backed page uses: NBSP, hyphen/space/underscore and
+        // compact ("LS 180-6" vs "LS180-6") variants all resolve, and L30 is topped up from shopify_raw_orders.
+        $pmSkus = $productMastersBySku->map(fn ($row) => (string) $row->sku)->values()->all();
+        $shopifyMatches = ShopifySku::mapByProductSkus($pmSkus);
         $shopifyBySku = [];
-        foreach (ShopifySku::all() as $shopifyRow) {
-            $key = $normalizeSku($shopifyRow->sku);
-            if ($key !== '' && ! isset($shopifyBySku[$key])) {
-                $shopifyBySku[$key] = $shopifyRow;
+        foreach ($productMastersBySku as $normalizedKey => $pmRow) {
+            $match = $shopifyMatches->get((string) $pmRow->sku);
+            if ($match !== null) {
+                $shopifyBySku[$normalizedKey] = $match;
             }
         }
 
@@ -79,7 +83,9 @@ class LqsMarketplacePageService
                 ->map(fn ($group) => $group->first());
         }
 
-        $apiMetrics = $this->apiMetricsBySku($channel['metrics'] ?? null, $normalizeSku);
+        $apiMetrics = ($channel['metrics'] ?? null) === 'shopify'
+            ? $this->shopifyApiMetrics($shopifyBySku)
+            : $this->apiMetricsBySku($channel['metrics'] ?? null, $normalizeSku);
         if ($slug === 'tiktok' || $slug === 'tiktok2') {
             $apiMetrics = $this->overlayTikTokListingIds($slug, $apiMetrics, $normalizeSku);
         }
@@ -103,7 +109,10 @@ class LqsMarketplacePageService
                     }
                 }
             }
-            $yoast = $yoastBySku[$normalizedSku] ?? [];
+            $yoast = $yoastBySku[$normalizedSku]
+                ?? $yoastBySku[ShopifySku::normalizeSkuForShopifyLookup((string) $productMaster->sku)]
+                ?? $yoastBySku['c:'.ShopifySku::compactSkuForLookup((string) $productMaster->sku)]
+                ?? [];
 
             $inv = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
             $imageSrc = $shopifyRow ? ($shopifyRow->image_src ?? null) : null;
@@ -327,13 +336,6 @@ class LqsMarketplacePageService
         if ($source === 'temu3' && class_exists(Temu3Metric::class) && Schema::hasTable('temu3_metrics')) {
             return $this->mapTemuStyleMetrics(Temu3Metric::query()->orderByDesc('id')->get(), $normalizeSku);
         }
-        if ($source === 'shopify') {
-            return $this->mapGenericMetrics(ShopifySku::all(), $normalizeSku, [
-                'l30' => 'quantity',
-                'price' => 'price',
-                'listing_id' => 'sku',
-            ]);
-        }
         if ($source === 'walmart') {
             return $this->mapWalmartMetrics($normalizeSku);
         }
@@ -446,6 +448,30 @@ class LqsMarketplacePageService
         }
 
         return [];
+    }
+
+    /**
+     * Shopify metrics from the shopify_skus rows already matched to each Product Master SKU.
+     *
+     * @param  array<string, ShopifySku>  $shopifyBySku  normalized product SKU => shopify_skus row
+     * @return array<string, array<string, mixed>>
+     */
+    private function shopifyApiMetrics(array $shopifyBySku): array
+    {
+        $map = [];
+        foreach ($shopifyBySku as $key => $row) {
+            $map[$key] = [
+                'l30' => $row->quantity,
+                'sessions' => null,
+                'price' => $row->price,
+                'listing_id' => $row->sku,
+                'lqs' => null,
+                'rating' => null,
+                'reviews' => null,
+            ];
+        }
+
+        return $map;
     }
 
     /**
@@ -1149,6 +1175,10 @@ class LqsMarketplacePageService
         try {
             return app(LqsShopifySeoService::class)->scoresBySku();
         } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('LqsMarketplacePageService: Shopify SEO scores failed', [
+                'error' => $e->getMessage(),
+            ]);
+
             return [];
         }
     }

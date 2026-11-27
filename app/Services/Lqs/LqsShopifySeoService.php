@@ -101,9 +101,18 @@ class LqsShopifySeoService
         foreach (LqsShopifySeoScore::query()->get() as $row) {
             $payload = $this->rowPayload($row);
             foreach ((array) ($row->skus ?? []) as $sku) {
-                $key = $normalize($sku);
-                if ($key !== '' && ! isset($map[$key])) {
-                    $map[$key] = $payload;
+                $keys = [
+                    $normalize($sku),
+                    \App\Models\ShopifySku::normalizeSkuForShopifyLookup((string) $sku),
+                ];
+                $compact = \App\Models\ShopifySku::compactSkuForLookup((string) $sku);
+                if ($compact !== '') {
+                    $keys[] = 'c:'.$compact;
+                }
+                foreach ($keys as $key) {
+                    if ($key !== '' && ! isset($map[$key])) {
+                        $map[$key] = $payload;
+                    }
                 }
             }
         }
