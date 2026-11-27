@@ -9093,6 +9093,7 @@
                 piBoxPushRunning = false;
                 const still = (function() { try { return (chpushRunning[job.sku] || 0) > 0; } catch (e) { return false; } })();
                 if (!still) piBoxSetBtnBusy(job.sku, false);
+                if (typeof job.onStaged === 'function') { try { job.onStaged(still); } catch (e) { /* ignore */ } }
                 piBoxPushNext();
             });
         }
@@ -9155,6 +9156,32 @@
             $(this).removeClass('pi-stealth');
             $('body').removeClass('pi-stealth-open');
         });
+
+        // ==================== Bridge for /volume-pricing (this page loaded in a hidden frame) ====================
+        // /volume-pricing's SPRICE $ ✓ asks this page to run the SAME Push All as this table's SPRICE $ ✓ (same queue, same channel
+        // rules, same tracked background job). Same-origin messages only.
+        window.addEventListener('message', function(ev) {
+            if (ev.origin !== window.location.origin) return;
+            const m = ev.data;
+            if (!m || m.type !== 'pi-box-push') return;
+            const sku = String(m.sku || '');
+            const key = piBoxKey(sku);
+            const price = parseFloat(m.price);
+            function reply(ok, message, staged) {
+                try { ev.source.postMessage({ type: 'pi-box-push-result', sku: sku, ok: !!ok, staged: !!staged, message: message || '' }, ev.origin); } catch (e) { /* ignore */ }
+            }
+            if (!sku || sku.toUpperCase() === 'NOT LISTED' || !isFinite(price) || !(price > 0)) { reply(false, 'Enter SPRICE $ greater than 0'); return; }
+            if (piBoxIsPushing(sku)) { reply(false, 'A push for ' + sku + ' is still running'); return; }
+            piBoxPushBusySkus[key] = true;
+            piBoxPushQueue.push({
+                sku: sku, key: key, price: Math.max(0.01, +price.toFixed(2)), data: m.data || {},
+                onStaged: function(started) { reply(started, started ? 'Push started' : 'Could not start the push for ' + sku, true); }
+            });
+            piBoxPushNext();
+        });
+        try {
+            if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'pi-bridge-ready' }, window.location.origin);
+        } catch (e) { /* ignore */ }
 
         // ==================== TARGET ROI% / GPFT% (same as /doba-tabulator) ====================
         // ROI:  sprice = (LP × (1 + ROI%/100) + Ship) / margin
