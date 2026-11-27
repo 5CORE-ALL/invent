@@ -2226,9 +2226,17 @@
             '<div class="lossx-c is-loss">' + (o.loss ? money(o.loss) : dash) + '</div>';
     }
 
+    /** DIL% coloured by our rule (red < 25 · green 25–50 · pink >= 50), same as every other page. */
+    function dilHtml(v) {
+        const n = Number(v) || 0;
+        if (window.MetricPctColors) return window.MetricPctColors.htmlFor('dil', n, { decimals: 0, empty: '0%' });
+        const r = Math.round(n);
+        return '<span style="color:' + (r < 25 ? '#dc3545' : (r < 50 ? '#198754' : '#ff2db4')) + ';font-weight:700;">' + r + '%</span>';
+    }
+
     function invCells(pi) {
         if (!pi) return '<div class="lossx-c lossx-dim">—</div><div class="lossx-c lossx-dim">—</div><div class="lossx-c lossx-dim">—</div>';
-        return '<div class="lossx-c">' + num(pi.inv) + '</div><div class="lossx-c">' + num(pi.l30) + '</div><div class="lossx-c">' + Math.round(Number(pi.dil) || 0) + '%</div>';
+        return '<div class="lossx-c">' + num(pi.inv) + '</div><div class="lossx-c">' + num(pi.l30) + '</div><div class="lossx-c">' + dilHtml(pi.dil) + '</div>';
     }
 
     // ---------- Action column: Fixed / Ignore (+ reason) with a per-SKU history ----------
