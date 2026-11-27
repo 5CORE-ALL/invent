@@ -543,6 +543,194 @@
             background-color: #7a5f00;
         }
 
+        /* ============================================================
+           PHONE VIEW (<768px): minimal app-style screen
+           Summary strip -> search + filters -> card list, with a
+           floating "+ Incoming return" button above the tab bar.
+           ============================================================ */
+        .incoming-mobile-list { display: none; }
+
+        @media (max-width: 767.98px) {
+            .incoming-mobile-list { display: block; }
+
+            /* Flatten the wrapping card */
+            .row > .col-12 > .card { background: transparent; box-shadow: none; border: 0; margin-bottom: 0; }
+            .row > .col-12 > .card > .card-body { padding: 8px 0 0; }
+
+            /* Audit + SOP: small, tucked right */
+            .card-body > .d-flex.justify-content-end { padding: 0 16px; margin-bottom: 4px !important; }
+            #incomingAuditBtn { border-radius: 999px; font-size: 12px; padding: 4px 12px; }
+
+            /* Toolbar becomes a 2-column grid */
+            .incoming-return-toolbar-row {
+                display: grid !important;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                padding: 0 16px;
+                margin-bottom: 8px !important;
+            }
+            .incoming-return-toolbar-row .dataTables_length { display: none !important; }
+            .incoming-return-toolbar-row > * { min-width: 0; }
+
+            /* Floating primary action above the bottom tab bar */
+            .incoming-return-toolbar-row .incoming-toolbar-create {
+                position: fixed;
+                left: 16px;
+                right: 68px;
+                bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+                z-index: 1039;
+                min-height: 48px;
+                border: 0;
+                border-radius: 24px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: #fff;
+                font-size: 14px;
+                font-weight: 700;
+                letter-spacing: 0.2px;
+                box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+                text-transform: none;
+            }
+
+            /* Summary: swipeable outlined mini cards */
+            .incoming-return-toolbar-row .incoming-sum-badges-grid {
+                order: 1;
+                grid-column: 1 / -1;
+                display: flex;
+                flex-wrap: nowrap;
+                gap: 8px;
+                min-height: 0;
+                width: auto;
+                min-width: 0;
+                margin: 0 -16px;
+                padding: 2px 16px 4px;
+                overflow-x: auto;
+                scrollbar-width: none;
+                -webkit-overflow-scrolling: touch;
+            }
+            .incoming-sum-badges-grid::-webkit-scrollbar { display: none; }
+            .incoming-sum-badges-grid .incoming-sum-badge-cell {
+                flex: 0 0 auto;
+                min-width: 84px;
+                min-height: 0;
+                padding: 7px 12px 6px;
+                background: #fff !important;
+                border: 1px solid #d5dae6 !important;
+                border-radius: 12px;
+                color: #1f2937 !important;
+            }
+            .incoming-sum-badges-grid .incoming-sum-badge-label {
+                font-size: 8.5px !important;
+                letter-spacing: 0.5px;
+                color: #9aa3b2;
+                white-space: nowrap;
+            }
+            .incoming-sum-badges-grid .incoming-sum-value { font-size: 15px; font-weight: 700; }
+            .incoming-sum-badges-grid .incoming-sum-badge-cell:nth-child(1) .incoming-sum-value { color: #dc3545; }
+            .incoming-sum-badges-grid .incoming-sum-badge-cell:nth-child(2) .incoming-sum-value { color: #6c757d; }
+            .incoming-sum-badges-grid .incoming-sum-badge-cell:nth-child(3) .incoming-sum-value { color: #198754; }
+            .incoming-sum-badges-grid .incoming-sum-badge-cell:nth-child(4) .incoming-sum-value { color: #6f42c1; }
+            .incoming-sum-badges-grid .incoming-sum-badge-cell:nth-child(5) .incoming-sum-value { color: #0d6efd; }
+
+            /* Search (full width, pill) then channel + warehouse side by side */
+            .incoming-return-toolbar-row .incoming-toolbar-search { order: 2; grid-column: 1 / -1; flex: none; min-width: 0; }
+            .incoming-return-toolbar-row .incoming-toolbar-wh { order: 3; flex: none; min-width: 0 !important; }
+            .incoming-return-toolbar-row .incoming-toolbar-wh .form-label { display: none; }
+            .incoming-toolbar-search .input-group { flex-wrap: nowrap; }
+            .incoming-toolbar-search .input-group-text {
+                background: #fff; border: 1px solid #e5e7eb; border-right: 0;
+                border-radius: 24px 0 0 24px; padding-left: 16px; color: #9aa3b2;
+            }
+            .incoming-toolbar-search .form-control {
+                border: 1px solid #e5e7eb; border-left: 0; border-right: 0; font-size: 15px; box-shadow: none;
+            }
+            .incoming-toolbar-search #clearSearch {
+                border: 1px solid #e5e7eb; border-left: 0; border-radius: 0 24px 24px 0;
+                background: #fff; color: #667eea; font-size: 13px; font-weight: 600;
+            }
+            .incoming-return-toolbar-row .form-select,
+            .incoming-return-toolbar-row .incoming-wh-dd-trigger,
+            .incoming-return-toolbar-row .select2-container--default .select2-selection--single,
+            .incoming-return-toolbar-row .select2-container--bootstrap-5 .select2-selection {
+                border-radius: 12px;
+                border: 1px solid #e5e7eb;
+                background-color: #fff;
+                font-size: 14px;
+                min-height: 44px;
+            }
+            .incoming-return-toolbar-row .incoming-toolbar-wh .incoming-wh-dd-trigger {
+                min-height: 44px; height: 44px; font-size: 14px; border-radius: 12px; padding-top: 0; padding-bottom: 0;
+            }
+            .incoming-return-toolbar-row .select2-container { width: 100% !important; }
+            .incoming-return-toolbar-row .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 42px; }
+            .incoming-return-toolbar-row .select2-container--default .select2-selection--single .select2-selection__arrow { height: 42px; }
+
+            /* ---- Card list ---- */
+            #incoming-mobile-list { padding: 4px 16px calc(150px + env(safe-area-inset-bottom, 0px)); }
+            .imc-count { padding: 0 4px 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #8a94a6; }
+            .imc-card {
+                background: #fff;
+                border: 1px solid #eceef3;
+                border-radius: 16px;
+                padding: 12px 14px;
+                margin-bottom: 10px;
+            }
+            .imc-top { display: flex; gap: 12px; align-items: flex-start; }
+            .imc-thumb, .imc-thumb-empty {
+                width: 52px; height: 52px; flex: 0 0 52px;
+                border-radius: 12px; object-fit: cover;
+                border: 1px solid #eceef3; background: #f3f4f6;
+            }
+            .imc-thumb-empty { display: flex; align-items: center; justify-content: center; color: #c0c6d1; font-size: 20px; }
+            .imc-main { flex: 1; min-width: 0; }
+            .imc-sku { font-size: 15px; font-weight: 700; color: #1f2937; word-break: break-word; line-height: 1.3; }
+            .imc-sub { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; font-size: 12px; color: #8a94a6; align-items: center; }
+            .imc-qty {
+                flex: 0 0 auto; align-self: flex-start;
+                padding: 3px 10px; border-radius: 999px;
+                background: #eef0ff; color: #4f5fd6; font-size: 13px; font-weight: 700;
+            }
+            .imc-chip {
+                display: inline-block; padding: 2px 9px; border-radius: 999px;
+                font-size: 10.5px; font-weight: 700; letter-spacing: 0.2px;
+                background: #f3f4f6; color: #4b5563;
+            }
+            .imc-chip.ret { background: #fdecec; color: #b02a37; }
+            .imc-wh { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+            .imc-wh::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+            .imc-reason {
+                margin: 10px 0 0; font-size: 13px; line-height: 1.45; color: #374151;
+                display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+            }
+            .imc-reason.open { display: block; -webkit-line-clamp: unset; }
+            .imc-money { display: flex; gap: 8px; margin-top: 10px; }
+            .imc-money > div {
+                flex: 1; min-width: 0; text-align: center;
+                padding: 6px 4px; border: 1px solid #eceef3; border-radius: 10px;
+            }
+            .imc-money span { display: block; font-size: 8.5px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: #9aa3b2; }
+            .imc-money b { font-size: 14px; font-variant-numeric: tabular-nums; }
+            .imc-money .loss b { color: #dc3545; }
+            .imc-money .rest b { color: #6c757d; }
+            .imc-money .rec b { color: #198754; }
+            .imc-money .net b { color: #0d6efd; }
+            .imc-money .net.neg b { color: #d97706; }
+            .imc-media { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+            .imc-media .incoming-table-thumb { width: 44px; height: 44px; border-radius: 10px; }
+            .imc-media audio { width: 100%; height: 36px; }
+            .imc-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f1f2f6; }
+            .imc-by { font-size: 11.5px; color: #8a94a6; min-width: 0; }
+            .imc-recovery {
+                flex: 0 0 auto; border: 0; border-radius: 10px; padding: 7px 14px;
+                background: #e8f7ee; color: #157347; font-size: 12.5px; font-weight: 700;
+            }
+            .imc-recovery:active { background: #d6f0e0; }
+            .imc-more {
+                display: block; width: 100%; margin: 4px 0 12px; padding: 12px; border: 1px solid #e5e7eb;
+                border-radius: 14px; background: #fff; color: #667eea; font-weight: 700; font-size: 14px;
+            }
+            .imc-empty { text-align: center; color: #9aa3b2; padding: 48px 16px; font-size: 14px; }
+        }
+
     </style>
 @endsection
 
@@ -551,6 +739,7 @@
         'page_title' => 'Incoming Return',
         'sub_title' => 'Incoming Return',
     ])
+    @include('partials.mobile-app-shell')
 
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11000;">
         <div id="incomingToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
@@ -1002,8 +1191,11 @@
                         </div>
                     </div>
 
-                    <!-- DataTable -->
-                    <div class="table-responsive">
+                    <!-- Phone view: card list (rendered by renderMobileCards) -->
+                    <div id="incoming-mobile-list" class="incoming-mobile-list d-md-none" aria-live="polite"></div>
+
+                    <!-- DataTable (desktop / tablet) -->
+                    <div class="table-responsive d-none d-md-block">
                         <table id="inventoryTable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
@@ -2448,6 +2640,7 @@
                         )
                     );
                 }
+                incomingMobileLimit = INCOMING_MOBILE_PAGE;
                 renderTable(rows);
             }
 
@@ -2598,7 +2791,107 @@
                 });
             }
 
+            // ---- Phone view: card list (shown <768px; the DataTable is hidden there) ----
+            let incomingMobileRows = [];
+            let incomingMobileLimit = 40;
+            const INCOMING_MOBILE_PAGE = 40;
+
+            function incomingMobileMoney(label, value, cls) {
+                const f = formatIncomingUsd(value);
+                if (f === null) {
+                    return '';
+                }
+                const n = parseFloat(value);
+                const neg = cls === 'net' && !isNaN(n) && n < 0 ? ' neg' : '';
+                return '<div class="' + cls + neg + '"><span>' + label + '</span><b>$' + f + '</b></div>';
+            }
+
+            function buildIncomingMobileCard(item) {
+                const imgUrl = String(item.image_url || '').trim();
+                const thumb = imgUrl
+                    ? '<img class="imc-thumb" src="' + escapeHtml(imgUrl) + '" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=&quot;imc-thumb-empty&quot;><i class=&quot;mdi mdi-image-off-outline&quot;></i></div>\'">'
+                    : '<div class="imc-thumb-empty"><i class="mdi mdi-image-outline"></i></div>';
+
+                const isReturn = item.record_type === 'incoming_return';
+                const typeLabel = String(item.record_type_label ?? (isReturn ? 'Return' : 'General incoming'));
+                let returnsLabel = item.returns != null && String(item.returns).trim() !== '' ? String(item.returns) : '';
+                if (returnsLabel) {
+                    // skip when it only repeats the type (e.g. "Return" + "returns")
+                    const rl = returnsLabel.toLowerCase(), tl = typeLabel.toLowerCase();
+                    if (rl.indexOf(tl) !== -1 || tl.indexOf(rl) !== -1) returnsLabel = '';
+                }
+                const whName = String(item.warehouse_name ?? '-');
+                const channel = item.return_channel != null && String(item.return_channel).trim() !== '' ? String(item.return_channel) : '';
+                const orderId = item.order_id != null && String(item.order_id).trim() !== '' ? String(item.order_id) : '';
+                const reason = String(item.reason ?? '').trim();
+
+                const subBits = [];
+                subBits.push('<span class="imc-chip' + (isReturn ? ' ret' : '') + '">' + escapeHtml(typeLabel) + (returnsLabel ? ' · ' + escapeHtml(returnsLabel) : '') + '</span>');
+                subBits.push('<span class="' + incomingWarehouseCellClass(whName) + ' imc-wh">' + escapeHtml(displayWarehouseNameWithoutGodown(whName)) + '</span>');
+                if (channel) subBits.push('<span>' + escapeHtml(channel) + '</span>');
+                if (orderId) subBits.push('<span>#' + escapeHtml(orderId) + '</span>');
+
+                const money = incomingMobileMoney('Loss', item.loss_usd, 'loss')
+                    + incomingMobileMoney('Restock', item.restock_fee_usd, 'rest')
+                    + incomingMobileMoney('Recovered', item.recovered_cost_usd, 'rec')
+                    + incomingMobileMoney('Net', item.net_loss_usd, 'net');
+
+                const urls = Array.isArray(item.user_upload_image_urls)
+                    ? item.user_upload_image_urls.filter(function (u) { return u && String(u).trim() !== ''; })
+                    : [];
+                const voiceUrl = String(item.voice_note_url || '').trim();
+                let media = '';
+                if (urls.length || voiceUrl) {
+                    media = '<div class="imc-media">' + urls.map(function (u) {
+                        const href = escapeHtml(String(u).trim());
+                        return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" class="incoming-table-thumb-link"><img class="incoming-table-thumb" src="' + href + '" alt="" loading="lazy" onerror="var l=this.closest(\'a\');if(l)l.style.display=\'none\'"></a>';
+                    }).join('') + (voiceUrl ? '<audio controls preload="none"><source src="' + escapeHtml(voiceUrl) + '"></audio>' : '') + '</div>';
+                }
+
+                const by = [item.approved_by, item.approved_at].filter(function (v) { return v != null && String(v).trim() !== '' && String(v) !== '-'; }).join(' · ');
+                const recovery = item.inventory_id
+                    ? '<button type="button" class="incoming-recovery-btn imc-recovery" data-inventory-id="' + String(item.inventory_id) + '"><i class="mdi mdi-undo-variant me-1"></i>Recovery</button>'
+                    : '';
+
+                return '<div class="imc-card">'
+                    + '<div class="imc-top">' + thumb
+                    + '<div class="imc-main"><div class="imc-sku">' + escapeHtml(String(item.sku ?? '-')) + '</div><div class="imc-sub">' + subBits.join('') + '</div></div>'
+                    + '<span class="imc-qty">×' + escapeHtml(String(item.verified_stock ?? '-')) + '</span></div>'
+                    + (reason ? '<p class="imc-reason">' + escapeHtml(reason) + '</p>' : '')
+                    + (money ? '<div class="imc-money">' + money + '</div>' : '')
+                    + media
+                    + (by || recovery ? '<div class="imc-foot"><span class="imc-by">' + escapeHtml(by) + '</span>' + recovery + '</div>' : '')
+                    + '</div>';
+            }
+
+            function renderMobileCards(data) {
+                const host = document.getElementById('incoming-mobile-list');
+                if (!host) {
+                    return;
+                }
+                incomingMobileRows = data || [];
+                if (incomingMobileRows.length === 0) {
+                    host.innerHTML = '<div class="imc-empty"><i class="mdi mdi-package-variant-closed d-block mb-2" style="font-size:34px"></i>No records found</div>';
+                    return;
+                }
+                const shown = incomingMobileRows.slice(0, incomingMobileLimit);
+                host.innerHTML = '<div class="imc-count">' + incomingMobileRows.length.toLocaleString('en-US') + ' record' + (incomingMobileRows.length === 1 ? '' : 's') + '</div>'
+                    + shown.map(buildIncomingMobileCard).join('')
+                    + (incomingMobileRows.length > shown.length
+                        ? '<button type="button" class="imc-more" id="incomingMobileMore">Show more (' + (incomingMobileRows.length - shown.length) + ' left)</button>'
+                        : '');
+            }
+
+            $(document).on('click', '#incomingMobileMore', function () {
+                incomingMobileLimit += INCOMING_MOBILE_PAGE;
+                renderMobileCards(incomingMobileRows);
+            });
+            $(document).on('click', '.imc-reason', function () {
+                this.classList.toggle('open');
+            });
+
             function renderTable(data) {
+                renderMobileCards(data);
                 const tbody = document.getElementById('inventory-table-body');
                 tbody.innerHTML = '';
 
