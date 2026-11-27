@@ -292,6 +292,12 @@ class ShipmentTrackingService
 
     protected function resolveProvider(string $number, string $carrier): string
     {
+        // GOFO's own numbers (GFUS…) are only known to GOFO, whatever the order's carrier column says.
+        // Orders saved with carrier "USPS" were sent to USPS, refused and stayed on Scan Pending.
+        if (preg_match('/^GF[A-Z0-9]{6,}$/i', trim($number)) === 1) {
+            return 'gofo';
+        }
+
         $c = strtolower($carrier);
         if ($c !== '') {
             if (str_contains($c, 'usps') || str_contains($c, 'postal')) {

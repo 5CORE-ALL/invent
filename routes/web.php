@@ -680,6 +680,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-loss-order', [SalesLossOrderController::class, 'index'])->name('sales.loss.order');
     Route::get('/sales-loss-order/data', [SalesLossOrderController::class, 'data'])->name('sales.loss.order.data');
     Route::get('/sales-loss-order/loss-summary', [SalesLossOrderController::class, 'lossSummary'])->name('sales.loss.order.summary');
+    Route::match(['get', 'post'], '/sales-loss-order/loss-products', [SalesLossOrderController::class, 'lossProducts'])->name('sales.loss.order.products');
+    Route::get('/sales-loss-order/loss-actions', [SalesLossOrderController::class, 'lossActions'])->name('sales.loss.order.actions');
+    Route::post('/sales-loss-order/loss-actions', [SalesLossOrderController::class, 'saveLossAction'])->name('sales.loss.order.actions.save');
+    Route::get('/sales-loss-order/loss-actions/history', [SalesLossOrderController::class, 'lossActionHistory'])->name('sales.loss.order.actions.history');
+    Route::post('/sales-loss-order/loss-reasons', [SalesLossOrderController::class, 'addLossReason'])->name('sales.loss.order.reasons');
     // GOFO Exceptions (tracking number -> order / SKU / image / loss, manual mail response + proof)
     Route::get('/gofo-exceptions', [\App\Http\Controllers\Channels\GofoExceptionController::class, 'gePage'])->name('gofo.exceptions');
     Route::get('/gofo-exceptions/data', [\App\Http\Controllers\Channels\GofoExceptionController::class, 'geData'])->name('gofo.exceptions.data');

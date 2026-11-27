@@ -3635,6 +3635,13 @@ class CvrMasterController extends Controller
 
             \App\Http\Controllers\MarketPlace\LmpOverallController::rememberCvrAvgMetrics($finalResult);
 
+            // /sales-loss-order "Products selling at a loss" modal: same LMP by Channel / SPRICE $ / INV / L30 / Dil% as this table
+            try {
+                \App\Http\Controllers\Channels\SalesLossOrderController::rememberPriceIncreaseRows($finalResult);
+            } catch (\Throwable $e) {
+                Log::warning('Sales Loss Order: price-increase rows cache failed: '.$e->getMessage());
+            }
+
             return response()->json($finalResult);
             
         } catch (\Exception $e) {
