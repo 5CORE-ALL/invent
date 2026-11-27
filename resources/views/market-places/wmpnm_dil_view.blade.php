@@ -1216,6 +1216,18 @@
             font-weight: 700;
         }
 
+        /* Compact header (matches /price-increase): tinted badges, tight spacing, short labels on narrow screens */
+        .summary-header-bar.d-flex { padding: 6px 12px !important; gap: 6px !important; }
+        .summary-header-bar .summary-chart-badge,
+        .summary-header-bar .summary-badge-only {
+            padding: 2px 7px; font-size: 12px; gap: 4px; white-space: nowrap;
+            background-color: color-mix(in srgb, var(--pb, #6c757d) 12%, #fff);
+            border-color: color-mix(in srgb, var(--pb, #6c757d) 40%, #fff);
+        }
+        .summary-header-bar .summary-chart-badge:hover { background-color: color-mix(in srgb, var(--pb, #6c757d) 22%, #fff); }
+        .summary-header-bar .summary-badge-dot { width: 7px; height: 7px; }
+        @media (max-width: 1099px) { .summary-header-bar .pb-pre, .summary-header-bar .pb-suf { display: none; } }
+
         /* Sprice modal: top-center position and draggable header */
         #spriceDetailsModal.modal {
             align-items: flex-start;
@@ -2138,60 +2150,60 @@
     <div class="row">
         <div class="card shadow-sm">
             <!-- Header Bar - Totals (badges with chart links) -->
-            <div class="summary-header-bar px-4 py-3 d-flex flex-wrap align-items-center gap-3 border-bottom">
-                <a href="#" class="summary-chart-badge" data-metric="inv" data-aggregate="1" title="Click to view Inv line graph">
+            <div class="summary-header-bar px-3 py-2 d-flex flex-wrap align-items-center gap-2 border-bottom">
+                <a href="#" class="summary-chart-badge" data-metric="inv" data-aggregate="1" title="Click to view Inv line graph" style="--pb: #4361ee;">
                     <span class="summary-badge-dot" style="background-color: #4361ee;"></span>
-                    <span>Total INV:</span>
+                    <span><span class="pb-pre">Total </span>INV:</span>
                     <span class="summary-badge-value" id="total-inv-badge">0</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="ov_l30" data-aggregate="1" title="Click to view OV L30 line graph">
+                <a href="#" class="summary-chart-badge" data-metric="ov_l30" data-aggregate="1" title="Click to view OV L30 line graph" style="--pb: #28a745;">
                     <span class="summary-badge-dot" style="background-color: #28a745;"></span>
-                    <span>Total OV L30:</span>
+                    <span><span class="pb-pre">Total </span>OV L30:</span>
                     <span class="summary-badge-value" id="total-l30-badge">0</span>
                 </a>
-                <a href="#" class="summary-chart-badge" id="dil-summary-badge" data-metric="dil" data-aggregate="1" title="Dil% = Σ OV L30 ÷ Σ INV × 100. Red &lt;25% · Green 25–50% · Pink 50%+.">
+                <a href="#" class="summary-chart-badge" id="dil-summary-badge" data-metric="dil" data-aggregate="1" title="Dil% = Σ OV L30 ÷ Σ INV × 100. Red &lt;25% · Green 25–50% · Pink 50%+." style="--pb: #6c757d;">
                     <span class="summary-badge-dot" id="dil-summary-dot" style="background-color: #6c757d;"></span>
                     <span>DIL:</span>
                     <span class="summary-badge-value" id="avg-dil-badge">0%</span>
                 </a>
-                <a href="#" class="summary-chart-badge" id="dil-red-summary-badge" data-metric="dil_red" data-aggregate="1" title="Red Dil: share of rows with Dil% under 25%. Click for the graph.">
+                <a href="#" class="summary-chart-badge" id="dil-red-summary-badge" data-metric="dil_red" data-aggregate="1" title="Red Dil: share of rows with Dil% under 25%. Click for the graph." style="--pb: #dc3545;">
                     <span class="summary-badge-dot" style="background-color: #dc3545;"></span>
-                    <span>Red Dil:</span>
+                    <span>Red<span class="pb-suf"> Dil</span>:</span>
                     <span class="summary-badge-value" id="red-dil-badge" data-pct="0">0%</span>
                 </a>
-                <a href="#" class="summary-chart-badge" id="dil-green-summary-badge" data-metric="dil_green" data-aggregate="1" title="Green Dil: share of rows with Dil% from 25% up to 50%. Click for the graph.">
+                <a href="#" class="summary-chart-badge" id="dil-green-summary-badge" data-metric="dil_green" data-aggregate="1" title="Green Dil: share of rows with Dil% from 25% up to 50%. Click for the graph." style="--pb: #28a745;">
                     <span class="summary-badge-dot" style="background-color: #28a745;"></span>
-                    <span>Green Dil:</span>
+                    <span>Green<span class="pb-suf"> Dil</span>:</span>
                     <span class="summary-badge-value" id="green-dil-badge" data-pct="0">0%</span>
                 </a>
-                <a href="#" class="summary-chart-badge" id="dil-pink-summary-badge" data-metric="dil_pink" data-aggregate="1" title="Pink Dil: share of rows with Dil% of 50% or more. Click for the graph.">
+                <a href="#" class="summary-chart-badge" id="dil-pink-summary-badge" data-metric="dil_pink" data-aggregate="1" title="Pink Dil: share of rows with Dil% of 50% or more. Click for the graph." style="--pb: #e83e8c;">
                     <span class="summary-badge-dot" style="background-color: #e83e8c;"></span>
-                    <span>Pink Dil:</span>
+                    <span>Pink<span class="pb-suf"> Dil</span>:</span>
                     <span class="summary-badge-value" id="pink-dil-badge" data-pct="0">0%</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="total_views" data-aggregate="1" title="Click to view Total Views line graph">
+                <a href="#" class="summary-chart-badge" data-metric="total_views" data-aggregate="1" title="Click to view Total Views line graph" style="--pb: #17a2b8;">
                     <span class="summary-badge-dot" style="background-color: #17a2b8;"></span>
-                    <span>Total Views:</span>
+                    <span><span class="pb-pre">Total </span>Views:</span>
                     <span class="summary-badge-value" id="total-views-badge">0</span>
                 </a>
-                <a href="#" class="summary-chart-badge" id="cvr-summary-badge" data-metric="cvr" data-aggregate="1" title="CVR = Σ SW L30 ÷ Σ Views × 100. Click to view CVR line graph.">
+                <a href="#" class="summary-chart-badge" id="cvr-summary-badge" data-metric="cvr" data-aggregate="1" title="CVR = Σ SW L30 ÷ Σ Views × 100. Click to view CVR line graph." style="--pb: #ff9c00;">
                     <span class="summary-badge-dot" style="background-color: #ff9c00;"></span>
                     <span>CVR:</span>
                     <span class="summary-badge-value" id="avg-cvr-badge">0%</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="price" data-aggregate="1" title="Click to view Avg Price line graph">
+                <a href="#" class="summary-chart-badge" data-metric="price" data-aggregate="1" title="Click to view Avg Price line graph" style="--pb: #e83e8c;">
                     <span class="summary-badge-dot" style="background-color: #e83e8c;"></span>
-                    <span>Avg Price:</span>
+                    <span><span class="pb-pre">Avg </span>Price:</span>
                     <span class="summary-badge-value" id="avg-price-badge">$0.00</span>
                 </a>
-                <span class="summary-badge-only">
+                <span class="summary-badge-only" style="--pb: #6c757d;">
                     <span class="summary-badge-dot" style="background-color: #6c757d;"></span>
-                    <span>Amz LMP:</span>
+                    <span><span class="pb-pre">Amz </span>LMP:</span>
                     <span class="summary-badge-value" id="amz-lmp-badge">$0.00</span>
                 </span>
-                <span class="summary-badge-only">
+                <span class="summary-badge-only" style="--pb: #6f42c1;">
                     <span class="summary-badge-dot" style="background-color: #6f42c1;"></span>
-                    <span>AVG LQS:</span>
+                    <span><span class="pb-pre">AVG </span>LQS:</span>
                     <span class="summary-badge-value" id="avg-lqs-badge">-</span>
                 </span>
             </div>
@@ -10595,6 +10607,7 @@
             $('#avg-dil-badge').attr('data-pct', avgDilRounded)
                 .html('<span style="' + styleForCellColor(dilColor) + '">' + avgDilRounded + '%</span>');
             $('#dil-summary-dot').css('background-color', dilColor);
+            document.getElementById('dil-summary-badge').style.setProperty('--pb', dilColor);
             $('#dil-summary-badge').attr('title',
                 'Dil% = Σ OV L30 (' + Math.round(totalL30).toLocaleString()
                 + ') ÷ Σ INV (' + Math.round(totalInv).toLocaleString()
