@@ -1771,6 +1771,9 @@
                                     <li>
                                         <a href="{{ route('ebay.volume-pricing') }}">Volume Pricing discount</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('volume.pricing') }}">Volume Pricing Tabulator</a>
+                                    </li>
 
                                     {{-- <li>
                                         <a href="{{ url('ebay-pricing-data') }}">Ebay Pricing Data</a>

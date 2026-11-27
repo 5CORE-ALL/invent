@@ -5521,6 +5521,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Listing Audit ebay
     Route::get('/ebay', [EbayController::class, 'ebayView'])->name('ebay');
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
+    Route::get('/volume-pricing', [\App\Http\Controllers\VolumePricingController::class, 'index'])->name('volume.pricing');
+    Route::get('/volume-pricing/data', [\App\Http\Controllers\VolumePricingController::class, 'data'])->name('volume.pricing.data');
     Route::get('/ebay-volume-pricing', [EbayVolumePricingController::class, 'index'])->name('ebay.volume-pricing');
     Route::get('/ebay-volume-pricing/ship-slabs', [EbayVolumePricingController::class, 'shipSlabs'])->name('ebay.volume-pricing.ship-slabs');
     Route::get('/ebay-volume-pricing/rules', [EbayVolumePricingController::class, 'rules'])->name('ebay.volume-pricing.rules');
