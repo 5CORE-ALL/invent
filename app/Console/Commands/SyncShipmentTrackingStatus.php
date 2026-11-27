@@ -72,8 +72,9 @@ class SyncShipmentTrackingStatus extends Command
             $batchSize = max($batchSize, 40);
             $sleepMs = min($sleepMs, 80);
         }
-        // Only USPS and FedEx are looked up, so the queue never spends time on GOFO / UPS numbers.
-        $carrierFilter = strtoupper(trim((string) $this->option('carrier'))) ?: 'USPS,FEDEX';
+        // Every carrier with its own API is looked up: USPS, FedEx, UPS and GOFO (GFUS…, plus its USPS last mile).
+        // GOFO / UPS were left out for a while, which kept scanned parcels on "Label Created / No Scan".
+        $carrierFilter = strtoupper(trim((string) $this->option('carrier'))) ?: 'USPS,FEDEX,UPS,GOFO';
         $onlyOpen = (bool) $this->option('only-open');
 
         $staleMin = $this->resolveStaleMinutes($onlyOpen, $carrierFilter, $catchUp);
@@ -859,6 +860,11 @@ class SyncShipmentTrackingStatus extends Command
             $query->where(function ($q) {
                 $q->whereRaw("UPPER(TRIM(COALESCE(carrier, ''))) LIKE ?", ['%USPS%'])
                     ->orWhereRaw('tracking_number REGEXP ?', ['^9[0-9]{15,25}$']);
+            });
+        } elseif ($carrierFilter === 'GOFO') {
+            $query->where(function ($q) {
+                $q->whereRaw("UPPER(TRIM(COALESCE(carrier, ''))) LIKE ?", ['%GOFO%'])
+                    ->orWhereRaw('tracking_number REGEXP ?', ['^GF[A-Za-z0-9]{6,}$']);
             });
         } elseif ($carrierFilter === 'FEDEX') {
             $query->where(function ($q) {

@@ -121,8 +121,8 @@ class ShipmentTrackingService
     }
 
     /**
-     * Fetch normalized statuses for a batch of shipments. USPS numbers are asked from the USPS API;
-     * any other carrier gets a blank (not saved) result.
+     * Fetch normalized statuses for a batch of shipments. Each number is asked from its own carrier API
+     * (USPS, FedEx, UPS, GOFO); any other carrier gets a blank (not saved) result.
      *
      * @param  array  $shipments  list of ['number' => string, 'carrier' => string|null]
      * @param  array  $options    kept for old callers, no longer used
@@ -134,7 +134,7 @@ class ShipmentTrackingService
             return [];
         }
 
-        $byProvider = ['usps' => [], 'fedex' => [], 'other' => []];
+        $byProvider = ['usps' => [], 'fedex' => [], 'ups' => [], 'gofo' => [], 'other' => []];
         foreach ($shipments as $s) {
             $number = trim((string) ($s['number'] ?? ''));
             if ($number === '') {
@@ -143,7 +143,7 @@ class ShipmentTrackingService
             $carrier = trim((string) ($s['carrier'] ?? ''));
             $entry = ['number' => $number, 'carrier' => $carrier !== '' ? $carrier : null];
             $provider = $this->resolveProvider($number, $carrier);
-            $byProvider[in_array($provider, ['usps', 'fedex'], true) ? $provider : 'other'][] = $entry;
+            $byProvider[in_array($provider, ['usps', 'fedex', 'ups', 'gofo'], true) ? $provider : 'other'][] = $entry;
         }
 
         $out = [];
@@ -172,9 +172,40 @@ class ShipmentTrackingService
             }
         }
 
+        // UPS (1Z…) is asked from the UPS Track API.
+        if ($byProvider['ups'] !== []) {
+            if ($this->hasUps()) {
+                $ups = $this->trackUps($byProvider['ups']);
+                foreach ($byProvider['ups'] as $s) {
+                    $out[$s['number']] = $ups[$s['number']]
+                        ?? $this->transientResult('ups', 'UPS API did not answer (check UPS_CLIENT_ID / SECRET)', 'ups_unavailable');
+                }
+            } else {
+                foreach ($byProvider['ups'] as $s) {
+                    $out[$s['number']] = $this->transientResult('ups', 'UPS API credentials are not configured', 'not_configured');
+                }
+            }
+        }
+
+        // GOFO (GFUS…): GOFO's own track API, then the USPS / UPS last-mile number it reports.
+        // Without this a scanned GOFO parcel stayed on "Label Created / No Scan" on the Scan Pending page.
+        if ($byProvider['gofo'] !== []) {
+            if ($this->hasGofo()) {
+                $gofo = $this->trackGofo($byProvider['gofo']);
+                foreach ($byProvider['gofo'] as $s) {
+                    $out[$s['number']] = $gofo[$s['number']]
+                        ?? $this->transientResult('gofo', 'GOFO API did not answer', 'gofo_unavailable');
+                }
+            } else {
+                foreach ($byProvider['gofo'] as $s) {
+                    $out[$s['number']] = $this->transientResult('gofo', 'GOFO API credentials are not configured', 'not_configured');
+                }
+            }
+        }
+
         // Every other carrier is left blank, not stored as a status.
         foreach ($byProvider['other'] as $s) {
-            $out[$s['number']] = $this->transientResult('none', 'Not looked up: only USPS and FedEx tracking is checked', 'usps_only');
+            $out[$s['number']] = $this->transientResult('none', 'Not looked up: carrier is not USPS, UPS, FedEx or GOFO', 'unsupported_carrier');
         }
 
         return $out;

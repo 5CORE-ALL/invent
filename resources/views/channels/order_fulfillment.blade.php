@@ -436,17 +436,21 @@
                             <label for="of-track-pdf" class="form-label">PDF name</label>
                             <input type="text" class="form-control" id="of-track-pdf" maxlength="191" autocomplete="off" placeholder="PDF name">
                         </div>
-                        <div class="mt-3" id="of-track-status-wrap" style="display:none;">
+                        <div class="mt-3" id="of-track-status-wrap">
                             <label for="of-track-status" class="form-label">Tracking status</label>
                             <select class="form-select" id="of-track-status">
-                                <option value="blank">Select status</option>
+                                <option value="" id="of-track-status-keep">Keep current status (automatic)</option>
+                                <option value="blank" id="of-track-status-blank">Clear status</option>
                                 <option value="info_received">Label Created / No Scan</option>
                                 <option value="preshipment">Preshipment</option>
                                 <option value="pending">Pending</option>
                                 <option value="in_transit">In transit</option>
+                                <option value="out_for_delivery">Out for delivery</option>
+                                <option value="exception">Exception</option>
                                 <option value="lost">Lost in transit</option>
                                 <option value="delivered">Delivered</option>
                             </select>
+                            <div class="form-text">Set by hand for this tracking number. The carrier check may update it again later, except Delivered and Lost.</div>
                         </div>
                         <div id="of-track-error" class="text-danger small mt-2" style="display:none;"></div>
                     </div>
@@ -1531,19 +1535,31 @@
         if (pdfInput) pdfInput.value = scanPendingOnly ? (row.pdf_name || '') : '';
         const statusWrap = document.getElementById('of-track-status-wrap');
         const statusSelect = document.getElementById('of-track-status');
-        if (statusWrap) statusWrap.style.display = scanPendingOnly ? '' : 'none';
-        if (statusSelect && scanPendingOnly) {
-            const current = String(row.tracking_status || '').trim().toLowerCase();
-            const statusValue = {
-                'delivered': 'delivered',
-                'lost in transit': 'lost',
-                'in transit': 'in_transit',
-                'preshipment': 'preshipment',
-                'pending': 'pending',
-                'pending scan': 'pending',
-                'label created / no scan': 'info_received',
-            };
-            statusSelect.value = statusValue[current] || 'blank';
+        if (statusWrap) statusWrap.style.display = '';
+        const keepOpt = document.getElementById('of-track-status-keep');
+        const blankOpt = document.getElementById('of-track-status-blank');
+        // Scan Pending always shows the row's status (blank = "Select status"). Every other page starts on
+        // "Keep current", so editing only the tracking number never overwrites a carrier status.
+        if (keepOpt) keepOpt.hidden = scanPendingOnly;
+        if (blankOpt) blankOpt.textContent = scanPendingOnly ? 'Select status' : 'Clear status';
+        if (statusSelect) {
+            if (scanPendingOnly) {
+                const current = String(row.tracking_status || '').trim().toLowerCase();
+                const statusValue = {
+                    'delivered': 'delivered',
+                    'lost in transit': 'lost',
+                    'in transit': 'in_transit',
+                    'out for delivery': 'out_for_delivery',
+                    'exception': 'exception',
+                    'preshipment': 'preshipment',
+                    'pending': 'pending',
+                    'pending scan': 'pending',
+                    'label created / no scan': 'info_received',
+                };
+                statusSelect.value = statusValue[current] || 'blank';
+            } else {
+                statusSelect.value = '';
+            }
         }
         const err = document.getElementById('of-track-error');
         err.style.display = 'none';
@@ -1573,7 +1589,7 @@
             order_id: document.getElementById('of-track-order')?.textContent === '—' ? '' : document.getElementById('of-track-order')?.textContent,
             sku: document.getElementById('of-track-sku')?.textContent === '—' ? '' : document.getElementById('of-track-sku')?.textContent,
             tracking_number: number,
-            tracking_status: scanPendingOnly ? (document.getElementById('of-track-status')?.value || '') : '',
+            tracking_status: document.getElementById('of-track-status')?.value || '',
         };
         if (scanPendingOnly) {
             payload.pdf_name = document.getElementById('of-track-pdf')?.value || '';

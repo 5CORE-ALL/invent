@@ -231,7 +231,7 @@ class Kernel extends ConsoleKernel
 
         $log = $this->schedulerLog;
 
-        // Every tracking status is refreshed once a day. Hourly slices of 2000
+        // Every tracking status (USPS, FedEx, UPS, GOFO) is refreshed once a day. Hourly slices of 2000
         // walk the whole set; a number checked in the last 24 hours is skipped.
         $schedule->command('tracking:sync-status --stale=1440 --limit=2000 --catch-up --repair-quota --only-open')
             ->hourlyAt(10)
@@ -247,6 +247,16 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(90)
             ->runInBackground()
             ->name('tracking-sync-status-scan-pending')
+            ->appendOutputTo($log);
+
+        // Once a day, early morning: every number still waiting for a carrier scan (USPS, FedEx, UPS and GOFO,
+        // including GOFO's USPS last mile) is asked again, so parcels that were scanned overnight leave the
+        // Scan Pending page before the team starts. The 2-hourly run above only takes the oldest 1000.
+        $schedule->command('tracking:sync-status --scan-pending --catch-up --stale=60 --limit=5000 --only-open')
+            ->dailyAt('05:25')
+            ->withoutOverlapping(240)
+            ->runInBackground()
+            ->name('tracking-sync-status-scan-pending-daily')
             ->appendOutputTo($log);
 
         // Shopify Ads Master: keep the daily channel snapshot (trend chart + dots)

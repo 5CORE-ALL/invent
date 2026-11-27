@@ -2696,7 +2696,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'order_id' => 'nullable|string|max:128',
             'sku' => 'nullable|string|max:191',
             'tracking_number' => 'required|string|max:128',
-            'tracking_status' => 'nullable|string|in:blank,info_received,delivered,pending,in_transit,lost,preshipment',
+            'tracking_status' => 'nullable|string|in:blank,info_received,delivered,pending,in_transit,out_for_delivery,exception,lost,preshipment',
             'pdf_name' => 'nullable|string|max:191',
         ]);
 
@@ -2743,11 +2743,13 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'delivered' => ShipmentTrackingService::STATUS_DELIVERED,
                 'pending' => ShipmentTrackingService::STATUS_PENDING,
                 'in_transit' => ShipmentTrackingService::STATUS_IN_TRANSIT,
+                'out_for_delivery' => ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
+                'exception' => ShipmentTrackingService::STATUS_EXCEPTION,
                 'lost' => ShipmentTrackingService::STATUS_LOST,
                 'preshipment' => ShipmentTrackingService::STATUS_PRESHIPMENT,
                 default => ShipmentTrackingService::STATUS_INFO_RECEIVED,
             };
-            $this->storeCarrierStatus($number, $carrier, $stored, 'Set manually on Scan Pending');
+            $this->storeCarrierStatus($number, $carrier, $stored, 'Set manually in the tracking window');
             $statusLabel = $this->carrierShipmentStatusLabel($stored) ?? $stored;
         }
 
