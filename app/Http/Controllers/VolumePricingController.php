@@ -32,7 +32,10 @@ class VolumePricingController extends Controller
             ->whereRaw("UPPER(TRIM(sku)) NOT LIKE 'PARENT%'")
             ->orderBy('parent', 'asc')
             ->orderBy('sku', 'asc')
-            ->get(['sku', 'parent', 'Values']);
+            ->get(['sku', 'parent', 'Values'])
+            // DC (discontinued) SKUs are not part of volume pricing
+            ->reject(fn ($pm) => strtoupper(trim(ProductMaster::statusValueFromValues($pm->Values ?? []))) === 'DC')
+            ->values();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
         $shopifyData = $skus === [] ? collect() : ShopifySku::mapByProductSkus($skus);
