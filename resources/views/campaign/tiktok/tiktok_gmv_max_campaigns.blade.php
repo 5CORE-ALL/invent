@@ -5,7 +5,6 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        .gmvmax-editable { background: #fffbe6; cursor: text; }
         .gmvmax-badge {
             font-size: 1.15rem !important;
             padding: 0.6rem 1rem !important;
@@ -105,24 +104,25 @@
 
     function esc(v) { return $('<div>').text(v == null ? '' : String(v)).html(); }
 
-    function pushBudget(cell) {
-        const row = cell.getRow().getData();
-        const oldV = cell.getOldValue();
-        const newV = cell.getValue();
-        if (newV === '' || newV == null || Number(newV) === Number(oldV)) { return; }
+    function pushBudget(row, input, btn, cell) {
+        const newV = input.value.trim();
+        if (newV === '' || isNaN(Number(newV))) { alert('Type the new daily budget first.'); input.focus(); return; }
+        const oldV = row.budget;
         const label = (row.campaign_name || row.campaign_id);
-        if (!confirm('Push daily budget to TikTok?\n\n' + label + '\n' + (oldV == null ? '-' : money(oldV)) + '  ->  ' + money(newV))) {
-            cell.restoreOldValue();
-            return;
-        }
+        if (!confirm('Push daily budget to TikTok?\n\n' + label + '\n' + (oldV == null ? '-' : money(oldV)) + '  ->  ' + money(newV))) { return; }
+        btn.disabled = true;
         $.ajax({ url: PUSH_URL, method: 'POST', data: { _token: CSRF, campaign_id: row.campaign_id, budget: newV } })
             .done(function() {
+                input.value = '';
+                btn.innerHTML = '<i class="fas fa-check me-1"></i>Queued';
+                btn.className = 'btn btn-sm btn-success';
+                setTimeout(function() { btn.innerHTML = '<i class="fas fa-upload me-1"></i>Push'; btn.className = 'btn btn-sm btn-primary'; btn.disabled = false; }, 4000);
                 $('#gmvmax-push-panel').show();
                 loadPushLog();
                 startPushPoll();
             })
             .fail(function(xhr) {
-                cell.restoreOldValue();
+                btn.disabled = false;
                 const m = (xhr.responseJSON && (xhr.responseJSON.message || (xhr.responseJSON.errors && Object.values(xhr.responseJSON.errors)[0][0]))) || 'Push failed';
                 alert(m);
             });
@@ -141,7 +141,7 @@
                     (r.old_value == null ? '-' : money(r.old_value)) + ' &rarr; <strong>' + money(r.new_value) + '</strong></td><td><span class="badge bg-' + (color[r.status] || 'secondary') + '">' + esc(r.status) + '</span></td><td>' +
                     esc(r.requested_by || r.source) + '</td><td>' + esc(r.message || '') + '</td></tr>');
             });
-            if (!open) { stopPushPoll(); }
+            if (!open) { const wasPolling = !!pushPollTimer; stopPushPoll(); if (wasPolling && window.gmvTable) { window.gmvTable.replaceData(); } }
         });
     }
     function startPushPoll() { if (!pushPollTimer) { pushPollTimer = setInterval(loadPushLog, 15000); } }
@@ -149,7 +149,7 @@
 
     $(document).ready(function() {
         let range = 'L30';
-        const table = new Tabulator('#gmvmax-table', {
+        const table = window.gmvTable = new Tabulator('#gmvmax-table', {
             ajaxURL: "{{ route('tiktok.gmv.max.campaigns.data') }}",
             ajaxParams: function() { return { range: range }; },
             ajaxResponse: function(_u, _p, resp) {
@@ -174,11 +174,25 @@
             columns: [
                 { title: 'Campaign ID', field: 'campaign_id', width: 170, sorter: 'string' },
                 { title: 'Campaign name', field: 'campaign_name', minWidth: 240, sorter: 'string' },
-                Object.assign(numCol('Current budget', 'budget', 150, moneyCell), {
-                    editor: 'number', editorParams: { min: 0, step: 0.01, selectContents: true },
-                    cssClass: 'gmvmax-editable', headerTooltip: 'Click a budget to change it and push it to TikTok',
-                    cellEdited: function(cell) { pushBudget(cell); },
-                }),
+                numCol('Current budget', 'budget', 130, moneyCell),
+                { title: 'Push budget', field: 'campaign_id', width: 230, headerSort: false, download: false, hozAlign: 'center',
+                  headerTooltip: 'Type a new daily budget and press Push to send it to TikTok',
+                  formatter: function(cell) {
+                      const d = cell.getRow().getData();
+                      const wrap = document.createElement('div');
+                      wrap.className = 'd-flex align-items-center justify-content-center gap-1';
+                      const input = document.createElement('input');
+                      input.type = 'number'; input.min = '0'; input.step = '0.01';
+                      input.className = 'form-control form-control-sm'; input.style.width = '90px';
+                      input.placeholder = d.budget == null ? 'Budget' : Number(d.budget).toFixed(2);
+                      const btn = document.createElement('button');
+                      btn.type = 'button'; btn.className = 'btn btn-sm btn-primary';
+                      btn.innerHTML = '<i class="fas fa-upload me-1"></i>Push';
+                      btn.addEventListener('click', function() { pushBudget(d, input, btn, cell); });
+                      input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { btn.click(); } });
+                      wrap.appendChild(input); wrap.appendChild(btn);
+                      return wrap;
+                  } },
                 numCol('Spend', 'cost', 110, moneyCell),
                 numCol('Sold', 'sku_orders', 110, function(c) { return Number(c.getValue() || 0).toLocaleString('en-US'); }),
                 numCol('CPS', 'cost_per_order', 100, moneyCell),
