@@ -54,6 +54,13 @@ class PricePushPendingService
             return false;
         }
 
+        // Network timeout talking to the marketplace ("cURL error 28: SSL connection timeout …"): transient, the hourly retry
+        // handles it. Once the retries are exhausted (status failed = "GAVE UP") it is shown again.
+        if (($row->status ?? null) !== 'failed'
+            && preg_match('/curl\s+error\s+28\b|ssl\s+connection\s+timeout|operation\s+timed\s+out|connection\s+timed\s+out/i', $err)) {
+            return false;
+        }
+
         // Alibaba "Api access frequency exceeds the limit. this ban will last N seconds": temporary throttle, retried later
         if (preg_match('/access\s+frequency\s+exceeds\s+the\s+limit/i', $err)) {
             return false;
