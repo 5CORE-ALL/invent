@@ -657,6 +657,9 @@
             // to cc_returns_channel_next and drives the R Status freshness.
             const urlRNextValueSave = @json(route('customer.care.cc.messages.returns.r.next.store'));
 
+            // Hand-entered pending-returns count (channels with no returns API).
+            const urlPendingManualSave = @json(route('customer.care.report.pending.returns.manual'));
+
             // ---- Generic fetch + CSRF helper (copied from tabulator-master) ----
             function csrf() {
                 const meta = document.querySelector('meta[name="csrf-token"]');
@@ -1323,6 +1326,9 @@
                 tat_minutes:              (row.tat_minutes === 0 || row.tat_minutes) ? row.tat_minutes : null,
                 tat_returns_minutes:      (row.tat_returns_minutes === 0 || row.tat_returns_minutes) ? row.tat_returns_minutes : null,
                 pending_count:            Number(row.pending_count || 0),
+                pending_origin:           row.pending_origin || 'none',
+                pending_manual:           (row.pending_manual === 0 || row.pending_manual) ? Number(row.pending_manual) : null,
+                pending_source:           row.pending_source || null,
                 pending_status:           row.pending_status || '',
                 pending_note:             row.pending_note || '',
                 pending_fetched_at:       row.pending_fetched_at || null,
@@ -1391,19 +1397,64 @@
                         vertAlign: 'middle',
                         headerSort: true,
                         sorter: 'number',
-                        headerTooltip: 'Pending returns from each marketplace returns API — open returns still awaiting seller action, in transit, or awaiting refund',
+                        headerTooltip: 'Pending returns — live from the marketplace returns API where one exists; '
+                            + 'for sites with no returns API click the cell to enter the count by hand (shown with ✎).',
+                        // Only non-API rows are editable (a live API count is never overridden).
+                        editable: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            return d.pending_status !== 'ok' && d.pending_status !== 'pending';
+                        },
+                        editor: 'number',
+                        editorParams: { min: 0, step: 1 },
+                        // Blank input clears the manual value.
+                        mutatorEdit: function (value) {
+                            return (value === '' || value === null || value === undefined) ? null : Math.max(0, parseInt(value, 10) || 0);
+                        },
+                        cellEdited: function (cell) {
+                            const row = cell.getRow();
+                            const d = row.getData() || {};
+                            const raw = cell.getValue();
+                            const val = (raw === null || raw === undefined || raw === '') ? null : Number(raw);
+                            api(urlPendingManualSave, {
+                                method: 'POST',
+                                body: JSON.stringify({ channel_id: d.id, count: val }),
+                            }).then(resp => {
+                                const r = (resp && resp.row) || {};
+                                const manual = (r.manual_count === 0 || r.manual_count) ? Number(r.manual_count) : null;
+                                row.update({
+                                    pending_manual: manual,
+                                    pending_origin: manual !== null ? 'manual' : 'none',
+                                    pending_count:  manual !== null ? manual : 0,
+                                });
+                                refreshPendingTotalBadge();
+                            }).catch(e => {
+                                cell.restoreOldValue();
+                                const msg = (e && e.body && (e.body.message ||
+                                    (e.body.errors && JSON.stringify(e.body.errors)))) || 'Could not save pending count.';
+                                if (typeof window.alert === 'function') window.alert(msg);
+                            });
+                        },
                         formatter: function (cell) {
                             const d = cell.getRow().getData() || {};
                             const status = d.pending_status || '';
                             const note = String(d.pending_note || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-                            if (status === 'unsupported') {
-                                return '<span class="text-muted" title="' + (note || 'No returns API wired') + '">—</span>';
-                            }
-                            if (status === 'error') {
-                                return '<span class="text-warning" title="' + (note || 'Pull failed') + '"><i class="fas fa-triangle-exclamation"></i></span>';
-                            }
+                            const origin = d.pending_origin || 'none';
                             if (status === 'pending') {
                                 return '<span class="text-muted">…</span>';
+                            }
+                            if (origin === 'manual') {
+                                const mv = Number(d.pending_manual || 0);
+                                const mcolor = mv === 0 ? '#198754' : '#dc3545';
+                                return '<span style="color:' + mcolor + ';font-weight:700;cursor:pointer" '
+                                    + 'title="Entered manually — click to edit (clear to remove)">'
+                                    + mv.toLocaleString('en-US') + ' <i class="fas fa-pen" style="font-size:10px;opacity:.6"></i></span>';
+                            }
+                            if (status === 'unsupported' || status === 'error') {
+                                const tip = (status === 'error' ? (note || 'Pull failed') + ' — ' : '')
+                                    + 'No live returns API — click to enter the pending count';
+                                return '<span class="ccmr-next-pill is-empty" style="cursor:pointer" title="' + tip + '">'
+                                    + (status === 'error' ? '<i class="fas fa-triangle-exclamation text-warning me-1"></i>' : '')
+                                    + 'Add</span>';
                             }
                             const v = Number(cell.getValue() || 0);
                             const color = v === 0 ? '#198754' : '#dc3545';
@@ -1494,22 +1545,46 @@
                     : ('across ' + count + ' channel' + (count === 1 ? '' : 's'));
             }
 
-            // Total of the Pending column (only channels whose last pull succeeded).
+            // Total of the Pending column: live API counts (last pull succeeded)
+            // plus hand-entered counts for channels with no returns API.
+            // Channels backed by the same store (same API source, e.g. B2B and
+            // Business 5 Core (B2B)) are counted once so the total isn't doubled.
             function refreshPendingTotalBadge() {
                 const el = document.getElementById('ccmrReturnsPendingTotal');
                 if (!el || !window.__ccmrTable) return;
-                let total = 0, n = 0;
-                window.__ccmrTable.getRows().forEach(r => {
-                    const d = r.getData() || {};
+                let total = 0, nApi = 0, nManual = 0, nMissing = 0;
+                const seenSources = new Set();
+                // Tabulator keeps every row (all pages) in getData(); use it so
+                // the total never depends on the current page / filter.
+                window.__ccmrTable.getData().forEach(d => {
                     if (d.pending_status === 'ok') {
+                        const src = d.pending_source || '';
+                        if (src) {
+                            if (seenSources.has(src)) return;
+                            seenSources.add(src);
+                        }
                         total += Number(d.pending_count || 0);
-                        n++;
+                        nApi++;
+                    } else if (d.pending_origin === 'manual' && d.pending_manual !== null && d.pending_manual !== undefined) {
+                        total += Number(d.pending_manual || 0);
+                        nManual++;
+                    } else if (d.pending_status !== 'pending') {
+                        nMissing++;
                     }
                 });
+                const n = nApi + nManual;
                 const valueEl = el.querySelector('[data-role="value"]');
                 const metaEl  = el.querySelector('[data-role="meta"]');
                 if (valueEl) valueEl.textContent = n ? total.toLocaleString('en-US') : '—';
-                if (metaEl)  metaEl.textContent  = n ? ('across ' + n + ' channel' + (n === 1 ? '' : 's')) : 'no data';
+                if (metaEl) {
+                    if (!n) {
+                        metaEl.textContent = 'no data';
+                    } else {
+                        let txt = nApi + ' live' + (nManual ? ' + ' + nManual + ' manual' : '');
+                        if (nMissing) txt += ' · ' + nMissing + ' not entered';
+                        metaEl.textContent = txt;
+                    }
+                }
             }
 
             function refreshAvgTatBadges() {
@@ -1550,8 +1625,14 @@
                     if (!window.__ccmrTable || !row) return;
                     window.__ccmrTable.getRows().forEach(r => {
                         if (String(r.getData().id) !== String(id)) return;
+                        const manual = (row.manual_count === 0 || row.manual_count) ? Number(row.manual_count) : null;
+                        const isOk = (row.fetch_status || '') === 'ok';
+                        const origin = isOk ? 'api' : (manual !== null ? 'manual' : 'none');
                         r.update({
-                            pending_count:      Number(row.pending_count || 0),
+                            pending_count:      origin === 'manual' ? manual : Number(row.pending_count || 0),
+                            pending_origin:     origin,
+                            pending_manual:     manual,
+                            pending_source:     row.source || null,
                             pending_status:     row.fetch_status || '',
                             pending_note:       row.fetch_note || '',
                             pending_fetched_at: row.last_fetched_at || null,
@@ -1574,6 +1655,7 @@
                                 if (cur.pending_status === 'ok') return;
                                 applyRow(id, {
                                     pending_count: 0,
+                                    manual_count: cur.pending_manual,
                                     fetch_status: 'error',
                                     fetch_note: (e && e.body && e.body.message) || 'Pull failed',
                                     last_fetched_at: null,

@@ -305,6 +305,36 @@ class AuditMasterController extends Controller
     }
 
     /**
+     * Save a hand-entered pending-returns count for a channel that has no
+     * returns API (blank value clears it). Used by the Pending column on
+     * /customer-care/report.
+     */
+    public function storeCcPendingReturnsManual(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|min:1',
+            'count' => 'nullable|integer|min:0|max:1000000',
+        ]);
+
+        $channel = ChannelMaster::query()->find((int) $validated['channel_id']);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Channel not found.'], 422);
+        }
+
+        $count = array_key_exists('count', $validated) && $validated['count'] !== null
+            ? (int) $validated['count']
+            : null;
+
+        $row = app(\App\Services\CustomerCare\MarketplacePendingReturnsService::class)->saveManual($channel, $count);
+
+        return response()->json([
+            'success' => true,
+            'row' => $row,
+            'pending_total' => \App\Models\CcReturnsPending::pendingTotal(),
+        ]);
+    }
+
+    /**
      * Pull one channel's live pending-message count from its marketplace API
      * (used by the "Messages Pending" column on the CC Message page).
      */
@@ -780,15 +810,36 @@ class AuditMasterController extends Controller
             $pendingRow = $pendingMap[$c->id] ?? null;
             $pendingStatus = $pendingRow ? trim((string) ($pendingRow->fetch_status ?? '')) : '';
             if ($pendingStatus === '' && $pendingService !== null) {
-                $pendingStatus = $pendingService->driverFor($c) !== null
+                // Returns page: only channels with a wired returns API are
+                // "pending" (to be pulled); the rest are unsupported up front.
+                $hasApi = $pendingService instanceof \App\Services\CustomerCare\MarketplacePendingReturnsService
+                    ? $pendingService->hasReturnsApi($c)
+                    : $pendingService->driverFor($c) !== null;
+                $pendingStatus = $hasApi
                     ? 'pending'
                     : \App\Services\CustomerCare\MarketplacePendingMessagesService::STATUS_UNSUPPORTED;
             }
 
+            $pendingCount = $pendingRow && $pendingStatus === \App\Services\CustomerCare\MarketplacePendingMessagesService::STATUS_OK
+                ? (int) $pendingRow->pending_count
+                : 0;
+            // Returns page: channels without a trusted API count fall back to
+            // the hand-entered value so the column + total are never blank.
+            $pendingManual = ($page === 'returns' && $pendingRow && $pendingRow->manual_count !== null)
+                ? (int) $pendingRow->manual_count
+                : null;
+            $pendingOrigin = $pendingStatus === \App\Services\CustomerCare\MarketplacePendingMessagesService::STATUS_OK
+                ? 'api'
+                : ($pendingManual !== null ? 'manual' : 'none');
+            if ($pendingOrigin === 'manual') {
+                $pendingCount = $pendingManual;
+            }
+
             return [
-                'pending_count'            => $pendingRow && $pendingStatus === \App\Services\CustomerCare\MarketplacePendingMessagesService::STATUS_OK
-                    ? (int) $pendingRow->pending_count
-                    : 0,
+                'pending_count'            => $pendingCount,
+                'pending_origin'           => $pendingOrigin,
+                'pending_manual'           => $pendingManual,
+                'pending_source'           => $pendingRow ? ($pendingRow->source ?? null) : null,
                 'pending_status'           => $pendingStatus,
                 'pending_note'             => $pendingRow ? ($pendingRow->fetch_note ?? null) : null,
                 'pending_fetched_at'       => $pendingRow && $pendingRow->last_fetched_at

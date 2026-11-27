@@ -1285,6 +1285,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Live pending-returns pull for the "Pending" column on the Returns report.
     Route::post('/customer-care/report/pending-returns/pull', [AuditMasterController::class, 'pullCcPendingReturns'])
         ->name('customer.care.report.pending.returns.pull');
+    // Hand-entered pending-returns count for channels with no returns API.
+    Route::post('/customer-care/report/pending-returns/manual', [AuditMasterController::class, 'storeCcPendingReturnsManual'])
+        ->name('customer.care.report.pending.returns.manual');
 
     // CC Shipping — duplicate of /customer-care/cc-messages-returns
     // backed by entirely separate cc_shipping_* tables.

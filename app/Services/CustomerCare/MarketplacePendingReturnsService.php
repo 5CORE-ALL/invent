@@ -68,14 +68,77 @@ class MarketplacePendingReturnsService extends MarketplacePendingMessagesService
             ]
         );
 
+        return $this->rowPayload($row);
+    }
+
+    /**
+     * Save (or clear, when $count is null) the hand-entered count for a
+     * channel. Used for sites that have no returns API. API pulls never touch
+     * this value.
+     */
+    public function saveManual(ChannelMaster $channel, ?int $count): array
+    {
+        $this->ensureSchema();
+
+        $user = Auth::user();
+        $row = CcReturnsPending::query()->firstOrNew(['channel_id' => (int) $channel->id]);
+        if (! $row->exists) {
+            $driver = $this->driverFor($channel);
+            $row->pending_count = 0;
+            $row->fetch_status = ($driver === null || $driver === 'impossible')
+                ? self::STATUS_UNSUPPORTED
+                : null;
+            $row->fetch_note = $row->fetch_status === self::STATUS_UNSUPPORTED ? self::NOTE_NO_RETURNS_API : null;
+        }
+        $row->manual_count = $count;
+        $row->manual_updated_at = $count === null ? null : now();
+        $row->updated_by_user_id = $user?->id;
+        $row->updated_by_name = $user?->name;
+        $row->save();
+
+        return $this->rowPayload($row);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function rowPayload(CcReturnsPending $row): array
+    {
         return [
             'channel_id' => (int) $row->channel_id,
             'pending_count' => (int) $row->pending_count,
+            'manual_count' => $row->manual_count !== null ? (int) $row->manual_count : null,
             'fetch_status' => (string) $row->fetch_status,
             'fetch_note' => $row->fetch_note,
             'source' => $row->source,
             'last_fetched_at' => optional($row->last_fetched_at)->toIso8601String(),
         ];
+    }
+
+    /**
+     * Returns-specific channel → driver mapping. Same as Messages, plus the
+     * "Business 5 Core (B2B)" channel which is the same Shopify store as "B2B"
+     * (it previously fell through to "no API" and showed blank).
+     */
+    public function driverFor(ChannelMaster $channel): ?string
+    {
+        return match ($this->slugFor($channel)) {
+            'business5coreb2b', 'b5cb2b' => 'shopify_b5c',
+            default => parent::driverFor($channel),
+        };
+    }
+
+    /**
+     * True when this channel has a wired returns API. (The inherited Messages
+     * driver list is wider than the returns one: Mirakl, Amazon, Temu, Shein…
+     * have a messages API but no returns API here.)
+     */
+    public function hasReturnsApi(ChannelMaster $channel): bool
+    {
+        return in_array($this->driverFor($channel), [
+            'ebay', 'ebay2', 'ebay3', 'walmart', 'tiktok', 'tiktok2',
+            'shopify', 'shopify_b5c', 'shopify_pls',
+        ], true);
     }
 
     public function fetch(ChannelMaster $channel): array
@@ -97,8 +160,8 @@ class MarketplacePendingReturnsService extends MarketplacePendingMessagesService
     }
 
     /**
-     * eBay Post-Order API: countSummary gives per-state counts. Pending =
-     * RETURN_STARTED (awaiting seller) + ITEM_DELIVERED (awaiting refund).
+     * eBay Post-Order API. Pending = RETURN_STARTED (awaiting seller) +
+     * ITEM_SHIPPED (in transit back) + ITEM_DELIVERED (awaiting refund).
      *
      * @return array{pending_count: int, fetch_status: string, fetch_note: ?string, source: ?string}
      */
@@ -109,6 +172,47 @@ class MarketplacePendingReturnsService extends MarketplacePendingMessagesService
             return $this->makeResult(0, self::STATUS_ERROR, 'eBay credentials are missing.', $account);
         }
 
+        // 1) Unfiltered search — some responses carry a per-state countSummary.
+        $first = $this->ebayReturnSearch($token, []);
+        if (! $first['ok']) {
+            return $this->makeResult(0, self::STATUS_ERROR, $first['error'], $account);
+        }
+
+        $fromSummary = $this->ebayCountFromSummary($first['json']);
+        if ($fromSummary !== null) {
+            return $this->makeResult($fromSummary, self::STATUS_OK, null, $account.':post-order.return');
+        }
+
+        // 2) No usable summary — ask for the total of each open state directly.
+        $count = 0;
+        foreach (self::EBAY_OPEN_RETURN_STATES as $state) {
+            $res = $this->ebayReturnSearch($token, ['return_state' => $state]);
+            if (! $res['ok']) {
+                return $this->makeResult(0, self::STATUS_ERROR, $res['error'], $account);
+            }
+            $total = $res['json']['total'] ?? $res['json']['paginationOutput']['totalEntries'] ?? null;
+            if (! is_numeric($total)) {
+                return $this->makeResult(0, self::STATUS_ERROR, 'eBay returns response had no total for '.$state.'.', $account);
+            }
+            $count += max(0, (int) $total);
+        }
+
+        return $this->makeResult($count, self::STATUS_OK, null, $account.':post-order.return');
+    }
+
+    /**
+     * Open eBay return states: awaiting seller, in transit back, and
+     * delivered awaiting refund (matches the Walmart / TikTok / Shopify
+     * definitions of "pending").
+     */
+    private const EBAY_OPEN_RETURN_STATES = ['RETURN_STARTED', 'ITEM_SHIPPED', 'ITEM_DELIVERED'];
+
+    /**
+     * @param  array<string, string>  $extra
+     * @return array{ok: bool, json: array, error: ?string}
+     */
+    protected function ebayReturnSearch(string $token, array $extra): array
+    {
         try {
             $response = Http::withoutVerifying()
                 ->withHeaders([
@@ -119,12 +223,12 @@ class MarketplacePendingReturnsService extends MarketplacePendingMessagesService
                 ])
                 ->timeout(15)
                 ->connectTimeout(6)
-                ->get('https://api.ebay.com/post-order/v2/return/search', [
+                ->get('https://api.ebay.com/post-order/v2/return/search', array_merge([
                     'role' => 'SELLER',
                     'limit' => 1,
-                ]);
+                ], $extra));
         } catch (Throwable $e) {
-            return $this->makeResult(0, self::STATUS_ERROR, $e->getMessage(), $account);
+            return ['ok' => false, 'json' => [], 'error' => $e->getMessage()];
         }
 
         if (! $response->successful()) {
@@ -132,28 +236,44 @@ class MarketplacePendingReturnsService extends MarketplacePendingMessagesService
                 ?? $response->json('errorMessage.error.0.message')
                 ?? $response->json('message');
 
-            return $this->makeResult(
-                0,
-                self::STATUS_ERROR,
-                'eBay returns HTTP '.$response->status().(is_string($msg) && $msg !== '' ? ': '.$msg : ''),
-                $account
-            );
+            return [
+                'ok' => false,
+                'json' => [],
+                'error' => 'eBay returns HTTP '.$response->status().(is_string($msg) && $msg !== '' ? ': '.$msg : ''),
+            ];
         }
 
-        $summary = $response->json('countSummary');
-        if (! is_array($summary)) {
-            return $this->makeResult(0, self::STATUS_ERROR, 'eBay returns response had no countSummary.', $account);
+        return ['ok' => true, 'json' => $response->json() ?? [], 'error' => null];
+    }
+
+    /**
+     * Sum the open states out of a countSummary block. Accepts either a list
+     * of {type|state, count} rows or a {STATE: count} map; null when absent.
+     */
+    protected function ebayCountFromSummary(array $json): ?int
+    {
+        $summary = $json['countSummary'] ?? $json['summary']['countSummary'] ?? null;
+        if (! is_array($summary) || $summary === []) {
+            return null;
         }
 
         $count = 0;
-        foreach ($summary as $row) {
-            $type = strtoupper((string) ($row['type'] ?? ''));
-            if (in_array($type, ['RETURN_STARTED', 'ITEM_DELIVERED'], true)) {
-                $count += max(0, (int) ($row['count'] ?? 0));
+        $matched = false;
+        foreach ($summary as $key => $row) {
+            if (is_array($row)) {
+                $state = strtoupper((string) ($row['type'] ?? $row['state'] ?? $row['returnState'] ?? ''));
+                $n = $row['count'] ?? null;
+            } else {
+                $state = strtoupper((string) $key);
+                $n = $row;
+            }
+            if (in_array($state, self::EBAY_OPEN_RETURN_STATES, true) && is_numeric($n)) {
+                $count += max(0, (int) $n);
+                $matched = true;
             }
         }
 
-        return $this->makeResult($count, self::STATUS_OK, null, $account.':post-order.return');
+        return $matched ? $count : null;
     }
 
     /**
@@ -269,6 +389,13 @@ class MarketplacePendingReturnsService extends MarketplacePendingMessagesService
     public function ensureSchema(): void
     {
         if (Schema::hasTable('cc_returns_pending')) {
+            if (! Schema::hasColumn('cc_returns_pending', 'manual_count')) {
+                Schema::table('cc_returns_pending', function ($table) {
+                    $table->unsignedInteger('manual_count')->nullable()->after('pending_count');
+                    $table->timestamp('manual_updated_at')->nullable()->after('manual_count');
+                });
+            }
+
             return;
         }
 
@@ -276,6 +403,8 @@ class MarketplacePendingReturnsService extends MarketplacePendingMessagesService
             $table->id();
             $table->unsignedBigInteger('channel_id')->unique();
             $table->unsignedInteger('pending_count')->default(0);
+            $table->unsignedInteger('manual_count')->nullable();
+            $table->timestamp('manual_updated_at')->nullable();
             $table->string('fetch_status', 32)->nullable();
             $table->string('fetch_note', 512)->nullable();
             $table->string('source', 64)->nullable();
