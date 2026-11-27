@@ -671,6 +671,14 @@
         .lossx-chip2 { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 4px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: .68rem; font-weight: 700; color: #111; }
         .lossx-chip2 i { font-style: normal; font-size: .54rem; font-weight: 700; color: #64748b; }
         .lossx-more { display: block; margin: 8px auto 0; }
+        .lossx-abadges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; position: relative; z-index: 1; }
+        .lossx-abadge { border: 2px solid transparent; border-radius: 99px; padding: 5px 14px; font-size: .78rem; font-weight: 800; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: transform .12s, box-shadow .12s; }
+        .lossx-abadge b { background: rgba(0,0,0,.28); border-radius: 99px; padding: 0 8px; font-variant-numeric: tabular-nums; }
+        .lossx-abadge:hover { transform: translateY(-1px); }
+        .lossx-abadge.is-open { background: #d97706; }
+        .lossx-abadge.is-fixed { background: #16a34a; }
+        .lossx-abadge.is-ignored { background: #64748b; }
+        .lossx-abadge.is-on { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.28); }
         .lossx-sibrow { flex: 1 1 100%; display: flex; align-items: center; gap: 4px; font-size: .64rem; font-weight: 700; color: #cfd1ff; }
         .lossx-sibrow label { display: inline-flex; align-items: center; gap: 3px; margin: 0; cursor: pointer; white-space: nowrap; }
         .lossx-sibrow input[type=checkbox] { width: 13px; height: 13px; margin: 0; accent-color: #22c55e; cursor: pointer; }
@@ -846,6 +854,11 @@
                         <div class="lossx-stat" title="All orders in this period, amount-weighted"><b id="lossxStatNroi">—</b><span>NROI%</span></div>
                         <div class="lossx-stat" title="All orders in this period, amount-weighted"><b id="lossxStatNpft">—</b><span>NPRFT%</span></div>
                     </div>
+                    <div class="lossx-abadges" id="lossxBadges" aria-label="Products by action">
+                        <button type="button" class="lossx-abadge is-open" data-af="open" title="Loss products with no action yet">Open <b data-c="open">0</b></button>
+                        <button type="button" class="lossx-abadge is-fixed" data-af="fixed" title="Loss products marked Fixed">Fixed <b data-c="fixed">0</b></button>
+                        <button type="button" class="lossx-abadge is-ignored" data-af="ignored" title="Loss products marked Ignore">Ignored <b data-c="ignored">0</b></button>
+                    </div>
                 </div>
                 <div class="lossx-body">
                     <div class="lossx-tools">
@@ -855,7 +868,7 @@
                         <button type="button" class="lossx-sort is-on" data-sort="pct">Worst %</button>
                         <select class="lossx-filter" id="lossxFilter" title="Show products by their action">
                             <option value="all">All actions</option>
-                            <option value="open">Open (no action)</option>
+                            <option value="open" selected>Open (no action)</option>
                             <option value="fixed">Fixed</option>
                             <option value="ignored">Ignored</option>
                         </select>
@@ -2243,7 +2256,29 @@
     let actionMap = {};                 // SKU (UPPER) -> { action: fixed|ignored, reason, user, at }
     let reasons = ['Clearance'];
     const needReason = new Set();       // SKUs where Ignore was chosen but no reason picked yet
-    let actionFilter = 'all';
+    let actionFilter = 'open';   // default: products still waiting for an action
+
+    /** Fixed / Open / Ignored counts of this period's loss products (badges on top; click = filter, click again = all). */
+    function paintActionBadges() {
+        const counts = { open: 0, fixed: 0, ignored: 0 };
+        periodGroups(current).forEach(function (g) {
+            const st = actionMap[skuKey(g.sku)];
+            counts[st && counts.hasOwnProperty(st.action) ? st.action : 'open']++;
+        });
+        document.querySelectorAll('#lossxBadges .lossx-abadge').forEach(function (b) {
+            b.querySelector('[data-c]').textContent = num(counts[b.dataset.af]);
+            b.classList.toggle('is-on', actionFilter === b.dataset.af);
+        });
+        const sel = document.getElementById('lossxFilter');
+        if (sel && sel.value !== actionFilter) sel.value = actionFilter;
+    }
+
+    function setActionFilter(f) {
+        actionFilter = f || 'all';
+        playerOff();
+        shownFamilies = FAMILY_PAGE;
+        renderModal();
+    }
 
     function actState(key) {
         if (needReason.has(key)) return 'ignored-pending';
@@ -2325,7 +2360,7 @@
         postJson(ACTIONS_URL, { sku: sku, action: action, reason: reason || '' }).then(function (j) {
             needReason.delete(key);
             if (j.state) actionMap[key] = j.state; else delete actionMap[key];
-            if (actionFilter !== 'all') renderModal(); else refreshAct(key);
+            if (actionFilter !== 'all') renderModal(); else { refreshAct(key); paintActionBadges(); }
             document.querySelectorAll('#lossxList .lossx-item.is-hist').forEach(function (it) { if (it.dataset.key === key) loadHist(it); });
             toast(sku + ': ' + (action === 'open' ? 'action cleared' : (action === 'fixed' ? 'marked Fixed' : 'ignored — ' + reason)));
         }).catch(function (err) {
@@ -2441,6 +2476,7 @@
         document.getElementById('lossxStatRate').textContent = (p.orders > 0 ? (p.loss_orders / p.orders) * 100 : 0).toFixed(1) + '%';
         document.getElementById('lossxStatNroi').textContent = pct(p.nroi_pct);
         document.getElementById('lossxStatNpft').textContent = pct(p.npft_pct);
+        paintActionBadges();
 
         let groups = periodGroups(current);
         const q = query.trim().toLowerCase();
@@ -2571,6 +2607,7 @@
     function openModal(key) {
         if (!data) { load(false); return; }
         current = key;
+        actionFilter = 'open';
         playerOff();
         query = '';
         shownFamilies = FAMILY_PAGE;
@@ -2777,11 +2814,10 @@
     });
 
     const listEl = document.getElementById('lossxList');
-    document.getElementById('lossxFilter')?.addEventListener('change', function (e) {
-        actionFilter = e.target.value || 'all';
-        playerOff();
-        shownFamilies = FAMILY_PAGE;
-        renderModal();
+    document.getElementById('lossxFilter')?.addEventListener('change', function (e) { setActionFilter(e.target.value); });
+    document.getElementById('lossxBadges')?.addEventListener('click', function (e) {
+        const b = e.target.closest('.lossx-abadge');
+        if (b) setActionFilter(actionFilter === b.dataset.af ? 'all' : b.dataset.af);
     });
     listEl?.addEventListener('click', function (e) {
         const go = e.target.closest('.lossx-sp-go');
