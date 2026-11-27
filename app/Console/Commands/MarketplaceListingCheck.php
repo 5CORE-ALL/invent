@@ -128,15 +128,16 @@ class MarketplaceListingCheck extends Command
             $sku = (string) $row->sku;
             $upc = $upcs[strtoupper($sku)] ?? '';
             $where = [];
-            if ($upc !== '' && isset($catalogByUpc[$upc])) {
-                $where[] = 'MCM catalog: '.$catalogByUpc[$upc];
+            if ($upc === '') {
+                $where[] = 'no UPC in Product Master';
+            } elseif (isset($catalogByUpc[$upc])) {
+                $where[] = 'UPC '.$upc.' IS in '.$label.' catalog: '.$catalogByUpc[$upc];
+            } else {
+                $where[] = 'UPC '.$upc.' not found in '.$label.' catalog';
             }
-            $connectHit = $connect[strtoupper(trim($sku))] ?? null;
-            if ($connectHit !== null) {
-                $where[] = 'Connect: '.$connectHit;
-            }
-            if ($where === []) {
-                $where[] = $upc === '' ? 'no UPC in Product Master' : 'not in '.$label.' catalog';
+            // Mirakl Connect returns the seller's whole catalog for every channel, so "in Connect" says nothing about this marketplace.
+            if (($connect[strtoupper(trim($sku))] ?? null) !== null) {
+                $where[] = 'in Connect catalog (any channel)';
             }
             $keys = ListingCountsEngine::skuLookupKeys($sku);
             $mine = (string) end($keys);
