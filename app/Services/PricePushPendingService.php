@@ -47,6 +47,13 @@ class PricePushPendingService
             return false;
         }
 
+        // Amazon: "did not accept the price update (status: INVALID) … product type specified is invalid or not supported"
+        // is a problem in the Amazon listing data itself, not something the hourly retry can fix.
+        if (self::key((string) $row->marketplace) === 'amazon'
+            && preg_match('/product\s+type\b[^.\n]{0,40}\binvalid|did\s+not\s+accept\s+the\s+price\s+update[^\n]{0,20}status:\s*invalid/i', $err)) {
+            return false;
+        }
+
         return ! self::isListingNotFound($err);
     }
 
