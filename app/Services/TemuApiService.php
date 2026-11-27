@@ -1967,14 +1967,14 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $amount = number_format($price, 2, '.', '');
         $currency = strtoupper(trim($currency)) ?: 'USD';
 
-        $requestBody = [
+        $buildBody = fn (string $gid, string $sid): array => [
             'type' => 'bg.local.goods.priceorder.change.sku.price',
-            'goodsId' => is_numeric($goodsId) ? (int) $goodsId : $goodsId,
+            'goodsId' => is_numeric($gid) ? (int) $gid : $gid,
             'changeSkuPriceDTOList' => [
                 [
                     'skuChangePriceBaseDTOList' => [
                         [
-                            'skuId' => is_numeric($skuId) ? (int) $skuId : $skuId,
+                            'skuId' => is_numeric($sid) ? (int) $sid : $sid,
                             'newSupplierPrice' => [
                                 'amount' => $amount,
                                 'currency' => $currency,
@@ -1985,8 +1985,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             ],
         ];
 
-        $signedRequest = $this->generateSignValue($requestBody);
-        $url = 'https://openapi-b-us.temu.com/openapi/router';
+        $url = $this->openApiRouterUrl(); // this channel's own router (Temu / Temu 2 / Temu 3), not a hard-coded one
 
         $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(60);
         if (config('filesystems.default') === 'local') {
@@ -2002,7 +2001,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 'currency' => $currency,
             ]);
 
-            $response = $request->post($url, $signedRequest);
+            $response = $request->post($url, $this->generateSignValue($buildBody((string) $goodsId, (string) $skuId)));
             $data = $response->json() ?? [];
 
             Log::info('Temu updateSkuBasePrice response', [
@@ -2016,6 +2015,53 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 "Price updated on Temu for SKU: {$sku} → {$amount} {$currency}.",
                 $response->status()
             );
+
+            // [150010188] "The mall and goods not match": the goods id we hold is not in THIS Temu account (mall) — a stale /
+            // foreign mapping. Re-resolve goods + sku id for this SKU from this account's own live list and retry once.
+            // If this account has no listing for the SKU, say so clearly instead of repeating Temu's cryptic text.
+            if (! $outcome['success'] && $this->temuMallGoodsMismatch($outcome['message'])) {
+                $rejectedGoodsId = (string) $goodsId;
+                $fresh = $this->replaceGoodsIdAfterMallMismatch($sku, $rejectedGoodsId);
+                if ($fresh !== null && $fresh !== '' && (string) $fresh !== $rejectedGoodsId) {
+                    $freshSkuId = $this->getSkuIdBySku($sku); // never reuse the sku id that belonged to the rejected goods
+                    if ($freshSkuId !== null && $freshSkuId !== '') {
+                        $goodsId = (string) $fresh;
+                        $skuId = (string) $freshSkuId;
+                        Log::warning('Temu updateSkuBasePrice: goods id was not in this mall — retrying with the id from this mall', [
+                            'channel' => $this->temuServiceConfigKey(),
+                            'sku' => $sku,
+                            'rejected_goods_id' => $rejectedGoodsId,
+                            'goods_id' => $goodsId,
+                            'sku_id' => $skuId,
+                        ]);
+                        $response = $request->post($url, $this->generateSignValue($buildBody($goodsId, $skuId)));
+                        $data = $response->json() ?? [];
+                        $outcome = $this->temuWriteOutcome(
+                            is_array($data) ? $data : null,
+                            "Price updated on Temu for SKU: {$sku} → {$amount} {$currency}.",
+                            $response->status()
+                        );
+                    }
+                } elseif (($fresh === null || $fresh === '') && $this->looksUpGoodsIdAfterMallMismatch()) {
+                    $label = match ($this->temuServiceConfigKey()) {
+                        'temu2' => 'Temu 2',
+                        'temu3' => 'Temu 3',
+                        default => 'Temu',
+                    };
+                    Log::warning('Temu updateSkuBasePrice: SKU has no listing in this mall (stale goods id)', [
+                        'channel' => $this->temuServiceConfigKey(),
+                        'sku' => $sku,
+                        'rejected_goods_id' => $rejectedGoodsId,
+                    ]);
+                    $outcome = [
+                        'success' => false,
+                        'review' => false,
+                        'message' => "{$label} listing not found for SKU {$sku}: the stored goods id {$rejectedGoodsId} does not belong to this {$label} account "
+                            . 'and no other listing of this SKU was found there. Create / re-link the listing on ' . $label . ', then push again. '
+                            . 'Temu said: ' . trim($outcome['message']),
+                    ];
+                }
+            }
             if ($outcome['success']) {
                 return [
                     'success' => true,
@@ -4172,6 +4218,15 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     protected function replaceGoodsIdAfterMallMismatch(string $sku, string $rejectedGoodsId): ?string
     {
         return null;
+    }
+
+    /**
+     * True for channels whose replaceGoodsIdAfterMallMismatch() really looks the SKU up in its own mall
+     * (Temu 2 / Temu 3), so "no fresh id" means "this SKU has no listing there". The base channel does not look it up.
+     */
+    protected function looksUpGoodsIdAfterMallMismatch(): bool
+    {
+        return false;
     }
 
     protected function imageMetricsTable(): string

@@ -63,7 +63,9 @@ class PricePushPendingService
             . '|\b(sku|product|item|listing|variant|offer|asin|goods)\b[^.\n]{0,40}\bnot\s+found'
             . '|not\s+found\s+(for|in|on)\s+(this\s+)?(sku|product|item|listing|walmart|shopify|prolight|ebay|amazon)'
             . '|(product|sku|variant|item)[\s_]*id\b[^.\n]{0,30}\bmissing\s+for\s+sku'
-            . '|(product|listing|item)\s+(does\s+not|doesn.t)\s+exist)/i',
+            . '|(product|listing|item)\s+(does\s+not|doesn.t)\s+exist'
+            // Temu [150010188] "The mall and goods not match": the goods id is not in that Temu account = not listed there
+            . '|mall\s+and\s+goods\s+not\s+match)/i',
             $message
         );
     }

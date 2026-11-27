@@ -731,6 +731,11 @@ class Temu3ApiService extends TemuApiService
         $this->persistTemuMapping($sku, $goodsId, $skuId);
     }
 
+    protected function looksUpGoodsIdAfterMallMismatch(): bool
+    {
+        return true;
+    }
+
     protected function replaceGoodsIdAfterMallMismatch(string $sku, string $rejectedGoodsId): ?string
     {
         $sku = trim($sku);
