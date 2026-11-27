@@ -27,7 +27,7 @@
     }
 </style>
 @endonce
-@if(!empty($alert) && \App\Support\AttendanceAccess::isPresident())
+@if(!empty($alert) && \App\Support\AttendanceAccess::canSeeFraudAlerts())
     @php $triHref = $href ?? '#'; $triNewTab = $triHref !== '' && $triHref[0] !== '#'; @endphp
     <a href="{{ $triHref }}" @if($triNewTab) target="_blank" rel="noopener noreferrer" @endif class="fraud-tri {{ $alert['level'] }}"
        title="{{ $alert['tooltip'] }}"

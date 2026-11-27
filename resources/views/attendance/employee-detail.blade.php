@@ -343,12 +343,12 @@
                         </div>
                     </div>
                     @php
-                        $dayAlert = (\App\Support\AttendanceAccess::isPresident() ? ($day_alerts[$activityDay['date']] ?? null) : null);
+                        $dayAlert = (\App\Support\AttendanceAccess::canSeeFraudAlerts() ? ($day_alerts[$activityDay['date']] ?? null) : null);
                         $triFill = ($dayAlert['tone'] ?? '') === 'red' ? '#dc2626' : '#eab308';
                         $triStroke = ($dayAlert['tone'] ?? '') === 'red' ? '#991b1b' : '#a16207';
                     @endphp
                     <div class="act-track-row">
-                        @if(\App\Support\AttendanceAccess::isPresident())
+                        @if(\App\Support\AttendanceAccess::canSeeFraudAlerts())
                         <span class="day-alert-slot">
                             @if($dayAlert)
                             <a href="#fraudPanel" class="day-alert-tri {{ $dayAlert['tone'] }}"

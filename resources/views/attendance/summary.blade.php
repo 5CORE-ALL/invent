@@ -490,12 +490,12 @@
                 </form>
 
                 <input type="search" class="form-control form-control-sm es-search" id="employeeSearch" placeholder="Search employees...">
-                <select class="form-select form-select-sm es-status-filter{{ \App\Support\AttendanceAccess::isPresident() ? ' has-alerts' : '' }}" id="statusFilter" aria-label="Status filter">
+                <select class="form-select form-select-sm es-status-filter{{ \App\Support\AttendanceAccess::canSeeFraudAlerts() ? ' has-alerts' : '' }}" id="statusFilter" aria-label="Status filter">
                     <option value="all">Status: All</option>
                     <option value="logged">Status: Logged</option>
                     <option value="not_logged">Status: Not logged</option>
                     <option value="late">Status: Late joining</option>
-                    @if(\App\Support\AttendanceAccess::isPresident())
+                    @if(\App\Support\AttendanceAccess::canSeeFraudAlerts())
                     <option value="alerts">Status: Alerts</option>
                     @endif
                 </select>
@@ -1030,7 +1030,7 @@
     // server-rendered partial attendance/partials/fraud-alert.blade.php).
     function fraudTriangle(row) {
         const a = row.fraud_alert;
-        if (!a || !@json(\App\Support\AttendanceAccess::isPresident())) return '';
+        if (!a || !@json(\App\Support\AttendanceAccess::canSeeFraudAlerts())) return '';
         return '<a href="' + escapeAttr(row.detail_url || '#') + '" target="_blank" rel="noopener noreferrer" class="fraud-tri ' + escapeAttr(a.level) + '"'
             + ' title="' + escapeAttr(a.tooltip) + '" aria-label="Fraud check: ' + escapeAttr(a.count) + ' open alert(s), ' + escapeAttr(a.level) + ' risk">'
             + '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">'

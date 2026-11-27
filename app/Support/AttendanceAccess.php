@@ -124,6 +124,19 @@ class AttendanceAccess
         return $user && strtolower(trim((string) $user->email)) === 'president@5core.com';
     }
 
+    /**
+     * Fraud-alert triangle / Alerts status filter: president@5core.com and software@5core.com.
+     */
+    public static function canSeeFraudAlerts(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        return in_array(strtolower(trim((string) $user->email)), ['president@5core.com', 'software@5core.com'], true);
+    }
+
     /** Shobha's account (software5@5core.com). */
     public static function isShobha(?User $user = null): bool
     {
