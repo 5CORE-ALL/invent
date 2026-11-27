@@ -665,6 +665,15 @@
         .summary-header-bar .summary-chart-badge,
         .summary-header-bar .summary-badge-only { padding: 2px 7px; font-size: 12px; gap: 4px; white-space: nowrap; }
         .summary-header-bar .summary-badge-dot { width: 7px; height: 7px; }
+        /* Badge background = soft tint of its dot colour */
+        .summary-header-bar .summary-chart-badge,
+        .summary-header-bar .summary-badge-only {
+            background-color: color-mix(in srgb, var(--pb, #6c757d) 12%, #fff);
+            border-color: color-mix(in srgb, var(--pb, #6c757d) 40%, #fff);
+        }
+        .summary-header-bar .summary-chart-badge:hover { background-color: color-mix(in srgb, var(--pb, #6c757d) 22%, #fff); }
+        /* Hist / Push Pending counts: only show once they have a value */
+        .summary-header-bar .pi-count-badge:has(.summary-badge-value:empty) { display: none; }
         @media (max-width: 1099px) { .summary-header-bar .pb-pre { display: none; } }
         .card-body:has(> #pi-toolbar) { padding-top: 6px !important; padding-bottom: 6px !important; }
         #pi-toolbar { gap: 4px !important; }
@@ -2412,45 +2421,55 @@
         <div class="card shadow-sm">
             <!-- Header Bar - Totals (badges with chart links) -->
             <div class="summary-header-bar px-3 py-2 d-flex flex-wrap align-items-center gap-2 border-bottom">
-                <a href="#" class="summary-chart-badge" data-metric="inv" data-aggregate="1" title="Click to view Inv line graph">
+                <a href="#" class="summary-chart-badge" data-metric="inv" data-aggregate="1" title="Click to view Inv line graph" style="--pb: #4361ee;">
                     <span class="summary-badge-dot" style="background-color: #4361ee;"></span>
                     <span><span class="pb-pre">Total </span>INV:</span>
                     <span class="summary-badge-value" id="total-inv-badge">0</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="ov_l30" data-aggregate="1" title="Click to view OV L30 line graph">
+                <a href="#" class="summary-chart-badge" data-metric="ov_l30" data-aggregate="1" title="Click to view OV L30 line graph" style="--pb: #28a745;">
                     <span class="summary-badge-dot" style="background-color: #28a745;"></span>
                     <span><span class="pb-pre">Total </span>OV L30:</span>
                     <span class="summary-badge-value" id="total-l30-badge">0</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="dil" data-aggregate="1" title="Click to view DIL line graph">
+                <a href="#" class="summary-chart-badge" data-metric="dil" data-aggregate="1" title="Click to view DIL line graph" style="--pb: #0d6efd;">
                     <span class="summary-badge-dot" style="background-color: #0d6efd;"></span>
                     <span>DIL:</span>
                     <span class="summary-badge-value" id="avg-dil-badge">0%</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="total_views" data-aggregate="1" title="Click to view Total Views line graph">
+                <a href="#" class="summary-chart-badge" data-metric="total_views" data-aggregate="1" title="Click to view Total Views line graph" style="--pb: #17a2b8;">
                     <span class="summary-badge-dot" style="background-color: #17a2b8;"></span>
                     <span><span class="pb-pre">Total </span>Views:</span>
                     <span class="summary-badge-value" id="total-views-badge">0</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="cvr" data-aggregate="1" title="Click to view CVR line graph">
+                <a href="#" class="summary-chart-badge" data-metric="cvr" data-aggregate="1" title="Click to view CVR line graph" style="--pb: #ff9c00;">
                     <span class="summary-badge-dot" style="background-color: #ff9c00;"></span>
                     <span>CVR:</span>
                     <span class="summary-badge-value" id="avg-cvr-badge">0%</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="price" data-aggregate="1" title="Click to view Avg Price line graph">
+                <a href="#" class="summary-chart-badge" data-metric="price" data-aggregate="1" title="Click to view Avg Price line graph" style="--pb: #e83e8c;">
                     <span class="summary-badge-dot" style="background-color: #e83e8c;"></span>
                     <span><span class="pb-pre">Avg </span>Price:</span>
                     <span class="summary-badge-value" id="avg-price-badge">$0.00</span>
                 </a>
-                <span class="summary-badge-only" title="Avg LMP">
+                <span class="summary-badge-only" title="Avg LMP" style="--pb: #6c757d;">
                     <span class="summary-badge-dot" style="background-color: #6c757d;"></span>
                     <span><span class="pb-pre">Avg </span>LMP:</span>
                     <span class="summary-badge-value" id="amz-lmp-badge">$0.00</span>
                 </span>
-                <span class="summary-badge-only" title="AVG LQS">
+                <span class="summary-badge-only" title="AVG LQS" style="--pb: #6f42c1;">
                     <span class="summary-badge-dot" style="background-color: #6f42c1;"></span>
                     <span><span class="pb-pre">AVG </span>LQS:</span>
                     <span class="summary-badge-value" id="avg-lqs-badge">-</span>
+                </span>
+                <span class="summary-badge-only pi-count-badge" style="--pb: #198754;" title="Hist: SKUs with a push date / all SKUs">
+                    <span class="summary-badge-dot" style="background-color: #198754;"></span>
+                    <span>Hist:</span>
+                    <span class="summary-badge-value" id="hist-hdr-count"></span>
+                </span>
+                <span class="summary-badge-only pi-count-badge" style="--pb: #dc3545;" title="Push Pending: channels whose last price push did NOT go through (all SKUs)">
+                    <span class="summary-badge-dot" style="background-color: #dc3545;"></span>
+                    <span>Push Pending:</span>
+                    <span class="summary-badge-value" id="pp-hdr-count" style="color:#dc3545;"></span>
                 </span>
             </div>
             {{-- Red alert while at least one channel price push is still pending (retried hourly, e-mailed to software5@5core.com) --}}
@@ -5462,7 +5481,7 @@
                     headerTooltip: "Push history dot (green ≤7d, yellow 8–14d, red >14d). Header count = SKUs pushed / all SKUs. Click a SKU's dot to see its push history.",
                     // "Hist  pushed/ALL" — SKUs with a push / all SKUs (kept in histHeaderCountText, refreshed on every load)
                     titleFormatter: function() {
-                        return 'Hist <span id="hist-hdr-count" style="font-weight:600;">' + histHeaderCountText + '</span>';
+                        return 'Hist'; // pushed/ALL count lives in the totals bar above the table (#hist-hdr-count)
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -5499,7 +5518,7 @@
                     sorterParams: { alignEmptyValues: "bottom" },
                     headerTooltip: "Channels whose last price push did NOT succeed (pending / retried hourly). Click a red number to see the channels and the reason.",
                     titleFormatter: function() {
-                        return 'Push<br>Pending <span id="pp-hdr-count" style="color:#dc3545;font-weight:700;">' + pushPendingHeaderCountText + '</span>';
+                        return 'Push<br>Pending'; // total count lives in the totals bar above the table (#pp-hdr-count)
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
