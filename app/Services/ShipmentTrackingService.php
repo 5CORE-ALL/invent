@@ -149,7 +149,7 @@ class ShipmentTrackingService
         $out = [];
         if ($byProvider['usps'] !== []) {
             if ($this->hasUsps()) {
-                $out += $this->trackUsps($byProvider['usps']);
+                $out += $this->trackUspsStrippingRouting($byProvider['usps']);
             } else {
                 foreach ($byProvider['usps'] as $s) {
                     $out[$s['number']] = $this->transientResult('usps', 'USPS API credentials are not configured', 'not_configured');
@@ -331,6 +331,55 @@ class ShipmentTrackingService
     }
 
     // ── USPS ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Labels scanned as GS1-128 barcodes carry a routing prefix: "420" + 5-digit ZIP (or ZIP+4) in front of the
+     * 22-digit USPS tracking number (e.g. 420301539334610597205358217998 -> 9334610597205358217998).
+     * USPS's tracking API only knows the 22-digit number and answers "Tracking is not available" for the long form,
+     * which kept those parcels on Scan Pending even though they were scanned.
+     */
+    public static function uspsApiNumber(string $number): string
+    {
+        $n = preg_replace('/\s+/', '', trim($number)) ?? '';
+        if (preg_match('/^420(?:\d{5}|\d{9})(9\d{21})$/', $n, $m) === 1) {
+            return $m[1];
+        }
+
+        return $n;
+    }
+
+    /**
+     * Ask USPS with the bare tracking number, answer under the number the order was saved with.
+     *
+     * @param  list<array{number: string, carrier: ?string}>  $shipments
+     * @return array<string, array<string, mixed>>
+     */
+    protected function trackUspsStrippingRouting(array $shipments): array
+    {
+        $ask = [];
+        $back = [];
+        foreach ($shipments as $s) {
+            $api = self::uspsApiNumber((string) $s['number']);
+            if (! isset($back[$api])) {
+                $ask[] = ['number' => $api, 'carrier' => $s['carrier'] ?? null];
+            }
+            $back[$api][] = (string) $s['number'];
+        }
+
+        $res = $this->trackUsps($ask);
+        $out = [];
+        foreach ($back as $api => $originals) {
+            $r = $res[$api] ?? $res[(string) $api] ?? null;
+            if ($r === null) {
+                continue;
+            }
+            foreach ($originals as $orig) {
+                $out[$orig] = $r;
+            }
+        }
+
+        return $out;
+    }
 
     /**
      * @param  list<array{number: string, carrier: ?string}>  $shipments
