@@ -32,7 +32,8 @@ class PricePushPendingService
     /**
      * Rows that count for the red alert on /price-increase, its Hist-column counters and the alert e-mail.
      * AliExpress is left out, and so is every row whose SKU is "not listed" on the channel (that one goes to
-     * the listing task for Shreya instead, see createListingTask()).
+     * the listing task for Shreya instead, see createListingTask()) and every row stopped by a daily API limit
+     * (429 "Retry after N seconds" — retried automatically once the limit resets).
      */
     public static function isAlertable($row): bool
     {
@@ -40,7 +41,13 @@ class PricePushPendingService
             return false;
         }
 
-        return ! self::isListingNotFound((string) $row->last_error);
+        $err = (string) $row->last_error;
+        // "Daily API limit of 25,000 requests reached … Retry after N seconds": temporary, paused and retried automatically
+        if (self::rateLimitSeconds($err) !== null || preg_match('/daily\s+api\s+limit/i', $err)) {
+            return false;
+        }
+
+        return ! self::isListingNotFound($err);
     }
 
     /** Outstanding rows that are shown / mailed as "NOT pushed yet" (see isAlertable()). */
