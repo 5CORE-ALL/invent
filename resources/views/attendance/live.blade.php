@@ -126,13 +126,18 @@
             try {
                 const stream = canvas.captureStream(8);
                 video.srcObject = stream;
+                // The canvas is only an off-screen frame buffer; show just the <video>
+                // so the same stream is not rendered twice (split side by side).
                 video.classList.add('is-on');
-                canvas.classList.add('is-on');
+                canvas.classList.remove('is-on');
                 video.play().catch(function () {});
                 videoBound = true;
                 startRecorder(stream);
             } catch (_) {
+                // captureStream unsupported: fall back to showing the canvas alone.
+                video.classList.remove('is-on');
                 canvas.classList.add('is-on');
+                videoBound = true;
             }
         }
 
