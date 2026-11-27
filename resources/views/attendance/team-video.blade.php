@@ -196,7 +196,7 @@
     <div class="tmv-stage">
         <div class="tmv-grid" id="tmvGrid">
             @forelse($tiles as $tile)
-            <article class="tmv-tile" data-user-id="{{ $tile['user_id'] }}" data-start-url="{{ $tile['start_url'] }}" data-name="{{ $tile['name'] }}">
+            <article class="tmv-tile" data-user-id="{{ $tile['user_id'] }}" data-start-url="{{ $tile['start_url'] }}" data-live-url="{{ $tile['live_url'] }}" data-name="{{ $tile['name'] }}">
                 <img alt="" @if($tile['poster']) src="{{ $tile['poster'] }}" class="is-poster" @endif>
                 <canvas class="tmv-canvas"></canvas>
                 <div class="tmv-wait">
@@ -631,8 +631,13 @@
                 play();
             }
 
-            playBtn.addEventListener('click', function (e) { e.stopPropagation(); play(); openFocus(tile); });
-            el.addEventListener('click', function () { if (!tile.minimized) { play(); openFocus(tile); } });
+            // Full-size video always opens in a new browser tab (never an in-page modal).
+            function openInTab() {
+                const url = el.dataset.liveUrl;
+                if (url) window.open(url, '_blank');
+            }
+            playBtn.addEventListener('click', function (e) { e.stopPropagation(); play(); });
+            el.addEventListener('click', function () { if (!tile.minimized) openInTab(); });
             pauseBtn.addEventListener('click', function (e) { e.stopPropagation(); pause(); });
             minBtn.addEventListener('click', function (e) { e.stopPropagation(); minimize(); });
 

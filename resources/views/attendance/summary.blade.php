@@ -1227,15 +1227,8 @@
 
     function openLiveWatch(url, name) {
         if (!url) return;
-        const w = 1100;
-        const h = 740;
-        const left = Math.max(0, Math.round((window.screen.width - w) / 2));
-        const top = Math.max(0, Math.round((window.screen.height - h) / 2));
-        const features = 'popup=yes,width=' + w + ',height=' + h + ',left=' + left + ',top=' + top + ',resizable=yes,scrollbars=no';
-        const popup = window.open(url, 'live-watch-' + encodeURIComponent(name || 'employee'), features);
-        if (!popup) {
-            window.open(url, '_blank');
-        }
+        // Always open the live video in a new browser tab (not a popup window / modal).
+        window.open(url, '_blank');
     }
 
     function showTimelineModal() {

@@ -50,6 +50,7 @@ class AttendanceLiveController extends Controller
             'live_label' => $row['live_label'] ?? 'Absent',
             'poster' => $row['last_image_thumb'] ?? null,
             'start_url' => route('attendance.live.start', $row['user_id']),
+            'live_url' => route('attendance.live.show', $row['user_id']),
         ])
             // People who are not clocked in ("absent") go to the bottom; everyone else keeps name order.
             ->sort(fn (array $a, array $b) => [$a['live_status'] === 'absent' ? 1 : 0, mb_strtolower($a['name'])]
