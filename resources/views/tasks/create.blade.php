@@ -61,6 +61,117 @@
             .select2-container--open { z-index: 2000; }
         }
 
+        /* ============================================================
+           APP-STYLE MINIMAL CREATE SCREEN (phones only)
+           ============================================================ */
+        @media (max-width: 767.98px) {
+            html, body { overflow-x: clip; max-width: 100%; }
+
+            /* Native-app feel: only the slim app bar on top + bottom tab bar.
+               Desktop topbar and floating buttons are hidden on this screen. */
+            .navbar-custom { display: none !important; }
+            #penaltyFab, #salaryFab, #kpiFab, #mrqFab { display: none !important; }
+            body .content-page { padding-left: 0 !important; padding-right: 0 !important; }
+            body .content-page .content { background: #fff !important; padding-top: 56px !important; }
+            .container-fluid { padding-left: 0; padding-right: 0; }
+
+            .mobile-view { padding: 0 !important; }
+            .mobile-view .card { box-shadow: none !important; border-radius: 0 !important; background: transparent; }
+            .mobile-view .card-header { display: none; }          /* app bar already shows the title */
+            .mobile-view .card-body {
+                padding: 20px 20px calc(150px + env(safe-area-inset-bottom, 0px)) !important;
+            }
+
+            /* Quiet, uppercase field labels */
+            .mobile-view .form-label {
+                font-size: 11px;
+                font-weight: 600 !important;
+                letter-spacing: 0.7px;
+                text-transform: uppercase;
+                color: #8a94a6;
+                margin-bottom: 6px;
+            }
+            .mobile-view .mb-3 { margin-bottom: 1.5rem !important; }
+
+            /* Task: big underline input, no box */
+            .mobile-view input.form-control-lg {
+                border: 0;
+                border-bottom: 2px solid #e5e7eb;
+                border-radius: 0;
+                padding: 8px 0 10px;
+                font-size: 20px;
+                font-weight: 500;
+                background: transparent;
+                box-shadow: none;
+            }
+            .mobile-view input.form-control-lg:focus { border-bottom-color: #667eea; box-shadow: none; }
+            .mobile-view input.form-control-lg::placeholder { color: #c0c6d1; font-weight: 400; }
+
+            /* Assign To: soft pill field */
+            .mobile-view .select2-container--bootstrap-5 .select2-selection {
+                min-height: 52px;
+                background: #f3f4f6;
+                border: 0;
+                border-radius: 14px;
+                padding: 0.75rem 1rem;
+                font-size: 16px;
+            }
+            .mobile-view .select2-container--bootstrap-5.select2-container--focus .select2-selection,
+            .mobile-view .select2-container--bootstrap-5.select2-container--open .select2-selection {
+                box-shadow: 0 0 0 2px #667eea;
+                background: #fff;
+            }
+            .mobile-view .select2-selection__placeholder { color: #9aa3b2 !important; }
+            .mobile-view #multi-assignee-search {
+                background: #f3f4f6; border: 0; border-radius: 14px; min-height: 48px; font-size: 16px;
+            }
+            .mobile-view .form-check-label small { color: #667eea; font-weight: 600; }
+
+            /* Photo: two compact tiles instead of big buttons + paste box (paste is a desktop thing) */
+            .mobile-photo-actions { grid-template-columns: 1fr 1fr; gap: 12px !important; margin-bottom: 0 !important; }
+            .mobile-photo-actions .btn {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                padding: 16px 8px;
+                border: 0;
+                border-radius: 16px;
+                background: #f3f4f6;
+                color: #4b5563;
+                font-size: 13px;
+                font-weight: 600;
+                box-shadow: none;
+            }
+            .mobile-photo-actions .btn i { font-size: 28px; line-height: 1; color: #667eea; }
+            .mobile-photo-actions .btn:active { background: #e5e7eb; }
+            .mobile-view #paste-box { display: none !important; }
+
+            /* Save: sticky bar above the bottom tab bar */
+            .mobile-save-bar {
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: calc(65px + env(safe-area-inset-bottom, 0px));
+                z-index: 998;
+                padding: 12px 16px;
+                background: rgba(255, 255, 255, 0.96);
+                backdrop-filter: blur(8px);
+                border-top: 1px solid #eef0f4;
+            }
+            .mobile-save-bar .btn {
+                min-height: 52px;
+                border: 0;
+                border-radius: 16px;
+                font-size: 16px;
+                font-weight: 700;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: #fff;
+                box-shadow: 0 6px 16px rgba(102, 126, 234, 0.35);
+            }
+        }
+
         /* Desktop View - ensure it's hidden on mobile */
         @media (max-width: 767.98px) {
             .desktop-view {
@@ -112,7 +223,7 @@
                                    class="form-control form-control-lg @error('title') is-invalid @enderror" 
                                    id="mobile_title" 
                                    name="title" 
-                                   placeholder="Enter task description" 
+                                   placeholder="What needs to be done?" 
                                    value="{{ old('title') }}" 
                                    required
                                    autofocus>
@@ -195,12 +306,12 @@
                                    style="display: none;">
                             
                             <!-- Action Buttons -->
-                            <div class="d-grid gap-2 mb-2">
+                            <div class="d-grid gap-2 mb-2 mobile-photo-actions">
                                 <button type="button" class="btn btn-success btn-lg" id="take-photo-btn">
-                                    <i class="mdi mdi-camera me-2"></i>📷 Take Photo with Camera
+                                    <i class="mdi mdi-camera"></i><span>Camera</span>
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary btn-lg" id="choose-file-btn">
-                                    <i class="mdi mdi-folder-open me-2"></i>📁 Choose from Files
+                                    <i class="mdi mdi-image-multiple"></i><span>Gallery</span>
                                 </button>
                             </div>
                             
@@ -236,7 +347,7 @@
                         </div>
 
                         <!-- Action Buttons -->
-                        <div class="d-grid gap-2">
+                        <div class="d-grid gap-2 mobile-save-bar">
                             <button type="submit" class="btn btn-lg btn-danger">
                                 <i class="mdi mdi-check-circle me-1"></i> Save Task
                             </button>
