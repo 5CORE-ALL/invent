@@ -671,6 +671,11 @@
         .lossx-chip2 { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 4px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: .68rem; font-weight: 700; color: #111; }
         .lossx-chip2 i { font-style: normal; font-size: .54rem; font-weight: 700; color: #64748b; }
         .lossx-more { display: block; margin: 8px auto 0; }
+        .lossx-copy { border: 0; background: transparent; color: inherit; opacity: .45; padding: 0 3px; margin-left: 4px; font-size: .72rem; line-height: 1; cursor: pointer; vertical-align: baseline; }
+        .lossx-copy:hover, .lossx-copy:focus-visible { opacity: 1; outline: none; }
+        .lossx-copy.is-done { opacity: 1; color: #4ade80; }
+        .lossx-fam:not(.has-open) .lossx-item.is-sib { display: none; }
+        .lossx-tag.lossx-sibcount { background: rgba(125,211,252,.16); color: #7dd3fc; }
         .lossx-abadges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; position: relative; z-index: 1; }
         .lossx-abadge { border: 2px solid transparent; border-radius: 99px; padding: 5px 14px; font-size: .78rem; font-weight: 800; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: transform .12s, box-shadow .12s; }
         .lossx-abadge b { background: rgba(0,0,0,.28); border-radius: 99px; padding: 0 8px; font-variant-numeric: tabular-nums; }
@@ -2378,12 +2383,43 @@
                 if (j.success) { actionMap = j.actions || {}; renderModal(); }
             }).catch(function () {});
     }
-    function lossItemHtml(g, rank, pi) {
+    /** Copy icon: copies the SKU / order number (button is excluded from the row's expand click). */
+    function copyBtn(text, what) {
+        return '<button type="button" class="lossx-copy" data-copy="' + esc(text) + '" title="Copy ' + esc(what) + '" aria-label="Copy ' + esc(what) + '"><i class="fas fa-copy" aria-hidden="true"></i></button>';
+    }
+
+    function copyText(text, btn) {
+        const done = function () {
+            toast('Copied: ' + text);
+            if (btn) {
+                const ic = btn.querySelector('i');
+                btn.classList.add('is-done');
+                if (ic) ic.className = 'fas fa-check';
+                setTimeout(function () { btn.classList.remove('is-done'); if (ic) ic.className = 'fas fa-copy'; }, 1200);
+            }
+        };
+        const fallback = function () {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+            document.body.appendChild(ta);
+            ta.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            ta.remove();
+            if (ok) done(); else toast('Could not copy', true);
+        };
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback);
+        else fallback();
+    }
+
+    function lossItemHtml(g, rank, pi, sibCount) {
         const channels = Object.keys(g.channels).sort().map(function (c) {
             return '<span class="lossx-tag">' + esc(c) + ' · ' + g.channels[c] + '</span>';
         }).join('');
         const orders = g.orders.slice().sort(function (a, b) { return (a.pct ?? 0) - (b.pct ?? 0); }).slice(0, 60).map(function (o) {
-            return '<tr><td>' + esc(o.channel) + '</td><td>' + esc(o.order_id) + '</td><td>' + esc(o.date) + '</td><td>' + esc(o.qty) +
+            return '<tr><td>' + esc(o.channel) + '</td><td>' + esc(o.order_id) + copyBtn(o.order_id, 'order number') + '</td><td>' + esc(o.date) + '</td><td>' + esc(o.qty) +
                 '</td><td>' + (o.amount === null ? '—' : money(o.amount, 2)) + '</td><td class="lossx-neg">' + pct(o.pct) +
                 '</td><td>' + pct(o.nroi) + '</td><td>' + pct(o.npft) +
                 '</td><td class="lossx-neg">' + (o.loss ? money(o.loss) : '—') + '</td></tr>';
@@ -2393,8 +2429,8 @@
         return '<div class="lossx-item' + (open ? ' is-open' : '') + actClass(skuKey(g.sku)) + '" data-key="' + esc(skuKey(g.sku)) + '">' +
             '<div class="lossx-row" role="button" tabindex="0">' +
                 imgHtml(pi, rank) +
-                '<div style="min-width:0"><div class="lossx-sku" title="' + esc(g.title || g.sku) + '">' + esc(g.sku) + '<i class="fas fa-chevron-down lossx-chev" aria-hidden="true"></i></div>' +
-                    '<div class="lossx-tags">' + channels + '</div></div>' +
+                '<div style="min-width:0"><div class="lossx-sku" title="' + esc(g.title || g.sku) + '">' + esc(g.sku) + copyBtn(g.sku, 'SKU') + '<i class="fas fa-chevron-down lossx-chev" aria-hidden="true"></i></div>' +
+                    '<div class="lossx-tags">' + channels + (sibCount > 0 ? '<span class="lossx-tag lossx-sibcount" title="Siblings show when this product is open">+' + sibCount + ' sibling' + (sibCount === 1 ? '' : 's') + '</span>' : '') + '</div></div>' +
                 numCells({ orders: g.orderKeys.size, units: g.qty, worst: g.worst, nroi: g.nroi, npft: g.npft, loss: g.loss }) +
                 invCells(pi) +
                 '<div>' + lmpHtml(pi) + '</div>' +
@@ -2424,7 +2460,7 @@
         return '<div class="lossx-item is-sib' + actClass(skuKey(pi.sku)) + '" data-key="' + esc(skuKey(pi.sku)) + '">' +
             '<div class="lossx-row">' +
                 imgHtml(pi, 0) +
-                '<div style="min-width:0"><div class="lossx-sku">' + esc(pi.sku) + '<span class="lossx-sibtag">sibling</span></div></div>' +
+                '<div style="min-width:0"><div class="lossx-sku">' + esc(pi.sku) + copyBtn(pi.sku, 'SKU') + '<span class="lossx-sibtag">sibling</span></div></div>' +
                 numCells(sibStats(pi, p)) +
                 invCells(pi) +
                 '<div>' + lmpHtml(pi) + '</div>' +
@@ -2516,9 +2552,9 @@
             player.idx = Math.max(0, Math.min(player.idx, flat.length - 1));
             const cur = flat[player.idx];
             openRows.add(skuKey(cur.g.sku));
-            let one = lossItemHtml(cur.g, player.idx + 1, piRows.get(skuKey(cur.g.sku)));
+            let one = lossItemHtml(cur.g, player.idx + 1, piRows.get(skuKey(cur.g.sku)), cur.fam.sibs.length);
             cur.fam.sibs.forEach(function (r) { one += sibItemHtml(r, p); });
-            list.innerHTML = '<div class="lossx-grid">' + COLHEAD + '<div class="lossx-fam">' + one + '</div></div>';
+            list.innerHTML = '<div class="lossx-grid">' + COLHEAD + '<div class="lossx-fam has-open">' + one + '</div></div>';
             playerSync();
             return;
         }
@@ -2528,9 +2564,10 @@
         let rank = 0;
         const body = slice.map(function (fam) {
             let h = '';
-            fam.losses.forEach(function (g) { h += lossItemHtml(g, ++rank, piRows.get(skuKey(g.sku))); });
+            fam.losses.forEach(function (g) { h += lossItemHtml(g, ++rank, piRows.get(skuKey(g.sku)), fam.sibs.length); });
             fam.sibs.forEach(function (r) { h += sibItemHtml(r, p); });
-            return '<div class="lossx-fam">' + h + '</div><div class="lossx-fam-gap"></div>';
+            const anyOpen = fam.losses.some(function (g) { return openRows.has(skuKey(g.sku)); });
+            return '<div class="lossx-fam' + (anyOpen ? ' has-open' : '') + '">' + h + '</div><div class="lossx-fam-gap"></div>';
         }).join('');
         const left = fams.length - slice.length;
         list.innerHTML = '<div class="lossx-grid">' + COLHEAD + body +
@@ -2823,6 +2860,8 @@
         const go = e.target.closest('.lossx-sp-go');
         if (go) { e.preventDefault(); pushSku(go.closest('.lossx-sp')); return; }
         if (e.target.closest('#lossxMore')) { shownFamilies += FAMILY_PAGE; renderModal(); return; }
+        const cp = e.target.closest('.lossx-copy');
+        if (cp) { e.preventDefault(); e.stopPropagation(); copyText(cp.dataset.copy || '', cp); return; }
         const hb = e.target.closest('.lossx-hist-btn');
         if (hb) {
             const it = hb.closest('.lossx-item');
@@ -2834,6 +2873,8 @@
         const item = row && row.parentElement;
         if (!item || !item.querySelector('.lossx-orders')) return;
         const open = item.classList.toggle('is-open');
+        const famEl = item.closest('.lossx-fam');
+        if (famEl) famEl.classList.toggle('has-open', !!famEl.querySelector('.lossx-item:not(.is-sib).is-open'));   // siblings follow the open product
         const k = item.dataset.key;
         if (open) openRows.add(k); else openRows.delete(k);
     });

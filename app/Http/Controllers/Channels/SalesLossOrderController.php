@@ -392,7 +392,10 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
             return response()->json(['success' => false, 'message' => 'Run php artisan migrate (slo_loss_actions).', 'actions' => (object) [], 'reasons' => ['Clearance']], 503);
         }
 
-        $latestIds = DB::table('slo_loss_actions')->selectRaw('MAX(id) as id')->groupBy('sku_key')->pluck('id');
+        // Actions are valid for one order day: at 12am (same New York day as the orders / Today card) every product is Open again.
+        // Older rows stay in the history.
+        $dayStart = now($this->sofTimezone())->startOfDay()->setTimezone(config('app.timezone'))->toDateTimeString();
+        $latestIds = DB::table('slo_loss_actions')->where('created_at', '>=', $dayStart)->selectRaw('MAX(id) as id')->groupBy('sku_key')->pluck('id');
         $actions = [];
         foreach (DB::table('slo_loss_actions')->whereIn('id', $latestIds)->get() as $row) {
             if ($row->action === 'open') {
