@@ -1142,7 +1142,7 @@ trait MiraklMcmBulletImport
         }
         $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
         if ($hierarchy === null || trim($hierarchy) === '') {
-            return ['success' => false, 'message' => "Pick a {$label} category for {$sku} before publishing."];
+            return ['success' => false, 'message' => "Pick a {$label} category for {$sku} before publishing (click Change category on that SKU in the publish window)."];
         }
 
         $extraRequired = [];

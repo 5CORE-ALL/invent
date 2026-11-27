@@ -424,6 +424,12 @@
         return c === 'newegg' || c === 'neweggb2c' || c === 'neweggb2b';
     }
 
+    // Best Buy USA, Macy's and Purchasing Power (Mirakl MCM): the category is a hierarchy code picked per SKU.
+    function isMiraklChannel() {
+        const c = String(cfg().channel || '').toLowerCase().replace(/[\s_'-]/g, '');
+        return c === 'macys' || c === 'macy' || c === 'bestbuy' || c === 'bestbuyusa' || c === 'purchasingpower';
+    }
+
     function isAlibabaChannel() {
         return String(cfg().channel || '').toLowerCase() === 'alibaba';
     }
@@ -1297,7 +1303,7 @@
 
     function perSkuCategoryMode() {
         if (selectedPublishMode() !== 'single') return false;
-        return isEbayChannel() || isTiktokChannel() || isSheinChannel() || isWayfairChannel() || isReverbChannel();
+        return isEbayChannel() || isTiktokChannel() || isSheinChannel() || isWayfairChannel() || isReverbChannel() || isMiraklChannel();
     }
 
     function ensureSkuCatStyle() {
@@ -1406,6 +1412,8 @@
         const id = String(cat.id || '').trim();
         const name = String(cat.path || cat.name || '').trim();
         if (isReverbChannel()) return { category_id: '', category_name: name, category_uuid: id };
+        // Best Buy / Macy's / Purchasing Power use Mirakl hierarchy codes (text), not numbers.
+        if (isMiraklChannel()) return { category_id: '', category_name: id || name, category_uuid: '' };
         return { category_id: id.replace(/\D+/g, ''), category_name: name, category_uuid: '' };
     }
 
