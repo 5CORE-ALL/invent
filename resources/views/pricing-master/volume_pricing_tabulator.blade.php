@@ -36,6 +36,14 @@
             <div class="d-flex flex-wrap align-items-center mb-2" id="vpt-filter-bar">
                 <input type="text" id="vpt-parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 170px;">
                 <input type="text" id="vpt-sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 170px;">
+                <select id="vpt-inv-filter" class="form-select form-select-sm" style="width: 130px; height: 28px; font-size: 12px;">
+                    <option value="all">INV: All</option>
+                    <option value="gt0" selected>INV: &gt; 0</option>
+                    <option value="zero">INV: 0</option>
+                    <option value="1to10">INV: 1–10</option>
+                    <option value="11to50">INV: 11–50</option>
+                    <option value="gt50">INV: 50+</option>
+                </select>
                 <select id="vpt-dil-filter" class="form-select form-select-sm" style="width: 150px; height: 28px; font-size: 12px;" title="Dil = OV L30 ÷ INV">
                     <option value="all">Dil: All</option>
                     <option value="zero">Dil: 0%</option>
@@ -322,9 +330,17 @@
                 const parent = document.getElementById('vpt-parent-search').value.trim().toLowerCase();
                 const sku = document.getElementById('vpt-sku-search').value.trim().toLowerCase();
                 const mode = dilSelect.value;
+                const invMode = invSelect.value;
                 table.setFilter(function(d) {
                     if (parent && String(d.parent || '').toLowerCase().indexOf(parent) === -1) return false;
                     if (sku && String(d.sku || '').toLowerCase().indexOf(sku) === -1) return false;
+
+                    const inv = Math.round(num(d.inv));
+                    if (invMode === 'gt0' && !(inv > 0)) return false;
+                    if (invMode === 'zero' && inv !== 0) return false;
+                    if (invMode === '1to10' && !(inv >= 1 && inv <= 10)) return false;
+                    if (invMode === '11to50' && !(inv >= 11 && inv <= 50)) return false;
+                    if (invMode === 'gt50' && !(inv > 50)) return false;
 
                     const v = Math.round(dil(d));
                     if (mode === 'zero' && v !== 0) return false;
@@ -336,6 +352,8 @@
                 badge.textContent = 'Rows: ' + table.getDataCount('active');
             }
             const dilSelect = document.getElementById('vpt-dil-filter');
+            const invSelect = document.getElementById('vpt-inv-filter');
+            invSelect.addEventListener('change', applySearch);
             document.getElementById('vpt-parent-search').addEventListener('input', applySearch);
             document.getElementById('vpt-sku-search').addEventListener('input', applySearch);
             dilSelect.addEventListener('change', applySearch);
@@ -348,8 +366,8 @@
             }).then(function(payload) {
                 const rows = (payload && payload.data) || [];
                 return table.setData(rows).then(function() {
-                    status.textContent = rows.length + ' rows';
-                    badge.textContent = 'Rows: ' + rows.length;
+                    status.textContent = rows.length + ' rows loaded';
+                    applySearch(); // the filters (INV > 0 by default) apply to the loaded rows
                 });
             }).catch(function(err) {
                 status.textContent = (err && err.message) || 'Could not load data';
