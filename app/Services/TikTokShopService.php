@@ -3405,7 +3405,28 @@ class TikTokShopService
                 ],
             ];
 
-            $response = $this->client->Product->updatePrice($productId, $params);
+            // Root cause of "cURL error 28: SSL connection timeout": a single slow TLS handshake (connect_timeout is 10 s)
+            // used to fail the whole push. Setting a price is idempotent, so a transient network failure is simply retried
+            // a few times with a growing pause before it is reported as failed.
+            $attempt = 0;
+            while (true) {
+                $attempt++;
+                try {
+                    $response = $this->client->Product->updatePrice($productId, $params);
+                    break;
+                } catch (\Throwable $netEx) {
+                    if ($attempt >= self::PRICE_PUSH_NETWORK_ATTEMPTS || ! self::isTransientNetworkError($netEx->getMessage())) {
+                        throw $netEx;
+                    }
+                    Log::warning('TikTok updateProductPrice: transient network error, retrying', [
+                        'channel' => $this->configKey,
+                        'product_id' => $productId,
+                        'attempt' => $attempt,
+                        'error' => $netEx->getMessage(),
+                    ]);
+                    sleep($attempt * 2);
+                }
+            }
             $this->lastResponse = $response;
 
             if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
@@ -3436,6 +3457,14 @@ class TikTokShopService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    private const PRICE_PUSH_NETWORK_ATTEMPTS = 3;
+
+    /** cURL connect / TLS / timeout / reset failures that say nothing about the request itself (safe to retry). */
+    public static function isTransientNetworkError(?string $message): bool
+    {
+        return (bool) preg_match('/curl\s+error\s+(6|7|28|35|52|55|56)\b|ssl\s+connection\s+timeout|timed\s+out|connection\s+(reset|refused)|could\s+not\s+resolve\s+host/i', (string) $message);
     }
 
     public static function isIpAllowListError(?string $message): bool
