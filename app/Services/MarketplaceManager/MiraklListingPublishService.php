@@ -337,6 +337,28 @@ class MiraklListingPublishService
     }
 
     /**
+     * The category this SKU already has on the marketplace (its saved offer / product), so the publish window
+     * can show it pre-filled. Never guessed from the title: a new product needs the user to pick one.
+     *
+     * @return array{id: string, path: string, name: string}|null
+     */
+    public function suggestCategoryForSku(string $sku, string $channel): ?array
+    {
+        $channel = $this->normalizeChannel($channel);
+        $code = $this->existingCategoryCode(trim($sku), $channel);
+        if ($code === '') {
+            return null;
+        }
+        foreach ($this->categoryRowsForChannel($channel) as $row) {
+            if (strcasecmp($row['id'], $code) === 0) {
+                return ['id' => $row['id'], 'path' => $row['path'], 'name' => $row['name']];
+            }
+        }
+
+        return ['id' => $code, 'path' => $code, 'name' => $code];
+    }
+
+    /**
      * @return array{success: bool, categories: list<array{id: string, name: string, path: string}>}
      */
     public function searchListingCategories(string $q, string $channel, string $title = ''): array

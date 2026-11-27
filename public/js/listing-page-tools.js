@@ -1314,6 +1314,7 @@
             'body.lp-per-sku-cat #listingPublishModal .listing-publish-category{display:none !important;}' +
             '.lp-cat-label{font-size:12px;line-height:1.3;word-break:break-word;}' +
             '.lp-cat-label.is-auto{color:#6c757d;font-style:italic;}' +
+            '.lp-cat-label.is-required{color:#b91c1c;font-weight:700;}' +
             '.lp-cat-results{max-height:170px;overflow:auto;border:1px solid #dee2e6;border-radius:4px;background:#fff;margin-top:4px;}' +
             '.lp-cat-item{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #f1f1f1;background:#fff;padding:4px 6px;font-size:12px;}' +
             '.lp-cat-item:hover{background:#eef4ff;}' +
@@ -1324,11 +1325,13 @@
     function skuCategoryCell(sku) {
         const cat = skuCats[sku] || {};
         const text = String(cat.path || cat.name || '').trim();
+        // Mirakl channels never guess a category for a new product: it has to be picked.
+        const required = isMiraklChannel() && !text;
         return '<td class="lp-cat-cell" data-sku="' + escapeHtml(sku) + '" style="min-width:230px;">' +
-            '<div class="lp-cat-label' + (text ? '' : ' is-auto') + '">' +
-            (text ? escapeHtml(text) : 'Auto-detect from product type') + '</div>' +
+            '<div class="lp-cat-label' + (required ? ' is-required' : (text ? '' : ' is-auto')) + '">' +
+            (text ? escapeHtml(text) : (required ? 'Pick a category (required)' : 'Auto-detect from product type')) + '</div>' +
             '<button type="button" class="btn btn-link btn-sm p-0 lp-cat-change" data-sku="' + escapeHtml(sku) + '">Change category</button>' +
-            '<div class="lp-cat-editor" hidden>' +
+            '<div class="lp-cat-editor"' + (required ? '' : ' hidden') + '>' +
             '<input type="text" class="form-control form-control-sm lp-cat-input" placeholder="Search a category…" autocomplete="off">' +
             '<div class="lp-cat-results" hidden></div></div></td>';
     }
@@ -1399,6 +1402,7 @@
             if (label) {
                 label.textContent = path || id;
                 label.classList.remove('is-auto');
+                label.classList.remove('is-required');
             }
             const editor = cell.querySelector('.lp-cat-editor');
             if (editor) editor.hidden = true;
@@ -2472,6 +2476,24 @@
                 const weightEl = document.getElementById('listing-publish-weight-lb');
                 if (weightEl) weightEl.focus();
                 return;
+            }
+            if (isMiraklChannel() && perSkuCategoryMode()) {
+                const noCat = [];
+                groups.forEach(function (g) {
+                    (g.skus || []).forEach(function (s) {
+                        const k = String(s || '').trim();
+                        if (!String((skuCats[k] || {}).id || '').trim()) noCat.push(k);
+                    });
+                });
+                if (noCat.length) {
+                    notify('danger', 'Pick a category for: ' + noCat.join(', ') + '. Use the Category column in this window.');
+                    document.querySelectorAll('#listingPublishModal .lp-cat-cell').forEach(function (cell) {
+                        if (noCat.indexOf(String(cell.getAttribute('data-sku') || '')) === -1) return;
+                        const editor = cell.querySelector('.lp-cat-editor');
+                        if (editor) editor.hidden = false;
+                    });
+                    return;
+                }
             }
             if (isNeweggChannel() && perParentCategoryMode()) {
                 const missingCat = groups.filter(function (g) { return !String(g.category_id || '').replace(/\D+/g, ''); });

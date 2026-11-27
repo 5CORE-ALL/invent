@@ -144,7 +144,8 @@ class ListingVariationPreviewService
     {
         $isReverb = in_array($channel, ['reverb', 'reverbcom'], true);
         $supported = $isReverb || $channel === 'aliexpress' || $channel === 'wayfair'
-            || $this->isEbayChannel($channel) || $this->isTiktokChannel($channel) || $this->isSheinChannel($channel);
+            || $this->isEbayChannel($channel) || $this->isTiktokChannel($channel) || $this->isSheinChannel($channel)
+            || $this->isMiraklChannel($channel);
         if (! $supported) {
             return [];
         }
@@ -231,6 +232,8 @@ class ListingVariationPreviewService
                 $row = $this->tiktok->suggestCategoryForSku($sku, $channel);
             } elseif ($this->isSheinChannel($channel)) {
                 $row = $this->shein->suggestCategoryForSku($sku);
+            } elseif ($this->isMiraklChannel($channel)) {
+                $row = $this->mirakl->suggestCategoryForSku($sku, $channel);
             } else {
                 return null;
             }
