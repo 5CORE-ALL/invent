@@ -653,7 +653,9 @@
         .lossx-img { width: 44px; height: 44px; object-fit: cover; border-radius: 12px; background: #fff; display: block; }
         .lossx-img.is-missing { display: grid; place-items: center; background: rgba(255,255,255,.08); color: rgba(255,255,255,.4); }
         .lossx-imgbox .lossx-rank { position: absolute; left: -5px; top: -5px; width: 20px; height: 20px; border-radius: 7px; font-size: .62rem; border: 2px solid #0d0e1c; }
-        .lossx-item.is-sib { background: rgba(255,255,255,.02); border-style: dashed; border-left: 3px dashed rgba(125,211,252,.55); }
+        .lossx-item.is-sib { background: rgba(147,197,253,.16); border: 1px solid rgba(147,197,253,.38); border-left: 3px solid #7dd3fc; }
+        .lossx-item.is-sib:hover { border-color: rgba(147,197,253,.65); border-left-color: #bae6fd; }
+        .lossx-item.is-sib .lossx-sku { color: #f0f9ff; }
         .lossx-item.is-sib .lossx-row { cursor: default; padding-top: 5px; padding-bottom: 5px; }
         .lossx-item.is-sib .lossx-img, .lossx-item.is-sib .lossx-imgbox { width: 36px; height: 36px; }
         .lossx-sibtag { font-size: .58rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: 1px 6px; border-radius: 99px; background: rgba(125,211,252,.16); color: #7dd3fc; margin-left: 6px; vertical-align: middle; }
@@ -2361,13 +2363,13 @@
             .catch(function () { box.innerHTML = '<div class="lossx-title">Could not load the history.</div>'; });
     }
 
-    function saveAction(key, sku, action, reason) {
+    function saveAction(key, sku, action, reason, quiet) {
         postJson(ACTIONS_URL, { sku: sku, action: action, reason: reason || '' }).then(function (j) {
             needReason.delete(key);
             if (j.state) actionMap[key] = j.state; else delete actionMap[key];
             if (actionFilter !== 'all') renderModal(); else { refreshAct(key); paintActionBadges(); }
             document.querySelectorAll('#lossxList .lossx-item.is-hist').forEach(function (it) { if (it.dataset.key === key) loadHist(it); });
-            toast(sku + ': ' + (action === 'open' ? 'action cleared' : (action === 'fixed' ? 'marked Fixed' : 'ignored — ' + reason)));
+            if (!quiet) toast(sku + ': ' + (action === 'open' ? 'action cleared' : (action === 'fixed' ? 'marked Fixed' : 'ignored — ' + reason)));
         }).catch(function (err) {
             toast((err && err.message) || 'Could not save the action', true);
             refreshAct(key);
@@ -2743,6 +2745,12 @@
         });
         toast(m.sku + ': SPRICE $' + job.price.toFixed(2) + ' saved, pushing to all channels' + ((job.sibs || []).length ? ' + ' + job.sibs.length + ' sibling SKU(s)' : '') + '…');
         followPush(m.sku, job.startedAt);
+        // A pushed SPRICE = the product is dealt with: mark it Fixed (and the loss products among its siblings that got the price too)
+        saveAction(key, pi ? pi.sku : m.sku, 'fixed', '');
+        const lossKeys = new Set(periodGroups(current).map(function (g) { return skuKey(g.sku); }));
+        (job.sibs || []).forEach(function (s) {
+            if (lossKeys.has(skuKey(s.sku))) saveAction(skuKey(s.sku), s.sku, 'fixed', '', true);
+        });
     });
 
     /** ✓ / Enter: Push All for this SKU. */
