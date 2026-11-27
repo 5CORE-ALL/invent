@@ -115,6 +115,19 @@
 
     @include('layouts.shared/footer-scripts')
 
+    <script>
+        // Phones / installed app: tick "Remember me" by default so closing the app or a
+        // session timeout doesn't force another login. The user can still untick it.
+        (function () {
+            var box = document.getElementById('checkbox-signin');
+            if (!box) return;
+            var phone = window.matchMedia('(max-width: 767.98px)').matches
+                || window.matchMedia('(display-mode: standalone)').matches
+                || window.navigator.standalone === true;
+            if (phone) box.checked = true;
+        })();
+    </script>
+
 </body>
 
 </html>

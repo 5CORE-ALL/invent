@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Create Task', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Create Task', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'manifestUrl' => '/manifest-tasks.json', 'appTitle' => 'Invent Tasks'])
 
 @section('css')
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
@@ -148,6 +148,27 @@
             .mobile-photo-actions .btn:active { background: #e5e7eb; }
             .mobile-view #paste-box { display: none !important; }
 
+            /* Install-as-app card */
+            .mobile-install-card {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin: -4px 0 1.5rem;
+                padding: 12px 12px 12px 14px;
+                border-radius: 16px;
+                background: #eef0ff;
+            }
+            .mobile-install-card[hidden] { display: none; }
+            .mobile-install-card .mic-icon { font-size: 26px; line-height: 1; color: #667eea; }
+            .mobile-install-card .mic-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12px; color: #6b7280; line-height: 1.3; }
+            .mobile-install-card .mic-text strong { font-size: 14px; color: #1f2937; }
+            .mobile-install-card .mic-install {
+                border: 0; border-radius: 12px; padding: 8px 16px;
+                background: #667eea; color: #fff; font-weight: 700; font-size: 13px;
+            }
+            .mobile-install-card .mic-install[hidden] { display: none; }
+            .mobile-install-card .mic-close { border: 0; background: transparent; color: #9aa3b2; font-size: 22px; line-height: 1; padding: 0 4px; }
+
             /* Save: sticky bar above the bottom tab bar */
             .mobile-save-bar {
                 position: fixed;
@@ -214,6 +235,17 @@
                         <input type="hidden" name="etc_minutes" value="10">
                         <input type="hidden" name="tid" value="{{ now()->format('Y-m-d\TH:i') }}">
                         
+                        <!-- Install as app (shown only on phones, only when not already installed) -->
+                        <div class="mobile-install-card" id="mobile-install-card" hidden>
+                            <div class="mic-icon"><i class="mdi mdi-cellphone-arrow-down"></i></div>
+                            <div class="mic-text">
+                                <strong>Get the app</strong>
+                                <span id="mic-sub">Add to your home screen for one-tap access.</span>
+                            </div>
+                            <button type="button" class="mic-install" id="mobile-install-btn" hidden>Install</button>
+                            <button type="button" class="mic-close" id="mobile-install-dismiss" aria-label="Dismiss">&times;</button>
+                        </div>
+
                         <!-- Task Input -->
                         <div class="mb-3">
                             <label for="mobile_title" class="form-label fw-bold">
@@ -582,6 +614,54 @@
                 theme: 'bootstrap-5',
                 placeholder: 'Please Select'
             });
+
+            // ==========================================
+            // INSTALL AS APP (phones only)
+            // Android/Chrome: real Install button via beforeinstallprompt (captured in the layout).
+            // iPhone/Safari: no install API, so show the Add-to-Home-Screen steps.
+            // ==========================================
+            (function () {
+                var card = document.getElementById('mobile-install-card');
+                if (!card) return;
+                var DISMISS_KEY = 'invent-tasks-install-dismissed';
+                var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+                var isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+                var isPhone = window.matchMedia('(max-width: 767.98px)').matches;
+                var dismissedAt = 0;
+                try { dismissedAt = parseInt(localStorage.getItem(DISMISS_KEY) || '0', 10); } catch (e) {}
+                var recentlyDismissed = dismissedAt && (Date.now() - dismissedAt) < 7 * 24 * 3600 * 1000;
+                if (isStandalone || !isPhone || recentlyDismissed) return;
+
+                var installBtn = document.getElementById('mobile-install-btn');
+                var sub = document.getElementById('mic-sub');
+
+                function showInstallable() {
+                    if (!window.__inventPwaInstall) return;
+                    sub.textContent = 'Add to your home screen for one-tap access.';
+                    installBtn.hidden = false;
+                    card.hidden = false;
+                }
+                if (window.__inventPwaInstall) {
+                    showInstallable();
+                } else {
+                    window.addEventListener('invent-pwa-install-ready', showInstallable);
+                }
+                if (isIos) {
+                    sub.textContent = 'Tap the Share button, then "Add to Home Screen".';
+                    installBtn.hidden = true;
+                    card.hidden = false;
+                }
+
+                installBtn.addEventListener('click', function () {
+                    if (typeof installPWA !== 'function') return;
+                    installPWA().then(function (accepted) { if (accepted) card.hidden = true; });
+                });
+                document.getElementById('mobile-install-dismiss').addEventListener('click', function () {
+                    card.hidden = true;
+                    try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch (e) {}
+                });
+                window.addEventListener('appinstalled', function () { card.hidden = true; });
+            })();
 
             // ==========================================
             // QUICK SEARCH: mobile "Assign To" dropdown

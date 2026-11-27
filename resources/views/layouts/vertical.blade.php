@@ -20,14 +20,14 @@
     @include('layouts.shared/head-css', ['mode' => $mode ?? '', 'demo' => $demo ?? ''])
     
     <!-- PWA Meta Tags (single Invent PWA — reused by /chat) -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="{{ $manifestUrl ?? '/manifest.json' }}">
     <meta name="theme-color" content="{{ in_array(($title ?? ''), ['5Core Chat', 'Chat', 'Invent Chat'], true) ? '#3f0e40' : '#667eea' }}">
     <link rel="apple-touch-icon" href="{{ $appleTouchIcon ?? '/images/pwa-icon-192.png' }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="5Core Chat">
+    <meta name="apple-mobile-web-app-title" content="{{ $appTitle ?? '5Core Chat' }}">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="5Core Chat">
+    <meta name="application-name" content="{{ $appTitle ?? '5Core Chat' }}">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 </head>
 
