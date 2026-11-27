@@ -267,7 +267,10 @@ class PricePushPendingService
             if ($by) {
                 $row->requested_by = $by;
             }
-            $row->attempts = (int) $row->attempts + 1;
+            // "Daily API limit … Retry after N seconds": the marketplace refused for a known time, not because the push is wrong.
+            // That try does not count against MAX_ATTEMPTS (the hourly retry pauses that marketplace until the limit resets).
+            $rateLimited = ! $ok && self::rateLimitSeconds($message) !== null;
+            $row->attempts = $rateLimited ? max(1, (int) $row->attempts) : (int) $row->attempts + 1;
             if ($ok) {
                 $row->status = 'pushed';
                 $row->pushed_at = now();
@@ -312,21 +315,75 @@ class PricePushPendingService
         }
         // "Queued" rows belong to the sequential queue (drainQueue) — never pushed here, so two pushes never run in parallel
         // Temu / Temu 2 are never re-pushed automatically: they are pushed manually only
+        // A marketplace that answered "Daily API limit … Retry after N seconds" is left alone until that time has passed,
+        // so the hourly run neither burns the (already exhausted) quota nor uses up the rows' attempts.
+        $blocked = $this->rateLimitedMarketplaces();
         $rows = PricePushPending::outstanding()->where('status', 'pending')
-            ->whereNotIn('marketplace', self::MANUAL_ONLY_MARKETPLACES)
+            ->whereNotIn('marketplace', array_merge(self::MANUAL_ONLY_MARKETPLACES, array_keys($blocked)))
             ->where(function ($q) {
                 $q->whereNull('last_error')->orWhere('last_error', 'not like', PricePushPending::QUEUED_PREFIX . '%');
             })
             ->orderBy('last_attempt_at')->limit($limit)->get();
         $ok = 0;
+        $tried = 0;
         foreach ($rows as $row) {
+            if (isset($blocked[$row->marketplace])) {
+                continue; // this marketplace hit its limit during this very run
+            }
+            $tried++;
             if ($this->retryRow($row)) {
                 $ok++;
+            } else {
+                $fresh = $row->fresh();
+                if ($fresh && self::rateLimitSeconds((string) $fresh->last_error) !== null) {
+                    $blocked[$row->marketplace] = true;
+                    Log::info('Price push retry: marketplace hit its API limit, skipping the rest of it until it resets', ['marketplace' => $row->marketplace]);
+                }
             }
             usleep(400000); // be gentle with the marketplace APIs
         }
 
-        return [$rows->count(), $ok];
+        return [$tried, $ok];
+    }
+
+    /**
+     * Seconds a marketplace asked us to wait ("Daily API limit of 25,000 requests reached … Retry after 40703 seconds."), else null.
+     * Capped at 24 h.
+     */
+    public static function rateLimitSeconds(string $message): ?int
+    {
+        if (preg_match('/limit[^\n]{0,200}?retry\s+after\s+(\d+)\s*(?:seconds?|secs?|s)\b/i', $message, $m)) {
+            $s = (int) $m[1];
+
+            return $s > 0 ? min($s, 86400) : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Marketplaces whose outstanding rows say they are rate limited and whose "retry after" time has not passed yet.
+     * Derived from the stored error + last attempt time, so it needs no extra state.
+     *
+     * @return array<string, \Illuminate\Support\Carbon>  marketplace => time the limit is over
+     */
+    public function rateLimitedMarketplaces(): array
+    {
+        $out = [];
+        $rows = PricePushPending::outstanding()->where('last_error', 'like', '%retry after%')
+            ->get(['marketplace', 'last_error', 'last_attempt_at']);
+        foreach ($rows as $r) {
+            $secs = self::rateLimitSeconds((string) $r->last_error);
+            if ($secs === null || ! $r->last_attempt_at) {
+                continue;
+            }
+            $until = $r->last_attempt_at->copy()->addSeconds($secs + 60);
+            if ($until->isFuture() && (! isset($out[$r->marketplace]) || $until->gt($out[$r->marketplace]))) {
+                $out[$r->marketplace] = $until;
+            }
+        }
+
+        return $out;
     }
 
     private const QUEUE_LOCK_KEY = 'price_push_queue_worker';
