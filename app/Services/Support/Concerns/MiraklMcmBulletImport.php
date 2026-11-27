@@ -4481,6 +4481,7 @@ trait MiraklMcmBulletImport
         }
 
         $offerId = '';
+        $offer = [];
         if (empty($poll['offer_pending_product'])) {
             $offer = $this->fetchMiraklMcmOfferBySku($sku);
             $offerId = trim((string) ($offer['offer_id'] ?? ''));
@@ -4492,6 +4493,9 @@ trait MiraklMcmBulletImport
             'import_id' => $importId,
             'import_status' => $poll['import_status'] ?? null,
             'offer_id' => $offerId,
+            // null = the offer is not visible on the marketplace yet (still being matched to its product).
+            'offer_active' => $offer !== [] ? filter_var($offer['active'] ?? false, FILTER_VALIDATE_BOOLEAN) : null,
+            'offer_reasons' => $offer !== [] && is_array($offer['inactivity_reasons'] ?? null) ? array_values($offer['inactivity_reasons']) : [],
             'offer_pending_product' => (bool) ($poll['offer_pending_product'] ?? false),
             'response' => $poll['response'] ?? null,
         ];
@@ -4851,6 +4855,57 @@ trait MiraklMcmBulletImport
         }
 
         return [];
+    }
+
+    /**
+     * A product that already exists in the marketplace catalog under this UPC (P31), whatever its SKU is.
+     * Attaching the offer to it avoids creating a duplicate product.
+     *
+     * @return array{product_sku: string, reference: string}|null
+     */
+    public function miraklMcmCatalogProductByUpc(string $upc): ?array
+    {
+        $upc = preg_replace('/\D+/', '', $upc) ?: '';
+        if ($upc === '' || $this->miraklMcmApiKey() === null || $this->miraklMcmBaseUrl() === '') {
+            return null;
+        }
+        $bare = ltrim($upc, '0');
+        $variants = array_values(array_unique(array_filter([
+            $upc,
+            $bare,
+            str_pad($bare, 12, '0', STR_PAD_LEFT),
+            str_pad($bare, 13, '0', STR_PAD_LEFT),
+            str_pad($bare, 14, '0', STR_PAD_LEFT),
+        ])));
+        try {
+            $response = $this->miraklMcmRequest()->get(
+                $this->miraklMcmBaseUrl().'/api/products',
+                array_merge($this->miraklMcmQueryParams(), [
+                    'product_references' => implode(',', array_map(static fn ($v) => 'UPC|'.$v, $variants)),
+                ])
+            );
+            if (! $response->successful()) {
+                return null;
+            }
+            foreach ((array) ($response->json('products') ?? []) as $product) {
+                if (! is_array($product)) {
+                    continue;
+                }
+                foreach ((array) ($product['product_references'] ?? []) as $ref) {
+                    if (is_array($ref) && strcasecmp((string) ($ref['reference_type'] ?? ''), 'UPC') === 0
+                        && ltrim(preg_replace('/\D/', '', (string) ($ref['reference'] ?? '')) ?? '', '0') === $bare) {
+                        return [
+                            'product_sku' => trim((string) ($product['product_sku'] ?? '')),
+                            'reference' => trim((string) $ref['reference']),
+                        ];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::debug($this->miraklMcmMarketplaceLabel().' catalog lookup by UPC failed', ['upc' => $upc, 'error' => $e->getMessage()]);
+        }
+
+        return null;
     }
 
     protected function resolveMiraklMcmProductSkuForShopSku(string $sku): ?string

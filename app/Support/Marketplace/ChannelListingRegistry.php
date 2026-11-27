@@ -647,7 +647,7 @@ class ChannelListingRegistry
 
         $index = self::miraklOfferIndex('macy');
         if (is_array($index)) {
-            return self::overlayConnectCreated('macy', $skus, self::listedFromMiraklOfferIndex($skus, $index));
+            return self::overlayPendingPublished('macy', $skus, self::listedFromMiraklOfferIndex($skus, $index));
         }
 
         if (! \Illuminate\Support\Facades\Schema::hasTable('macy_products')) {
@@ -693,7 +693,7 @@ class ChannelListingRegistry
     {
         $index = $skus === [] ? null : self::miraklOfferIndex('bestbuy');
         if (is_array($index)) {
-            return self::overlayConnectCreated('bestbuy', $skus, self::listedFromMiraklOfferIndex($skus, $index));
+            return self::overlayPendingPublished('bestbuy', $skus, self::listedFromMiraklOfferIndex($skus, $index));
         }
 
         return self::overlayConnectCreated('bestbuy', $skus, ListingCountsEngine::listedIdsFromPrice(BestbuyUsaProduct::class, $skus, 'price'));
@@ -710,7 +710,7 @@ class ChannelListingRegistry
     {
         $index = $skus === [] ? null : self::miraklOfferIndex('purchasingpower');
         if (is_array($index)) {
-            return self::overlayConnectCreated('purchasingpower', $skus, self::listedFromMiraklOfferIndex($skus, $index));
+            return self::overlayPendingPublished('purchasingpower', $skus, self::listedFromMiraklOfferIndex($skus, $index));
         }
 
         return self::overlayConnectCreated('purchasingpower', $skus, ListingCountsEngine::listedIdsFromColumn(PurchasingPowerProduct::class, $skus, 'sku', false));
@@ -1639,6 +1639,58 @@ class ChannelListingRegistry
      */
     private static function overlayConnectCreated(string $channel, array $skus, array $map): array
     {
+        return $map;
+    }
+
+    /**
+     * SKUs published from the app whose offer was accepted but is not live yet (the marketplace still has to
+     * approve the product). They are "page created": neither Listed nor Missing L, so they are not published
+     * twice. After 14 days without an offer they return to Missing L.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, string>  $map
+     * @return array<string, string>
+     */
+    private static function overlayPendingPublished(string $channel, array $skus, array $map): array
+    {
+        $statusClass = match ($channel) {
+            'macy' => \App\Models\MacysListingStatus::class,
+            'bestbuy' => \App\Models\BestbuyUSAListingStatus::class,
+            'purchasingpower' => \App\Models\PurchasingPowerListingStatus::class,
+            default => null,
+        };
+        if ($statusClass === null || ! class_exists($statusClass) || $skus === []) {
+            return $map;
+        }
+        try {
+            if (! \Illuminate\Support\Facades\Schema::hasTable((new $statusClass)->getTable())) {
+                return $map;
+            }
+            $rows = $statusClass::query()
+                ->whereIn('sku', array_values(array_unique(array_map(static fn ($s) => trim((string) $s), $skus))))
+                ->get();
+        } catch (\Throwable $e) {
+            return $map;
+        }
+        $cutoff = now()->subDays(14);
+        foreach ($rows as $row) {
+            $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            if (empty($value['pending_offer']) || empty($value['published_at'])) {
+                continue;
+            }
+            try {
+                if (\Illuminate\Support\Carbon::parse((string) $value['published_at'])->lt($cutoff)) {
+                    continue;
+                }
+            } catch (\Throwable $e) {
+                continue;
+            }
+            $sku = trim((string) $row->sku);
+            if ($sku !== '' && ! isset($map[strtolower($sku)])) {
+                $map[strtolower($sku)] = ListingCountsEngine::pageCreatedId($sku);
+            }
+        }
+
         return $map;
     }
 

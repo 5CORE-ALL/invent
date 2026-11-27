@@ -43,6 +43,42 @@ class MiraklMcmOfferIndex
     }
 
     /**
+     * Put one offer into the saved index right after a publish, so Listed / Missing L follow it at once
+     * instead of waiting for the next full OF21 read.
+     *
+     * @param  list<string>  $reasons
+     */
+    public static function noteOffer(string $channel, string $shopSku, bool $active, string $upc = '', array $reasons = []): void
+    {
+        $key = self::configKey($channel);
+        $shopSku = trim($shopSku);
+        if ($key === null || $shopSku === '') {
+            return;
+        }
+        try {
+            $index = Cache::get(self::cacheKey($key));
+            if (! is_array($index) || ! isset($index['offers']) || ! is_array($index['offers'])) {
+                return;
+            }
+            $entry = ['shop_sku' => $shopSku, 'product_sku' => '', 'upc' => $upc, 'active' => $active, 'state' => '', 'reasons' => $reasons];
+            $replaced = false;
+            foreach ($index['offers'] as $i => $offer) {
+                if (strcasecmp((string) ($offer['shop_sku'] ?? ''), $shopSku) === 0) {
+                    $index['offers'][$i] = array_merge($offer, $entry, ['product_sku' => (string) ($offer['product_sku'] ?? '')]);
+                    $replaced = true;
+                    break;
+                }
+            }
+            if (! $replaced) {
+                $index['offers'][] = $entry;
+            }
+            Cache::put(self::cacheKey($key), $index, now()->addDays(7));
+        } catch (\Throwable $e) {
+            Log::debug('MiraklMcmOfferIndex::noteOffer failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * @return array{fetched_at: string, offers: list<array{shop_sku: string, product_sku: string, upc: string, active: bool, state: string, reasons?: list<string>}>}|null
      */
     public function get(string $channel, bool $refreshIfStale = true): ?array

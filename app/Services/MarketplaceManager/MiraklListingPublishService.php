@@ -155,6 +155,10 @@ class MiraklListingPublishService
             : $this->shopifyInv($sku);
         $offerOptions = [];
         $upc = preg_replace('/\D+/', '', (string) ($overrides['upc'] ?? '')) ?: '';
+        if ($upc === '') {
+            $pmValues = is_array($product->Values ?? null) ? $product->Values : [];
+            $upc = preg_replace('/\D+/', '', (string) ($pmValues['upc'] ?? $pmValues['gtin'] ?? '')) ?: '';
+        }
         if ($upc !== '') {
             $offerOptions['upc'] = $upc;
         }
@@ -187,6 +191,19 @@ class MiraklListingPublishService
         array $offerOptions = []
     ): array {
         if (! $api->miraklMcmProductExists($sku)) {
+            // The product may already be in the marketplace catalog under another SKU (same UPC). Attach the
+            // offer to it instead of creating a duplicate product.
+            $upcDigits = preg_replace('/\D+/', '', (string) ($offerOptions['upc'] ?? '')) ?: '';
+            $catalog = $upcDigits !== '' ? $api->miraklMcmCatalogProductByUpc($upcDigits) : null;
+            if ($catalog !== null) {
+                $offerOptions['product_id_type'] = 'UPC';
+                $offerOptions['product_id'] = $catalog['reference'];
+
+                return $this->finishOffer($api, $sku, $title, $price, $inv, $channel, $label, $categoryCode, $offerOptions, [
+                    $label.' already has this product in its catalog'.($catalog['product_sku'] !== '' ? ' (product '.$catalog['product_sku'].')' : '').'; your offer was attached to it.',
+                ]);
+            }
+
             $createRes = $api->createProductViaMiraklMcm($sku, [
                 'title' => $title,
                 'description' => $description,
@@ -253,6 +270,7 @@ class MiraklListingPublishService
         // The offer (OF01) is what makes the product sellable; P41 alone only fills the catalog.
         $offerId = '';
         $offerOk = false;
+        $offerRes = [];
         try {
             $offerRes = $api->upsertMiraklMcmOffer($sku, $price, $inv, $offerOptions);
             $offerOk = (bool) ($offerRes['success'] ?? false);
@@ -287,13 +305,47 @@ class MiraklListingPublishService
             }
         }
 
-        $this->persistListed($sku, $title, $price, $inv, $channel, $categoryCode);
+        $message = trim(implode(' ', array_filter($parts)));
+
+        if (! $offerOk) {
+            // The product was sent but there is no offer, so it is NOT listed: it stays in Missing L.
+            $this->forgetListingCaches($channel);
+
+            return [
+                'success' => false,
+                'message' => $label.' did not accept the offer for '.$sku.', so it is not listed yet. '.$message,
+            ];
+        }
+
+        $found = array_key_exists('offer_active', $offerRes) && $offerRes['offer_active'] !== null;
+        $active = $found && $offerRes['offer_active'] === true;
+        $upc = preg_replace('/\D+/', '', (string) ($offerOptions['upc'] ?? '')) ?: '';
+        if ($found) {
+            // Make Listed / Missing L follow this offer straight away.
+            MiraklMcmOfferIndex::noteOffer($channel, $sku, $active, $upc, array_map('strval', (array) ($offerRes['offer_reasons'] ?? [])));
+        }
+        $this->persistListed($sku, $title, $price, $inv, $channel, $categoryCode, ! $active);
         $this->forgetListingCaches($channel);
+
+        if ($active) {
+            return [
+                'success' => true,
+                'message' => $message ?: ('Published '.$sku.' to '.$label.'.'),
+                'goods_id' => $offerId !== '' ? $offerId : $sku,
+                'sku_id' => $sku,
+                'skus' => [$sku],
+            ];
+        }
+
+        // Accepted, but not live yet. Shown as "page created" (not Listed, not Missing L) until it goes live.
+        $reasons = array_filter(array_map('strval', (array) ($offerRes['offer_reasons'] ?? [])));
 
         return [
             'success' => true,
-            'message' => trim(implode(' ', array_filter($parts))) ?: ('Published '.$sku.' to '.$label.'.'),
-            'goods_id' => $offerId !== '' ? $offerId : $sku,
+            'message' => trim(($message !== '' ? $message.' ' : '').$label.' still has to approve this product before the offer goes live'
+                .($reasons !== [] ? ' ('.implode(', ', $reasons).')' : ' (this can take hours)')
+                .'. It shows as "page created" until then and turns Listed by itself.'),
+            'goods_id' => '',
             'sku_id' => $sku,
             'skus' => [$sku],
         ];
@@ -585,19 +637,23 @@ class MiraklListingPublishService
         float $price,
         int $inv,
         string $channel,
-        string $categoryCode
+        string $categoryCode,
+        bool $pending = false
     ): void {
         try {
             $statusValue = [
-                'listed' => 'Listed',
+                'listed' => $pending ? 'Pending' : 'Listed',
                 'listing_id' => $sku,
                 'category_code' => $categoryCode,
                 'title' => $title,
+                // Offer sent but not live yet: the Missing L count shows it as "page created" for up to 14 days.
+                'pending_offer' => $pending,
+                'published_at' => now()->toIso8601String(),
             ];
             if ($channel === 'macys' && Schema::hasTable('macy_products')) {
                 $existing = MacyProduct::query()->where('sku', $sku)->first()
                     ?: MacyProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
-                $payload = ['price' => $price, 'stock' => max(0, $inv), 'listing_status' => 'listed'];
+                $payload = ['price' => $price, 'stock' => max(0, $inv), 'listing_status' => $pending ? 'pending' : 'listed'];
                 if ($existing) {
                     $existing->fill($payload)->save();
                 } else {
@@ -609,7 +665,7 @@ class MiraklListingPublishService
             } elseif ($channel === 'bestbuyusa' && Schema::hasTable('bestbuy_usa_products')) {
                 $existing = BestbuyUsaProduct::query()->where('sku', $sku)->first()
                     ?: BestbuyUsaProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
-                $payload = ['price' => $price, 'stock' => max(0, $inv), 'listing_status' => 'listed'];
+                $payload = ['price' => $price, 'stock' => max(0, $inv), 'listing_status' => $pending ? 'pending' : 'listed'];
                 if ($existing) {
                     $existing->fill($payload)->save();
                 } else {
@@ -621,7 +677,7 @@ class MiraklListingPublishService
             } elseif ($channel === 'purchasingpower' && Schema::hasTable('purchasing_power_products')) {
                 $existing = PurchasingPowerProduct::query()->where('sku', $sku)->first()
                     ?: PurchasingPowerProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
-                $payload = ['price' => $price, 'stock' => max(0, $inv), 'listing_status' => 'listed'];
+                $payload = ['price' => $price, 'stock' => max(0, $inv), 'listing_status' => $pending ? 'pending' : 'listed'];
                 if ($existing) {
                     $existing->fill($payload)->save();
                 } else {
