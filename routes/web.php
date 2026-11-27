@@ -8028,6 +8028,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tiktok-gmv-max-campaigns', 'index')->name('tiktok.gmv.max.campaigns');
         Route::get('/tiktok-gmv-max-campaigns/data', 'data')->name('tiktok.gmv.max.campaigns.data');
         Route::post('/tiktok-gmv-max-campaigns/push-budget', 'pushBudget')->name('tiktok.gmv.max.campaigns.push.budget');
+        Route::post('/tiktok-gmv-max-campaigns/push-budgets', 'pushBudgets')->name('tiktok.gmv.max.campaigns.push.budgets');
         Route::get('/tiktok-gmv-max-campaigns/push-log', 'pushLog')->name('tiktok.gmv.max.campaigns.push.log');
     });
 

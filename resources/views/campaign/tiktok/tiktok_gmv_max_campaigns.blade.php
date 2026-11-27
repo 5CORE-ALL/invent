@@ -37,8 +37,11 @@
                     <span class="badge gmvmax-badge" style="background:#f8d7da" id="b-acos">ACOS -</span>
                     <span class="badge gmvmax-badge" style="background:#ffe69c" id="b-roi">ROI -</span>
                     <span class="text-muted small ms-2" id="gmvmax-period"></span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="gmvmax-push-toggle">
-                        <i class="fas fa-upload me-1"></i>Push log
+                    <button type="button" class="btn btn-sm btn-primary ms-auto" id="gmvmax-bulk-open">
+                        <i class="fas fa-upload me-1"></i>Push budgets
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="gmvmax-push-toggle">
+                        <i class="fas fa-list me-1"></i>Push log
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="gmvmax-csv">
                         <i class="fas fa-download me-1"></i>CSV
@@ -82,6 +85,37 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="gmvmax-bulk-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Push daily budgets to TikTok</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                        <label class="small mb-0" for="gmvmax-bulk-all">Set all to</label>
+                        <input type="number" min="0" step="0.01" id="gmvmax-bulk-all" class="form-control form-control-sm" style="width:110px" placeholder="0.00">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="gmvmax-bulk-apply">Apply to all rows</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="gmvmax-bulk-reset">Reset</button>
+                        <span class="text-muted small ms-auto">Rows follow the filters on the page. Only changed rows are pushed.</span>
+                    </div>
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light"><tr><th>Campaign</th><th class="text-end" style="width:130px">Current budget</th><th style="width:150px">New budget</th><th style="width:220px">Result</th></tr></thead>
+                        <tbody id="gmvmax-bulk-body"></tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <span class="me-auto small text-muted" id="gmvmax-bulk-summary"></span>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="gmvmax-bulk-submit" disabled>
+                        <i class="fas fa-upload me-1"></i>Push <span id="gmvmax-bulk-count">0</span> change(s)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -104,27 +138,73 @@
 
     function esc(v) { return $('<div>').text(v == null ? '' : String(v)).html(); }
 
-    function pushBudget(row, input, btn, cell) {
-        const newV = input.value.trim();
-        if (newV === '' || isNaN(Number(newV))) { alert('Type the new daily budget first.'); input.focus(); return; }
-        const oldV = row.budget;
-        const label = (row.campaign_name || row.campaign_id);
-        if (!confirm('Push daily budget to TikTok?\n\n' + label + '\n' + (oldV == null ? '-' : money(oldV)) + '  ->  ' + money(newV))) { return; }
-        btn.disabled = true;
-        $.ajax({ url: PUSH_URL, method: 'POST', data: { _token: CSRF, campaign_id: row.campaign_id, budget: newV } })
-            .done(function() {
-                input.value = '';
-                btn.innerHTML = '<i class="fas fa-check me-1"></i>Queued';
-                btn.className = 'btn btn-sm btn-success';
-                setTimeout(function() { btn.innerHTML = '<i class="fas fa-upload me-1"></i>Push'; btn.className = 'btn btn-sm btn-primary'; btn.disabled = false; }, 4000);
-                $('#gmvmax-push-panel').show();
-                loadPushLog();
-                startPushPoll();
-            })
-            .fail(function(xhr) {
-                btn.disabled = false;
-                const m = (xhr.responseJSON && (xhr.responseJSON.message || (xhr.responseJSON.errors && Object.values(xhr.responseJSON.errors)[0][0]))) || 'Push failed';
-                alert(m);
+    const BULK_URL = "{{ route('tiktok.gmv.max.campaigns.push.budgets') }}";
+
+    function openBulkModal() {
+        const rows = window.gmvTable.getData('active');   // respects the current filters
+        const body = $('#gmvmax-bulk-body').empty();
+        if (!rows.length) { body.append('<tr><td colspan="4" class="text-muted">No campaigns in the table.</td></tr>'); }
+        rows.forEach(function(r) {
+            const cur = r.budget == null ? '' : Number(r.budget).toFixed(2);
+            body.append('<tr data-id="' + esc(r.campaign_id) + '" data-cur="' + esc(cur) + '"><td>' + esc(r.campaign_name || '') +
+                '<div class="text-muted small">' + esc(r.campaign_id) + '</div></td><td class="text-end">' + (cur === '' ? '-' : money(cur)) +
+                '</td><td><input type="number" min="0" step="0.01" class="form-control form-control-sm gmvmax-bulk-input" style="width:120px" value="' + esc(cur) + '"></td>' +
+                '<td class="small gmvmax-bulk-state"></td></tr>');
+        });
+        $('#gmvmax-bulk-all').val('');
+        refreshBulkCount();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('gmvmax-bulk-modal')).show();
+    }
+
+    function bulkChanges() {
+        const items = [];
+        $('#gmvmax-bulk-body tr[data-id]').each(function() {
+            const v = $(this).find('.gmvmax-bulk-input').val().trim();
+            const cur = $(this).data('cur');
+            if (v !== '' && !isNaN(Number(v)) && (cur === '' || Math.abs(Number(v) - Number(cur)) >= 0.005)) {
+                items.push({ campaign_id: String($(this).data('id')), budget: Number(v), name: $(this).find('td:first').contents().first().text(), old: cur });
+            }
+        });
+        return items;
+    }
+
+    function refreshBulkCount() {
+        $('#gmvmax-bulk-body tr[data-id]').each(function() {
+            const v = $(this).find('.gmvmax-bulk-input').val().trim();
+            const cur = $(this).data('cur');
+            const changed = v !== '' && !isNaN(Number(v)) && (cur === '' || Math.abs(Number(v) - Number(cur)) >= 0.005);
+            $(this).toggleClass('table-warning', changed);
+        });
+        const n = bulkChanges().length;
+        $('#gmvmax-bulk-count').text(n);
+        $('#gmvmax-bulk-submit').prop('disabled', n === 0);
+    }
+
+    function submitBulk() {
+        const items = bulkChanges();
+        if (!items.length) { return; }
+        if (!confirm('Push ' + items.length + ' daily budget change' + (items.length > 1 ? 's' : '') + ' to TikTok?')) { return; }
+        const btn = $('#gmvmax-bulk-submit').prop('disabled', true);
+        $.ajax({ url: BULK_URL, method: 'POST', contentType: 'application/json', headers: { 'X-CSRF-TOKEN': CSRF },
+                 data: JSON.stringify({ items: items.map(function(i) { return { campaign_id: i.campaign_id, budget: i.budget }; }) }) })
+            .always(function(xhrOrResp, status) {
+                const resp = status === 'success' ? xhrOrResp : (xhrOrResp.responseJSON || {});
+                const byId = {};
+                (resp.results || []).forEach(function(r) { byId[r.campaign_id] = r; });
+                $('#gmvmax-bulk-body tr[data-id]').each(function() {
+                    const r = byId[String($(this).data('id'))];
+                    if (!r) { return; }
+                    $(this).find('.gmvmax-bulk-state').html(r.ok ? '<span class="text-success">Queued</span>' : '<span class="text-danger">' + esc(r.message || 'Refused') + '</span>');
+                });
+                if (!resp.results) { alert((resp.message) || 'Push failed'); btn.prop('disabled', false); return; }
+                if (resp.queued > 0) {
+                    $('#gmvmax-push-panel').show();
+                    loadPushLog();
+                    startPushPoll();
+                }
+                $('#gmvmax-bulk-summary').text(resp.queued + ' queued' + (resp.refused ? ', ' + resp.refused + ' refused' : ''));
+                if (!resp.refused) { setTimeout(function() { bootstrap.Modal.getOrCreateInstance(document.getElementById('gmvmax-bulk-modal')).hide(); }, 900); }
+                btn.prop('disabled', false);
             });
     }
 
@@ -175,24 +255,6 @@
                 { title: 'Campaign ID', field: 'campaign_id', width: 170, sorter: 'string' },
                 { title: 'Campaign name', field: 'campaign_name', minWidth: 240, sorter: 'string' },
                 numCol('Current budget', 'budget', 130, moneyCell),
-                { title: 'Push budget', field: 'campaign_id', width: 230, headerSort: false, download: false, hozAlign: 'center',
-                  headerTooltip: 'Type a new daily budget and press Push to send it to TikTok',
-                  formatter: function(cell) {
-                      const d = cell.getRow().getData();
-                      const wrap = document.createElement('div');
-                      wrap.className = 'd-flex align-items-center justify-content-center gap-1';
-                      const input = document.createElement('input');
-                      input.type = 'number'; input.min = '0'; input.step = '0.01';
-                      input.className = 'form-control form-control-sm'; input.style.width = '90px';
-                      input.placeholder = d.budget == null ? 'Budget' : Number(d.budget).toFixed(2);
-                      const btn = document.createElement('button');
-                      btn.type = 'button'; btn.className = 'btn btn-sm btn-primary';
-                      btn.innerHTML = '<i class="fas fa-upload me-1"></i>Push';
-                      btn.addEventListener('click', function() { pushBudget(d, input, btn, cell); });
-                      input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { btn.click(); } });
-                      wrap.appendChild(input); wrap.appendChild(btn);
-                      return wrap;
-                  } },
                 numCol('Spend', 'cost', 110, moneyCell),
                 numCol('Sold', 'sku_orders', 110, function(c) { return Number(c.getValue() || 0).toLocaleString('en-US'); }),
                 numCol('CPS', 'cost_per_order', 100, moneyCell),
@@ -232,6 +294,20 @@
             $('#gmvmax-f-name, #gmvmax-f-id, #gmvmax-f-sku').val('');
             table.clearFilter(true);
         });
+
+        $('#gmvmax-bulk-open').on('click', openBulkModal);
+        $('#gmvmax-bulk-apply').on('click', function() {
+            const v = $('#gmvmax-bulk-all').val().trim();
+            if (v === '' || isNaN(Number(v))) { $('#gmvmax-bulk-all').focus(); return; }
+            $('#gmvmax-bulk-body .gmvmax-bulk-input').val(v);
+            refreshBulkCount();
+        });
+        $('#gmvmax-bulk-reset').on('click', function() {
+            $('#gmvmax-bulk-body tr[data-id]').each(function() { $(this).find('.gmvmax-bulk-input').val($(this).data('cur')); });
+            refreshBulkCount();
+        });
+        $(document).on('input', '.gmvmax-bulk-input', refreshBulkCount);
+        $('#gmvmax-bulk-submit').on('click', submitBulk);
 
         $('#gmvmax-push-toggle').on('click', function() {
             const p = $('#gmvmax-push-panel');

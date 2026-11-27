@@ -88,6 +88,39 @@ class TiktokGmvMaxCampaignsController extends Controller
         return response()->json(['success' => true, 'queued' => $row]);
     }
 
+    /**
+     * Queue daily-budget changes for many campaigns at once (the "Push budgets" modal).
+     * Every item goes through the same limits as a single push; refused items come back with the reason.
+     */
+    public function pushBudgets(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'items' => ['required', 'array', 'min:1', 'max:300'],
+            'items.*.campaign_id' => ['required', 'string', 'max:40'],
+            'items.*.budget' => ['required', 'numeric'],
+        ]);
+
+        $by = optional($request->user())->name ?? optional($request->user())->email;
+        $queued = 0;
+        $results = [];
+        foreach ($data['items'] as $item) {
+            try {
+                TikTokGmvMaxPushService::queueBudget((string) $item['campaign_id'], (float) $item['budget'], $by);
+                $queued++;
+                $results[] = ['campaign_id' => (string) $item['campaign_id'], 'ok' => true];
+            } catch (\InvalidArgumentException $e) {
+                $results[] = ['campaign_id' => (string) $item['campaign_id'], 'ok' => false, 'message' => $e->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'success' => $queued > 0,
+            'queued' => $queued,
+            'refused' => count($results) - $queued,
+            'results' => $results,
+        ], $queued > 0 ? 200 : 422);
+    }
+
     public function pushLog(): JsonResponse
     {
         return response()->json(['success' => true, 'data' => TikTokGmvMaxPushService::recent(50)]);
