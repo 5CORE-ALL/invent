@@ -712,6 +712,8 @@
             box-shadow: inset 0 0 0 2px #e83e8c;
         }
 
+        /* Columns panel: styled by resources/views/partials/tabulator-column-manager.blade.php (same as /amazon-tabulator-view) */
+        
         /* Totals row – light background, dark text; same font size as body rows */
         #ovl30DetailsModal .modal-totals-row {
             background-color: #eef2ff !important;
@@ -2693,6 +2695,16 @@
                         </button>
                     </div>
 
+                    <!-- Column Visibility Dropdown (6-column layout; drag to reorder, copy / paste the layout) -->
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Columns" aria-label="Columns">
+                            <i class="fas fa-table-columns"></i>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
+                            <!-- Columns will be populated by JavaScript -->
+                        </ul>
+                    </div>
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV" aria-label="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
@@ -14946,26 +14958,55 @@
             if (headerCb) headerCb.checked = isAllFilteredSelected();
         }
 
-        // ==================== DEFAULT COLUMNS ====================
+        // ==================== COLUMN VISIBILITY FUNCTIONS ====================
 
-        // Kept hidden in the table (no Columns panel on this page any more)
+        // Permanently removed from Columns dropdown and kept hidden in the table
         const CVR_HIDDEN_FROM_COLUMN_MENU = [
             'amazon_price', 'amz_pft', 'amz_roi',
             'ebay_lmp_price', 'google_lmp_price', 'temu_lmp_price',
-            'shein_l30', 'faire_l30', 'ae_l30', 'pp_l30',
-            'image_path', 'parent_display'
+            'shein_l30', 'faire_l30', 'ae_l30', 'pp_l30'
         ];
-        function hideDefaultHiddenColumns() {
-            CVR_HIDDEN_FROM_COLUMN_MENU.forEach(function(field) {
-                const col = table.getColumn(field);
-                if (col) col.hide();
-            });
-        }
+
+        // Columns panel: the same shared panel as /amazon-tabulator-view (resources/views/partials/tabulator-column-manager.blade.php):
+        // headers (groups) you can add / rename / delete, quick search, search & add, drag between headers, Ctrl+C / Ctrl+V, Save & Close.
+        const tcmConfig = {
+            channel: 'price_increase',
+            // Same saved visibility as before (channel pricing_master_cvr), so everyone's shown / hidden columns are kept
+            visibilityUrl: '/cvr-master-column-visibility',
+            groups: [
+                { key: 'basic', label: 'Basic' },
+                { key: 'inventory', label: 'Inventory & Sales' },
+                { key: 'price', label: 'Price' },
+                { key: 'other', label: 'Temu & Other' }
+            ],
+            fallbackGroup: 'other',
+            showAll: true,
+            skipFields: ['_select'].concat(CVR_HIDDEN_FROM_COLUMN_MENU)
+        };
+        const tcmHooks = {
+            classify: function(field, title) {
+                const t = String(title || '').toLowerCase();
+                if (/temu/.test(t)) return 'other';
+                if (t === 'p' || t === '#' || /\b(sku|parent|image|details|hist|push pending|label|audit|missing)\b/.test(t)) return 'basic';
+                if (/\b(inv|ov l30|sw l30|dil|cvr|views|rating|lqs)\b/.test(t)) return 'inventory';
+                if (/\b(prc|price|nroi|groi|gpft|npft|lmp|sprice)\b/.test(t)) return 'price';
+                return 'other';
+            },
+            skip: function(field, title) { return !String(title || '').trim(); },
+            // Applied after the saved layout loads (the panel can still change them afterwards, as before)
+            forceVisible: function(field) {
+                if (CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(field) !== -1) return false;
+                if (field === 'image_path' || field === 'parent_display') return false; // text columns stay hidden by default
+                if (field === 'label' || field === 'audit' || field === 'box_sprice') return true;
+                return undefined;
+            }
+        };
+        @include('partials.tabulator-column-manager')
 
         // ==================== TABLE EVENTS ====================
         
         table.on('tableBuilt', function() {
-            hideDefaultHiddenColumns();
+            applyColumnVisibilityFromServer(); // saved columns + order, then builds the Columns panel
         });
 
         table.on('dataLoaded', function(data) {
