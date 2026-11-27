@@ -2057,6 +2057,210 @@
         .mobile-task-actions .btn { min-height: 40px; padding: 8px 6px; }
     }
 
+    /* ============================================================
+       MINIMAL APP-STYLE LOOK (phones only) - same language as the
+       mobile Create Task screen: slim app bar + bottom tab bar,
+       quiet chips, flat cards, soft tinted actions.
+       ============================================================ */
+    @media (max-width: 767.98px) {
+        /* Only the app bar on top; navigation lives in the bottom tab bar + menu */
+        .navbar-custom { display: none !important; }
+        body .content-page .content { padding-top: 62px !important; background: #f6f7fb !important; }
+
+        /* Stats: smaller pills */
+        .stats-row.mobile-stats-strip { padding: 4px 16px 2px !important; gap: 8px; scroll-padding-left: 16px; }
+        .stats-row.mobile-stats-strip .stat-card {
+            min-width: 74px;
+            padding: 6px 12px !important;
+            border-radius: 12px !important;
+            box-shadow: none !important;
+        }
+        .stats-row.mobile-stats-strip .stat-label { font-size: 9px !important; }
+        .stats-row.mobile-stats-strip .stat-value { font-size: 17px !important; }
+
+        /* Actions: quiet outlined chips, one solid primary */
+        .mobile-action-buttons { padding: 10px 16px 4px; gap: 8px; }
+        .mobile-action-btn,
+        .mobile-action-btn.btn-primary,
+        .mobile-action-btn.btn-success,
+        .mobile-action-btn.btn-warning,
+        .mobile-action-btn.btn-outline-secondary {
+            min-height: 36px;
+            padding: 6px 14px;
+            background: #fff !important;
+            color: #374151 !important;
+            border: 1px solid #e5e7eb !important;
+            box-shadow: none;
+            font-weight: 600;
+        }
+        .mobile-action-btn i { color: #667eea; }
+        .mobile-action-btn.btn-add-task {
+            background: #667eea !important;
+            color: #fff !important;
+            border-color: #667eea !important;
+        }
+        .mobile-action-btn.btn-add-task i { color: #fff; }
+
+        /* Quick filter chips */
+        .mobile-quick-filters { padding: 6px 16px 10px; }
+        .quick-filter-chip { padding: 6px 14px; font-size: 13px; border-width: 1px; box-shadow: none; }
+        .quick-filter-chip.active { box-shadow: none; }
+
+        /* Search + filter panel */
+        .filter-section.task-toolbar-filters { margin: 0 16px 12px !important; }
+        .task-toolbar-filters #filter-search {
+            border: 1px solid #e5e7eb !important;
+            box-shadow: none;
+        }
+        .task-toolbar-filters #filter-search:focus { border-color: #667eea !important; }
+
+        /* List chrome */
+        .pull-to-refresh-hint { display: none; }
+        .mobile-results-count { padding: 0 20px 6px; font-weight: 600; font-size: 12px; color: #8a94a6; text-transform: uppercase; letter-spacing: 0.6px; }
+        #mobile-tasks-container { padding-left: 16px; padding-right: 16px; }
+
+        /* Cards: flat, hairline border, thin status accent */
+        .mobile-task-card {
+            border: 1px solid #eceef3;
+            border-left-width: 4px;
+            border-radius: 16px;
+            box-shadow: none;
+            padding: 14px 14px 10px;
+        }
+        .mobile-task-title { font-size: 15px; font-weight: 600; color: #1f2937; }
+        .mobile-task-badge { font-size: 10.5px; padding: 3px 9px; }
+        .mobile-task-info { color: #8a94a6; }
+        .mobile-task-actions { border-top: 0; margin-top: 6px; padding-top: 4px; gap: 6px; }
+
+        /* Soft tinted actions instead of 4 outlined boxes */
+        .mobile-task-actions .btn,
+        .mobile-task-actions .btn:hover,
+        .mobile-task-actions .btn:active,
+        .mobile-task-actions .btn:focus {
+            border: 0;
+            border-radius: 10px;
+            min-height: 38px;
+            font-size: 12.5px;
+            font-weight: 600;
+            background: #f3f4f6;
+            color: #4b5563;
+            box-shadow: none;
+        }
+        .mobile-task-actions .btn-outline-primary,
+        .mobile-task-actions .btn-outline-primary:hover,
+        .mobile-task-actions .btn-outline-primary:active { background: #eef0ff; color: #4f5fd6; }
+        .mobile-task-actions .btn-outline-success,
+        .mobile-task-actions .btn-outline-success:hover,
+        .mobile-task-actions .btn-outline-success:active { background: #e8f7ee; color: #157347; }
+        .mobile-task-actions .btn-outline-danger,
+        .mobile-task-actions .btn-outline-danger:hover,
+        .mobile-task-actions .btn-outline-danger:active { background: #fdecec; color: #b02a37; }
+
+        /* Quick-actions launcher: lighter */
+        .mobile-fab-launcher { width: 42px; height: 42px; font-size: 20px; opacity: 0.92; }
+    }
+
+    /* ---- Header section (stats + actions + filter tabs): even more minimal ---- */
+    @media (max-width: 767.98px) {
+        /* Stats: small outlined cards, colored numbers - no filled pills */
+        .stats-row.mobile-stats-strip { gap: 8px; padding: 8px 16px 4px !important; scroll-padding-left: 16px; }
+        .stats-row.mobile-stats-strip .stat-card,
+        .stats-row.mobile-stats-strip .stat-card.stat-card-ca {
+            min-width: 68px;
+            padding: 7px 12px 6px !important;
+            background: #fff !important;
+            border: 1px solid #d5dae6 !important;
+            border-radius: 12px !important;
+            box-shadow: none !important;
+            align-items: center !important;
+            text-align: center !important;
+        }
+        .stats-row.mobile-stats-strip .stat-content { align-items: center !important; }
+        .stats-row.mobile-stats-strip .stat-card .stat-label {
+            color: #9aa3b2 !important;
+            font-size: 8.5px !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.5px !important;
+            line-height: 1.2 !important;
+        }
+        .stats-row.mobile-stats-strip .stat-card .stat-value {
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            line-height: 1.25 !important;
+            color: #1f2937 !important;
+        }
+        .stats-row.mobile-stats-strip .stat-card:active { background: #f6f7fb !important; }
+        /* the desktop rule `.stats-row.flex-nowrap > .col > .stat-card { border: none }` is more specific, so match it */
+        .stats-row.mobile-stats-strip.flex-nowrap > .col > .stat-card {
+            border: 1px solid #d5dae6 !important;
+            border-radius: 12px !important;
+        }
+        .stats-row.mobile-stats-strip .stat-card-blue .stat-value       { color: #3b7ddd !important; }
+        .stats-row.mobile-stats-strip .stat-card-ca .stat-value         { color: #b71c1c !important; }
+        .stats-row.mobile-stats-strip .stat-card-red .stat-value,
+        .stats-row.mobile-stats-strip .stat-card-red-missed .stat-value { color: #dc3545 !important; }
+        .stats-row.mobile-stats-strip .stat-card-yellow .stat-value     { color: #d9902a !important; }
+        .stats-row.mobile-stats-strip .stat-card-teal .stat-value       { color: #0f9d75 !important; }
+        .stats-row.mobile-stats-strip .stat-card-cyan .stat-value       { color: #0891b2 !important; }
+        .stats-row.mobile-stats-strip .stat-card-perf-score .stat-value { color: #7c3aed !important; }
+
+        /* Actions row (+ Task / CSV / Multi / Refresh / Duplicate): hidden on phones.
+           Add task = bottom tab bar "Create"; refresh = pull down. Desktop is unchanged. */
+        .mobile-action-buttons { display: none !important; }
+        .mobile-action-buttons { padding: 12px 20px 6px; gap: 10px; align-items: center; }
+        .mobile-action-btn,
+        .mobile-action-btn.btn-primary,
+        .mobile-action-btn.btn-success,
+        .mobile-action-btn.btn-warning,
+        .mobile-action-btn.btn-outline-secondary {
+            width: 38px;
+            height: 38px;
+            min-height: 0;
+            padding: 0;
+            justify-content: center;
+            border-radius: 50%;
+            background: #fff !important;
+            border: 1px solid #e5e7eb !important;
+        }
+        .mobile-action-btn span { display: none; }
+        .mobile-action-btn i { font-size: 19px; }
+        .mobile-action-btn .task-magnify-icon { width: 18px; height: 18px; }
+        .mobile-action-btn.dropdown-toggle::after { display: none; }
+        .mobile-action-btn.btn-add-task {
+            width: auto;
+            height: 38px;
+            padding: 0 18px 0 14px;
+            border-radius: 19px;
+            gap: 4px;
+            margin-right: 2px;
+        }
+        .mobile-action-btn.btn-add-task span { display: inline; font-size: 14px; }
+        .mobile-action-btn.btn-add-task i { font-size: 20px; }
+
+        /* Quick filters: text tabs with an underline, no chips */
+        .mobile-quick-filters { gap: 20px; padding: 4px 20px 0; margin-bottom: 8px; border-bottom: 1px solid #eceef3; }
+        .quick-filter-chip,
+        .quick-filter-chip.active {
+            padding: 8px 0 9px;
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #8a94a6 !important;
+        }
+        .quick-filter-chip i { display: none; }
+        .quick-filter-chip.active { color: #667eea !important; border-bottom-color: #667eea !important; }
+        /* keep a hint of colour on the warning filters */
+        .quick-filter-chip[data-filter="overdue"],
+        .quick-filter-chip[data-filter="no_assignee"],
+        .quick-filter-chip[data-filter="no_assignor"] { color: #dc3545 !important; }
+        .quick-filter-chip[data-filter="high"] { color: #d9792a !important; }
+        .quick-filter-chip[data-filter="overdue"].active { border-bottom-color: #dc3545 !important; }
+    }
+
     </style>
     <script>
         (function () {
@@ -2328,8 +2532,9 @@
                                         </ul>
                                     </div>
 
-                                    <button type="button" class="mobile-action-btn btn-primary" id="bulk-task-btn-mobile">
-                                        <span>+ Multi</span>
+                                    <button type="button" class="mobile-action-btn btn-primary" id="bulk-task-btn-mobile" title="Add multiple tasks" aria-label="Add multiple tasks">
+                                        <i class="mdi mdi-plus-box-multiple-outline"></i>
+                                        <span>Multi</span>
                                     </button>
 
                                     <button type="button" class="mobile-action-btn btn-warning text-dark" id="tasks-refresh-table-btn-mobile" title="Reload tasks (keeps filters)">

@@ -148,6 +148,42 @@
             .mobile-photo-actions .btn:active { background: #e5e7eb; }
             .mobile-view #paste-box { display: none !important; }
 
+            /* Voice input (mic) on the Task field */
+            .task-voice-wrap { position: relative; }
+            .task-voice-wrap input.form-control-lg { padding-right: 56px; }
+            .task-mic-btn {
+                position: absolute;
+                right: 0;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 44px;
+                height: 44px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 0;
+                border-radius: 50%;
+                background: #eef0ff;
+                color: #667eea;
+                font-size: 24px;
+                padding: 0;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .task-mic-btn[hidden] { display: none; }
+            .task-mic-btn.listening {
+                background: #dc3545;
+                color: #fff;
+                animation: task-mic-pulse 1.2s ease-out infinite;
+            }
+            @keyframes task-mic-pulse {
+                0%   { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.45); }
+                100% { box-shadow: 0 0 0 16px rgba(220, 53, 69, 0); }
+            }
+            .task-mic-status { margin-top: 6px; font-size: 12px; color: #8a94a6; }
+            .task-mic-status[hidden] { display: none; }
+            .task-mic-status.error { color: #dc3545; }
+            @media (prefers-reduced-motion: reduce) { .task-mic-btn.listening { animation: none; } }
+
             /* Install-as-app card */
             .mobile-install-card {
                 display: flex;
@@ -251,16 +287,23 @@
                             <label for="mobile_title" class="form-label fw-bold">
                                 Task <span class="text-danger">*</span>
                             </label>
-                            <input type="text" 
-                                   class="form-control form-control-lg @error('title') is-invalid @enderror" 
-                                   id="mobile_title" 
-                                   name="title" 
-                                   placeholder="What needs to be done?" 
-                                   value="{{ old('title') }}" 
-                                   required
-                                   autofocus>
+                            <div class="task-voice-wrap">
+                                <input type="text" 
+                                       class="form-control form-control-lg @error('title') is-invalid @enderror" 
+                                       id="mobile_title" 
+                                       name="title" 
+                                       placeholder="What needs to be done?" 
+                                       value="{{ old('title') }}" 
+                                       required
+                                       autofocus>
+                                <button type="button" class="task-mic-btn" id="task-mic-btn" hidden
+                                        aria-label="Speak the task" aria-pressed="false" title="Speak the task">
+                                    <i class="mdi mdi-microphone"></i>
+                                </button>
+                            </div>
+                            <div class="task-mic-status" id="task-mic-status" aria-live="polite" hidden></div>
                             @error('title')
-                                <div class="invalid-feedback">{{ $message }}</div>
+                                <div class="invalid-feedback d-block">{{ $message }}</div>
                             @enderror
                         </div>
 
@@ -614,6 +657,78 @@
                 theme: 'bootstrap-5',
                 placeholder: 'Please Select'
             });
+
+            // ==========================================
+            // VOICE INPUT: speak the task (Web Speech API)
+            // Works in Chrome/Edge (Android + desktop) and Safari 14.5+ (iPhone). Needs HTTPS.
+            // The mic button stays hidden on browsers without support.
+            // ==========================================
+            (function () {
+                var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                var btn = document.getElementById('task-mic-btn');
+                var input = document.getElementById('mobile_title');
+                var status = document.getElementById('task-mic-status');
+                if (!SR || !btn || !input) return;
+                btn.hidden = false;
+
+                var rec = null, listening = false, base = '';
+
+                function setStatus(text, isError) {
+                    if (!text) { status.hidden = true; status.textContent = ''; return; }
+                    status.textContent = text;
+                    status.classList.toggle('error', !!isError);
+                    status.hidden = false;
+                }
+                function setListening(on) {
+                    listening = on;
+                    btn.classList.toggle('listening', on);
+                    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    btn.querySelector('i').className = 'mdi ' + (on ? 'mdi-stop' : 'mdi-microphone');
+                }
+                function stop() { if (rec && listening) { try { rec.stop(); } catch (e) {} } }
+
+                function start() {
+                    rec = new SR();
+                    rec.lang = 'en-IN';
+                    rec.interimResults = true;
+                    rec.continuous = false;
+                    rec.maxAlternatives = 1;
+                    base = input.value.trim();
+
+                    rec.onstart = function () { setListening(true); setStatus('Listening… speak your task'); };
+                    rec.onresult = function (ev) {
+                        var text = '';
+                        for (var i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript;
+                        text = text.trim();
+                        if (!text) return;
+                        if (!base) text = text.charAt(0).toUpperCase() + text.slice(1);
+                        input.value = base ? base + ' ' + text : text;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    };
+                    rec.onerror = function (ev) {
+                        var msg = {
+                            'not-allowed': 'Microphone is blocked. Allow microphone access for this site in your browser settings.',
+                            'service-not-allowed': 'Voice input is not allowed here. It needs a secure (https) connection.',
+                            'no-speech': "Didn't catch that. Tap the mic and try again.",
+                            'audio-capture': 'No microphone found.',
+                            'network': 'Voice input needs an internet connection.'
+                        }[ev.error];
+                        if (msg) setStatus(msg, true);
+                    };
+                    rec.onend = function () {
+                        setListening(false);
+                        if (!status.classList.contains('error')) setStatus('');
+                    };
+
+                    status.classList.remove('error');
+                    input.blur(); // keep the keyboard from covering the screen while speaking
+                    try { rec.start(); } catch (e) { setStatus('Could not start the microphone.', true); }
+                }
+
+                btn.addEventListener('click', function () { listening ? stop() : start(); });
+                document.addEventListener('visibilitychange', function () { if (document.hidden) stop(); });
+                $('form').on('submit', stop);
+            })();
 
             // ==========================================
             // INSTALL AS APP (phones only)
