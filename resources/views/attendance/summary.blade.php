@@ -285,6 +285,8 @@
     .es-join-late { display: inline-block; margin-top: .1rem; padding: 0 .45rem; border-radius: 999px; background: #dc2626; color: #fff; font-size: .68rem; font-weight: 700; }
     .es-join-ok { display: inline-block; margin-top: .1rem; color: #15803d; font-size: .68rem; font-weight: 700; }
     .es-join-muted { color: #94a3b8; font-size: .72rem; }
+    .es-alert-cell { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: nowrap; white-space: nowrap; }
+    .es-alert-badge { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .55rem; border-radius: 999px; background: #dc2626; color: #fff; font-size: .7rem; font-weight: 700; line-height: 1.3; }
     tr.es-late-row .es-name { color: #b91c1c; }
     .es-pct { min-width: 90px; }
     .es-input-col { min-width: 84px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -501,6 +503,7 @@
                 </select>
                 </div>
 
+                @php $canSeeAlerts = \App\Support\AttendanceAccess::canSeeFraudAlerts(); @endphp
                 @include('attendance.partials.fraud-alert', ['alert' => null])
                 <div class="table-responsive">
                     <table class="table table-hover es-table" id="summaryTable">
@@ -508,6 +511,9 @@
                             <tr>
                                 <th class="es-avatar-col" style="width:5%">Image</th>
                                 <th class="es-sort is-asc" data-sort="name" data-type="text" style="width:13%" aria-sort="ascending">Employee</th>
+                                @if($canSeeAlerts)
+                                <th class="es-sort es-alert-col" data-sort="alertScore" data-type="num" style="width:9%" title="Red alert: joined late / not joined yet, or open fraud-check alerts">Alert</th>
+                                @endif
                                 <th class="es-tm-col" style="width:4%" title="TM — open Task Manager for this employee as assignee (new tab)">TM</th>
                                 <th class="es-ts-col" style="width:4%" title="TS — open Task Summary for this employee (new tab)">TS</th>
                                 <th class="es-time-col" style="width:5%">Time</th>
@@ -550,14 +556,25 @@
                                 data-live="{{ (int) ($row['live_sort'] ?? 3) }}"
                                 data-live-status="{{ $row['live_status'] ?? 'absent' }}"
                                 data-last-image="{{ (int) ($row['last_image_sort'] ?? 0) }}"
+                                data-alert-score="{{ (!empty($row['fraud_alert']) ? 2 : 0) + (!empty($row['join_late']) ? 1 : 0) }}"
                                 data-has-alert="{{ !empty($row['fraud_alert']) ? '1' : '0' }}">
                                 <td class="es-avatar-col">
                                     <img src="{{ $row['avatar_url'] }}" alt="" class="es-avatar" loading="lazy"
                                          onerror="this.onerror=null;this.src='{{ asset('images/users/avatar-2.jpg') }}';">
                                 </td>
                                 <td>
-                                    <div class="es-name">{{ $row['name'] }}@include('attendance.partials.fraud-alert', ['alert' => $row['fraud_alert'] ?? null, 'href' => $row['detail_url'] ?? '#'])</div>
+                                    <div class="es-name">{{ $row['name'] }}</div>
                                 </td>
+                                @if($canSeeAlerts)
+                                <td class="es-alert-col">
+                                    <div class="es-alert-cell">
+                                        @if(!empty($row['join_late']))
+                                        <span class="es-alert-badge" title="Joining alert">{{ $row['join_label'] }}</span>
+                                        @endif
+                                        @include('attendance.partials.fraud-alert', ['alert' => $row['fraud_alert'] ?? null, 'href' => $row['detail_url'] ?? '#'])
+                                    </div>
+                                </td>
+                                @endif
                                 <td class="es-tm-col">
                                     @php
                                         $tmLevel = strtolower((string) ($row['org_level'] ?? ''));
@@ -676,7 +693,7 @@
                             @endforeach
                             @if(count($rows) === 0)
                             <tr class="es-empty-row">
-                                <td colspan="18" class="text-center text-muted py-4">No employees match the current filters.</td>
+                                <td colspan="{{ $canSeeAlerts ? 19 : 18 }}" class="text-center text-muted py-4">No employees match the current filters.</td>
                             </tr>
                             @endif
                         </tbody>
@@ -1028,9 +1045,20 @@
 
     // Red triangle beside the name when the fraud checkup has open alerts (same markup as the
     // server-rendered partial attendance/partials/fraud-alert.blade.php).
+    const canSeeAlerts = @json(\App\Support\AttendanceAccess::canSeeFraudAlerts());
+
+    // Alert column: red badge for late / not joined, plus the fraud-check triangle.
+    function alertCell(row) {
+        if (!canSeeAlerts) return '';
+        const badge = row.join_late
+            ? '<span class="es-alert-badge" title="Joining alert">' + escapeAttr(row.join_label || 'Late') + '</span>'
+            : '';
+        return '<td class="es-alert-col"><div class="es-alert-cell">' + badge + fraudTriangle(row) + '</div></td>';
+    }
+
     function fraudTriangle(row) {
         const a = row.fraud_alert;
-        if (!a || !@json(\App\Support\AttendanceAccess::canSeeFraudAlerts())) return '';
+        if (!a || !canSeeAlerts) return '';
         return '<a href="' + escapeAttr(row.detail_url || '#') + '" target="_blank" rel="noopener noreferrer" class="fraud-tri ' + escapeAttr(a.level) + '"'
             + ' title="' + escapeAttr(a.tooltip) + '" aria-label="Fraud check: ' + escapeAttr(a.count) + ' open alert(s), ' + escapeAttr(a.level) + ' risk">'
             + '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">'
@@ -1169,15 +1197,16 @@
         if (!body) return;
         const selectedId = String(executiveSelect?.value || 0);
         if (!rows.length) {
-            body.innerHTML = '<tr class="es-empty-row"><td colspan="18" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
+            body.innerHTML = '<tr class="es-empty-row"><td colspan="' + (canSeeAlerts ? 19 : 18) + '" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
             return;
         }
         body.innerHTML = rows.map(row => `
-            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}${row.join_late ? ' es-late-row' : ''}" data-user-id="${row.user_id || ''}" data-late="${row.join_late ? '1' : '0'}" data-join="${row.join_late ? (row.join_late_minutes || 0) : -1}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-input-pct="${row.input_tracked ? (row.input_pct || 0) : (row.input_has_activity ? 0 : -1)}" data-clicks="${row.input_tracked ? (row.click_count || 0) : (row.input_has_activity ? 0 : -1)}" data-keys="${row.input_tracked ? (row.key_count || 0) : (row.input_has_activity ? 0 : -1)}" data-idle="${row.idle_seconds || 0}" data-idle-count="${row.idle_count || 0}" data-wt-current="${row.wt_current_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}" data-has-alert="${row.fraud_alert ? '1' : '0'}">
+            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}${row.join_late ? ' es-late-row' : ''}" data-user-id="${row.user_id || ''}" data-late="${row.join_late ? '1' : '0'}" data-join="${row.join_late ? (row.join_late_minutes || 0) : -1}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-input-pct="${row.input_tracked ? (row.input_pct || 0) : (row.input_has_activity ? 0 : -1)}" data-clicks="${row.input_tracked ? (row.click_count || 0) : (row.input_has_activity ? 0 : -1)}" data-keys="${row.input_tracked ? (row.key_count || 0) : (row.input_has_activity ? 0 : -1)}" data-idle="${row.idle_seconds || 0}" data-idle-count="${row.idle_count || 0}" data-wt-current="${row.wt_current_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}" data-alert-score="${(row.fraud_alert ? 2 : 0) + (row.join_late ? 1 : 0)}" data-has-alert="${row.fraud_alert ? '1' : '0'}">
                 <td class="es-avatar-col">${avatarCell(row)}</td>
                 <td>
-                    <div class="es-name">${row.name}${fraudTriangle(row)}</div>
+                    <div class="es-name">${row.name}</div>
                 </td>
+                ${alertCell(row)}
                 <td class="es-tm-col">${tmCell(row)}</td>
                 <td class="es-ts-col">${tsCell(row)}</td>
                 <td class="es-time-col"><a href="${escapeAttr(row.timeline_url || '#')}" target="_blank" rel="noopener" class="es-time-btn" title="Open timeline in a new tab"><img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true"></a></td>
