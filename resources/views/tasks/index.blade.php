@@ -1421,6 +1421,35 @@
             background-color: #1aa179;
         }
 
+        .action-btn-automate {
+            background-color: #fd7e14;
+            color: white;
+        }
+
+        .action-btn-automate:hover {
+            background-color: #e96b02;
+        }
+
+        #convertAutomatedModal .ca-freq-btn,
+        #convertAutomatedModal .ca-day-btn,
+        #convertAutomatedModal .ca-date-btn {
+            border: none;
+            font-weight: 600;
+            border-radius: 4px;
+            padding: 0;
+            background: #e9ecef;
+            color: #495057;
+        }
+        #convertAutomatedModal .ca-freq-btn { width: 40px; height: 32px; font-size: 11px; }
+        #convertAutomatedModal .ca-day-btn { width: 35px; height: 32px; font-size: 10px; }
+        #convertAutomatedModal .ca-date-btn { width: 30px; height: 28px; font-size: 10px; }
+        #convertAutomatedModal .ca-freq-btn.active,
+        #convertAutomatedModal .ca-day-btn.active,
+        #convertAutomatedModal .ca-date-btn.active {
+            background: #fd7e14;
+            color: #fff;
+        }
+
         .action-btn-delete-disabled {
             background-color: #e9ecef !important;
             color: #adb5bd !important;
@@ -3190,6 +3219,72 @@
     </div>
 </div>
 
+<!-- Convert normal task to automated (recurring) task -->
+<div class="modal fade" id="convertAutomatedModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #fd7e14 0%, #e96b02 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-robot me-2"></i>Convert to Automated Task
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="ca-task-id" value="">
+                <p class="mb-3 small text-muted">
+                    <strong id="ca-task-title"></strong><br>
+                    A recurring automated task will be created from this task using its title, description, assignor, assignee, priority and links.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size: 13px;">Frequency <span class="text-danger">*</span></label>
+                    <div class="d-flex gap-2 align-items-center">
+                        <button type="button" class="btn ca-freq-btn active" data-schedule="daily">D</button>
+                        <button type="button" class="btn ca-freq-btn" data-schedule="weekly">W</button>
+                        <button type="button" class="btn ca-freq-btn" data-schedule="monthly">M</button>
+                        <span class="small text-muted ms-2" id="ca-freq-label">Every day</span>
+                    </div>
+                </div>
+                <div class="mb-3 d-none" id="ca-weekly-options">
+                    <label class="form-label fw-bold" style="font-size: 13px;">Days of week</label>
+                    <div class="d-flex gap-1">
+                        <button type="button" class="btn ca-day-btn" data-day="Sun">S</button>
+                        <button type="button" class="btn ca-day-btn active" data-day="Mon">M</button>
+                        <button type="button" class="btn ca-day-btn" data-day="Tue">T</button>
+                        <button type="button" class="btn ca-day-btn" data-day="Wed">W</button>
+                        <button type="button" class="btn ca-day-btn" data-day="Thu">T</button>
+                        <button type="button" class="btn ca-day-btn" data-day="Fri">F</button>
+                        <button type="button" class="btn ca-day-btn" data-day="Sat">S</button>
+                    </div>
+                </div>
+                <div class="mb-3 d-none" id="ca-monthly-options">
+                    <label class="form-label fw-bold" style="font-size: 13px;">Dates of month</label>
+                    <div class="d-flex gap-1 flex-wrap">
+                        @for($i = 1; $i <= 31; $i++)
+                            <button type="button" class="btn ca-date-btn" data-date="{{ $i }}">{{ $i }}</button>
+                        @endfor
+                        <button type="button" class="btn ca-date-btn" data-date="EOM" style="width:42px;font-size:9px;">EOM</button>
+                    </div>
+                </div>
+                <div class="mb-3 d-none" id="ca-time-wrap">
+                    <label for="ca-schedule-time" class="form-label fw-bold" style="font-size: 13px;">Time <span class="text-danger">*</span></label>
+                    <input type="time" class="form-control form-control-sm" id="ca-schedule-time" value="12:00" style="max-width: 160px;">
+                </div>
+                <div class="alert alert-warning small py-2 mb-2">
+                    <i class="mdi mdi-information me-1"></i>
+                    This task becomes today's instance of the automated task if it is still open, and a new one will be created on each scheduled run.
+                </div>
+                <div class="alert alert-danger small py-2 mb-0 d-none" id="ca-error"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="ca-confirm-btn" style="background:#fd7e14;border-color:#fd7e14;">
+                    <i class="mdi mdi-check me-1"></i>Convert
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Add-assignee status modal — Dependent / Need Help / Need Approval -->
 <div class="modal fade" id="addAssigneeStatusModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -3971,6 +4066,16 @@
                 if (meName && stored === meName) return true;
                 var meFirst = meName.split(/\s+/)[0] || '';
                 return meFirst !== '' && stored.indexOf(' ') === -1 && stored === meFirst;
+            }
+
+            // Normal task -> automated task: assignor / president, not already automated, not a subtask, not ATE.
+            function canConvertTaskToAutomated(rowData) {
+                if (!rowData) return false;
+                if (rowData.is_automate_task == 1 || rowData.is_automate_task === true || rowData.is_automate_task === '1') return false;
+                if (rowData.automate_task_id) return false;
+                if (rowData.is_ate_task == 1) return false;
+                if (rowData.parent_task_id && parseInt(rowData.parent_task_id, 10) > 0) return false;
+                return canDeleteAnyTask || currentUserIsAssignorOnTask(rowData);
             }
 
             function userCanDeleteTaskRow(rowData) {
@@ -5523,6 +5628,14 @@
                                 buttons += `
                                     <button type="button" class="action-btn-icon action-btn-delete-disabled" disabled title="Corrective action tasks can only be deleted by the assignee or president@5core.com">
                                         <i class="mdi mdi-lock-outline"></i>
+                                    </button>
+                                `;
+                            }
+
+                            if (canConvertTaskToAutomated(rowData)) {
+                                buttons += `
+                                    <button class="action-btn-icon action-btn-automate convert-to-automated" data-id="${id}" title="Convert to automated task">
+                                        <i class="mdi mdi-robot"></i>
                                     </button>
                                 `;
                             }
@@ -8751,6 +8864,116 @@
                         console.error('Delete failed:', xhr.responseJSON);
                         var errorMsg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to delete task. You may not have permission.';
                         alert('Error: ' + errorMsg);
+                    }
+                });
+            });
+
+            // Convert a normal task to an automated (recurring) task
+            var caScheduleType = 'daily';
+
+            function caSetSchedule(type) {
+                caScheduleType = type;
+                $('#convertAutomatedModal .ca-freq-btn').removeClass('active')
+                    .filter('[data-schedule="' + type + '"]').addClass('active');
+                $('#ca-weekly-options').toggleClass('d-none', type !== 'weekly');
+                $('#ca-monthly-options').toggleClass('d-none', type !== 'monthly');
+                $('#ca-time-wrap').toggleClass('d-none', type === 'daily');
+                $('#ca-freq-label').text(type === 'daily' ? 'Every day' : (type === 'weekly' ? 'Every week' : 'Every month'));
+                if (type === 'weekly' && $('#convertAutomatedModal .ca-day-btn.active').length === 0) {
+                    $('#convertAutomatedModal .ca-day-btn[data-day="Mon"]').addClass('active');
+                }
+            }
+
+            $(document).on('click', '.convert-to-automated', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var taskId = String($(this).data('id'));
+                var row = null;
+                try { row = table.getRow(taskId); } catch (err) { row = null; }
+                var data = row ? row.getData() : null;
+                if (data && !canConvertTaskToAutomated(data)) {
+                    alert('You cannot convert this task to an automated task.');
+                    return;
+                }
+                $('#ca-task-id').val(taskId);
+                $('#ca-task-title').text(data && data.title ? data.title : 'Task #' + taskId);
+                $('#ca-error').addClass('d-none').text('');
+                $('#convertAutomatedModal .ca-day-btn').removeClass('active');
+                $('#convertAutomatedModal .ca-date-btn').removeClass('active');
+                $('#ca-schedule-time').val('12:00');
+                caSetSchedule('daily');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('convertAutomatedModal')).show();
+            });
+
+            $(document).on('click', '#convertAutomatedModal .ca-freq-btn', function() {
+                caSetSchedule(String($(this).data('schedule')));
+            });
+            $(document).on('click', '#convertAutomatedModal .ca-day-btn, #convertAutomatedModal .ca-date-btn', function() {
+                $(this).toggleClass('active');
+            });
+
+            $('#ca-confirm-btn').on('click', function() {
+                var $btn = $(this);
+                var taskId = $('#ca-task-id').val();
+                var days = '';
+                if (caScheduleType === 'weekly') {
+                    days = $('#convertAutomatedModal .ca-day-btn.active').map(function() { return $(this).data('day'); }).get().join(',');
+                    if (!days) {
+                        $('#ca-error').removeClass('d-none').text('Select at least one weekday.');
+                        return;
+                    }
+                } else if (caScheduleType === 'monthly') {
+                    days = $('#convertAutomatedModal .ca-date-btn.active').map(function() { return $(this).data('date'); }).get().join(',');
+                    if (!days) {
+                        $('#ca-error').removeClass('d-none').text('Select at least one date of the month.');
+                        return;
+                    }
+                }
+                var scheduleTime = $('#ca-schedule-time').val();
+                if (caScheduleType !== 'daily' && !scheduleTime) {
+                    $('#ca-error').removeClass('d-none').text('Please choose a time.');
+                    return;
+                }
+                $('#ca-error').addClass('d-none').text('');
+                $btn.prop('disabled', true);
+
+                $.ajax({
+                    url: '/tasks/' + encodeURIComponent(taskId) + '/convert-to-automated',
+                    type: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        schedule_type: caScheduleType,
+                        schedule_days: days,
+                        schedule_time: caScheduleType === 'daily' ? '' : scheduleTime
+                    },
+                    success: function(response) {
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('convertAutomatedModal')).hide();
+                        var row = null;
+                        try { row = table.getRow(taskId); } catch (err) { row = null; }
+                        if (row && response && response.task) {
+                            var $rowEl = $(row.getElement());
+                            $rowEl.find('.convert-to-automated').remove();
+                            row.update(response.task);
+                            row.reformat();
+                        }
+                        var alertHtml = `
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-check-circle me-2"></i>${escapeHtml((response && response.message) || 'Task converted to an automated task.')}
+                                <a href="{{ route('tasks.automated') }}" class="ms-2 alert-link">View automated tasks</a>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `;
+                        $('.task-card .card-body').prepend(alertHtml);
+                        setTimeout(function() {
+                            $('.alert').fadeOut(function() { $(this).remove(); });
+                        }, 6000);
+                    },
+                    error: function(xhr) {
+                        var msg = (xhr.responseJSON && (xhr.responseJSON.message || (xhr.responseJSON.errors && Object.values(xhr.responseJSON.errors)[0][0]))) || 'Failed to convert task. You may not have permission.';
+                        $('#ca-error').removeClass('d-none').text(msg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false);
                     }
                 });
             });

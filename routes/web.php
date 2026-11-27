@@ -8484,6 +8484,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/{id}/complete', [\App\Http\Controllers\TaskController::class, 'complete'])->name('tasks.complete');
     Route::post('/tasks/{id}/chat', [\App\Http\Controllers\TaskController::class, 'openChat'])->whereNumber('id')->name('tasks.chat');
     Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');
+    Route::post('/tasks/{id}/convert-to-automated', [\App\Http\Controllers\TaskController::class, 'convertToAutomated'])->whereNumber('id')->name('tasks.convertToAutomated');
 
     // Resources Master (R&R / training / checklists / media / links)
     Route::prefix('resources-master')->middleware('auth')->name('resources-master.')->group(function () {

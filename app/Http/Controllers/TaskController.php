@@ -5663,6 +5663,141 @@ class TaskController extends Controller
         return redirect()->route('tasks.automated')->with('success', $successMessage);
     }
 
+    /**
+     * Convert a normal (manual) task into a recurring automated task template.
+     *
+     * Creates an automate_tasks row from the task's details plus the chosen schedule.
+     * When the task is still open it is linked to the new template as its current
+     * instance, so the scheduler does not create a duplicate for the same day.
+     */
+    public function convertToAutomated(Request $request, $id)
+    {
+        $task = Task::findOrFail($id);
+
+        $user = Auth::user();
+        if (! $user || ! TaskPolicy::userCanEditTask($user, $task)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only the assignor or the president can convert this task to an automated task.',
+            ], 403);
+        }
+
+        if ($task->is_automate_task || ! empty($task->automate_task_id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This task is already an automated task.',
+            ], 422);
+        }
+        if ((int) ($task->parent_task_id ?? 0) > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Subtasks cannot be converted. Convert the parent task instead.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'schedule_type' => 'required|in:daily,weekly,monthly',
+            'schedule_days' => 'nullable|string|max:255',
+            'schedule_time' => 'nullable|string|max:8',
+        ]);
+
+        $scheduleType = $validated['schedule_type'];
+        $scheduleTime = $validated['schedule_time'] ?? null;
+        if ($scheduleType === 'daily' || ! $scheduleTime) {
+            $scheduleTime = TaskBusinessTime::dailyGenerateTime();
+        }
+        $scheduleDays = AutomatedTaskSchedule::applyDefaultDays($scheduleType, $validated['schedule_days'] ?? '');
+
+        if ($scheduleType === 'monthly' && trim($scheduleDays) === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select at least one date for a monthly automated task.',
+            ], 422);
+        }
+        if ($scheduleType === 'daily') {
+            // Daily templates run every day unless specific weekdays are listed.
+            $scheduleDays = trim($scheduleDays);
+        }
+
+        $now = now();
+        $row = [
+            'title' => $task->title,
+            'description' => $task->description ?? '',
+            'group' => $task->group,
+            'priority' => $task->priority ?: 'Normal',
+            'assignor' => $task->getRawOriginal('assignor') ?: $user->email,
+            'assign_to' => $task->assign_to ?: null,
+            'eta_time' => $task->eta_time ?: 10,
+            'start_date' => $task->start_date ?? $now,
+            'due_date' => $task->due_date ?? $task->start_date ?? $now,
+            'split_tasks' => $task->split_tasks ? 1 : 0,
+            'schedule_type' => $scheduleType,
+            'schedule_time' => $scheduleTime,
+            'schedule_days' => $scheduleDays,
+            'status' => 'Todo',
+            'link1' => $task->link1 ?? '',
+            'link2' => $task->link2 ?? '',
+            'link3' => $task->link3 ?? '',
+            'link4' => $task->link4 ?? '',
+            'link5' => $task->link5 ?? '',
+            'link6' => $task->link6 ?? '',
+            'link7' => $task->link7 ?? '',
+            'workspace' => $task->workspace ?? 0,
+            'order' => $task->order ?? 0,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+        if (Schema::hasColumn('automate_tasks', 'link8')) {
+            $row['link8'] = $task->link8 ?? '';
+        }
+        if (Schema::hasColumn('automate_tasks', 'link9')) {
+            $row['link9'] = $task->link9 ?? '';
+        }
+        if (Schema::hasColumn('automate_tasks', 'image')) {
+            $row['image'] = $task->image;
+        }
+
+        // An open task becomes the template's current instance; a finished one is left as history.
+        $linkTask = ! in_array((string) $task->status, ['Done', 'Archived'], true);
+
+        $automateTaskId = DB::transaction(function () use ($row, $task, $linkTask, $scheduleType, $scheduleTime, $now) {
+            $automateTaskId = (int) DB::table('automate_tasks')->insertGetId($row);
+
+            if ($linkTask) {
+                DB::table('tasks')->where('id', $task->id)->update([
+                    'is_automate_task' => 1,
+                    'automate_task_id' => $automateTaskId,
+                    'task_type' => 'automate_task',
+                    'schedule_type' => $scheduleType,
+                    'schedule_time' => $scheduleTime,
+                    'updated_at' => $now,
+                ]);
+            }
+
+            return $automateTaskId;
+        });
+
+        $scheduleInfo = $scheduleType;
+        if ($scheduleDays !== '') {
+            $scheduleInfo .= ' ('.$scheduleDays.')';
+        }
+        $scheduleInfo .= ' at '.$scheduleTime;
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Task converted to an automated task. Will execute: '.$scheduleInfo,
+            'automate_task_id' => $automateTaskId,
+            'linked' => $linkTask,
+            'task' => [
+                'id' => $task->id,
+                'is_automate_task' => $linkTask ? 1 : 0,
+                'automate_task_id' => $linkTask ? $automateTaskId : null,
+                'task_type' => $linkTask ? 'automate_task' : $task->task_type,
+                'schedule_type' => $linkTask ? $scheduleType : $task->schedule_type,
+            ],
+        ]);
+    }
+
     public function automatedEdit($id)
     {
         $taskModel = \DB::table('automate_tasks')->where('id', $id)->first();
