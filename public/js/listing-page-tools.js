@@ -1340,18 +1340,21 @@
         const results = cell.querySelector('.lp-cat-results');
         if (!results) return;
         query = String(query || '').trim();
-        if (query.length < 2) {
+        // Best Buy / Macy's / Purchasing Power: an empty box lists every category, with the best matches for this SKU on top.
+        const mirakl = isMiraklChannel();
+        if (query.length < 2 && !mirakl) {
             results.hidden = true;
             results.innerHTML = '';
             return;
         }
         results.hidden = false;
-        results.innerHTML = '<div class="lp-cat-empty">Searching…</div>';
+        if (mirakl) results.style.maxHeight = '300px';
+        results.innerHTML = '<div class="lp-cat-empty">' + (mirakl ? 'Loading categories…' : 'Searching…') + '</div>';
         if (skuCatXhr && skuCatXhr.abort) skuCatXhr.abort();
         skuCatXhr = $.ajax({
             url: cfg().categorySearchUrl || '/listing-manager/ebay/categories',
             type: 'GET',
-            data: { q: query, channel: isReverbChannel() ? 'reverb' : (cfg().channel || ''), title: query },
+            data: { q: query, channel: isReverbChannel() ? 'reverb' : (cfg().channel || ''), title: mirakl ? '' : query, sku: String(cell.getAttribute('data-sku') || '') },
             dataType: 'json',
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             success: function (res) {
@@ -1360,10 +1363,20 @@
                     results.innerHTML = '<div class="lp-cat-empty">' + escapeHtml((res && res.message) || 'No categories matched.') + '</div>';
                     return;
                 }
-                results.innerHTML = rows.map(function (row) {
+                const itemHtml = function (row) {
                     return '<button type="button" class="lp-cat-item" data-id="' + escapeHtml(row.id || '') +
-                        '" data-path="' + escapeHtml(row.path || '') + '">' + escapeHtml(row.path || row.id || '') + '</button>';
-                }).join('');
+                        '" data-path="' + escapeHtml(row.path || '') + '">' + (row.suggested ? '★ ' : '') + escapeHtml(row.path || row.id || '') + '</button>';
+                };
+                if (mirakl) {
+                    const sug = rows.filter(function (r) { return r.suggested; });
+                    const rest = rows.filter(function (r) { return !r.suggested; });
+                    let html = '';
+                    if (sug.length) html += '<div class="lp-cat-empty" style="font-weight:700;color:#15803d;">Suggested for this product</div>' + sug.map(itemHtml).join('');
+                    html += '<div class="lp-cat-empty" style="font-weight:700;">' + (query ? 'Matching categories' : 'All categories') + ' (' + rest.length + (res && res.total > rows.length ? ' of ' + res.total + ', type to narrow' : '') + ')</div>' + rest.map(itemHtml).join('');
+                    results.innerHTML = html;
+                    return;
+                }
+                results.innerHTML = rows.map(itemHtml).join('');
             },
             error: function (xhr, status) {
                 if (status === 'abort') return;
@@ -1382,6 +1395,7 @@
             if (!editor.hidden) {
                 const input = editor.querySelector('.lp-cat-input');
                 if (input) input.focus();
+                if (isMiraklChannel()) skuCategorySearch(cell, input ? input.value : '');
             }
         });
         $(document).off('input.lpSkuCat', '.lp-cat-input').on('input.lpSkuCat', '.lp-cat-input', function () {
@@ -1690,6 +1704,13 @@
         box.innerHTML = html;
         box.querySelectorAll('.listing-publish-group').forEach(syncParentCategoryVisibility);
         if (confirm) confirm.disabled = !canPublish;
+        if (isMiraklChannel() && perSku) {
+            // The search boxes start open, so list the categories (best matches first) right away.
+            box.querySelectorAll('.lp-cat-cell').forEach(function (cell) {
+                const editor = cell.querySelector('.lp-cat-editor');
+                if (editor && !editor.hidden) skuCategorySearch(cell, '');
+            });
+        }
         const progress = document.getElementById('listing-publish-progress');
         if (progress) progress.textContent = '';
         updateModalCopy();

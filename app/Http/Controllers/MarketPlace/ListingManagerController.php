@@ -2418,7 +2418,7 @@ class ListingManagerController extends Controller
 
         if ($family === 'mirakl') {
             $result = app(\App\Services\MarketplaceManager\MiraklListingPublishService::class)
-                ->searchListingCategories($q, $channel, $title);
+                ->searchListingCategories($q, $channel, $title, trim((string) $request->input('sku', '')));
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }

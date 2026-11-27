@@ -359,9 +359,12 @@ class MiraklListingPublishService
     }
 
     /**
-     * @return array{success: bool, categories: list<array{id: string, name: string, path: string}>}
+     * Category picker data. Without a search it lists every leaf category (alphabetical by path); with a SKU
+     * (or title) the best matches for that product come first and are flagged "suggested".
+     *
+     * @return array{success: bool, categories: list<array{id: string, name: string, path: string, suggested?: bool}>, suggested_count?: int, total?: int, message?: string}
      */
-    public function searchListingCategories(string $q, string $channel, string $title = ''): array
+    public function searchListingCategories(string $q, string $channel, string $title = '', string $sku = ''): array
     {
         $channel = $this->normalizeChannel($channel);
         $label = $this->channelLabel($channel);
@@ -378,57 +381,100 @@ class MiraklListingPublishService
             ];
         }
 
-        $needle = mb_strtolower(trim($q));
-        $terms = $needle !== ''
-            ? array_values(array_filter(preg_split('/\s+/', $needle) ?: []))
-            : [];
-        // No query yet: use the product title to suggest categories, otherwise list leaves.
-        $titleTerms = $needle === '' && trim($title) !== ''
-            ? array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($title)) ?: [], fn ($w) => mb_strlen($w) >= 4))
-            : [];
+        $title = trim($title);
+        if ($title === '' && trim($sku) !== '') {
+            try {
+                $product = $this->findProduct($sku);
+                $title = $product ? $this->resolveTitle($product, trim($sku)) : '';
+            } catch (\Throwable) {
+                $title = '';
+            }
+        }
 
-        $scored = [];
-        foreach ($rows as $row) {
-            $hay = mb_strtolower($row['id'].' '.$row['path']);
+        $needle = mb_strtolower(trim($q));
+        $terms = $needle !== '' ? array_values(array_filter(preg_split('/\s+/', $needle) ?: [])) : [];
+
+        // Words of the product title, used to rank suggestions.
+        $stop = ['the', 'and', 'for', 'with', 'pair', 'pcs', 'pack', 'set', 'inch', 'new', 'black', 'white', 'red', 'blue', 'pro', 'core'];
+        $words = [];
+        foreach (preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($title)) ?: [] as $w) {
+            if (mb_strlen($w) < 3 || in_array($w, $stop, true) || is_numeric($w)) {
+                continue;
+            }
+            $words[$w] = true;
+            if (mb_strlen($w) > 3 && str_ends_with($w, 's')) {
+                $words[mb_substr($w, 0, -1)] = true;
+            }
+        }
+        $words = array_keys($words);
+
+        $suggestScore = function (array $row) use ($words): int {
+            $name = mb_strtolower($row['name']);
+            $path = mb_strtolower($row['path']);
             $score = 0;
+            foreach ($words as $w) {
+                if (str_contains($name, $w)) {
+                    $score += 3;
+                } elseif (str_contains($path, $w)) {
+                    $score += 1;
+                }
+            }
+
+            return $score;
+        };
+
+        $suggested = [];
+        if ($words !== [] && $terms === []) {
+            foreach ($rows as $row) {
+                if (! $row['leaf']) {
+                    continue;
+                }
+                $score = $suggestScore($row);
+                if ($score > 0) {
+                    $suggested[] = [$score, $row];
+                }
+            }
+            usort($suggested, fn ($a, $b) => $b[0] <=> $a[0] ?: strcmp($a[1]['path'], $b[1]['path']));
+            $suggested = array_slice($suggested, 0, 8);
+        }
+        $suggestedIds = [];
+        $out = [];
+        foreach ($suggested as [, $row]) {
+            $suggestedIds[$row['id']] = true;
+            $out[] = ['id' => $row['id'], 'name' => $row['name'], 'path' => $row['path'], 'suggested' => true];
+        }
+        $suggestedCount = count($out);
+
+        $rest = [];
+        foreach ($rows as $row) {
+            if (isset($suggestedIds[$row['id']])) {
+                continue;
+            }
             if ($terms !== []) {
+                $hay = mb_strtolower($row['id'].' '.$row['path']);
                 foreach ($terms as $term) {
                     if (! str_contains($hay, $term)) {
                         continue 2;
                     }
                 }
-                $score = str_contains(mb_strtolower($row['name']), $needle) ? 3 : 1;
-            } elseif ($titleTerms !== []) {
-                foreach ($titleTerms as $word) {
-                    if (str_contains($hay, $word)) {
-                        $score++;
-                    }
+                $score = (str_contains(mb_strtolower($row['name']), $needle) ? 3 : 1) + ($row['leaf'] ? 2 : 0);
+            } else {
+                if (! $row['leaf']) {
+                    continue;
                 }
+                $score = 0;
             }
-            if ($row['leaf']) {
-                $score += 2;
-            }
-            $scored[] = [$score, $row];
+            $rest[] = [$score, $row];
         }
-        if ($terms === [] && $titleTerms !== []) {
-            $matched = array_filter($scored, fn ($item) => $item[0] > 2);
-            if ($matched !== []) {
-                $scored = array_values($matched);
-            }
-        }
-        usort($scored, fn ($a, $b) => $b[0] <=> $a[0] ?: strcmp($a[1]['path'], $b[1]['path']));
+        usort($rest, fn ($a, $b) => $b[0] <=> $a[0] ?: strcmp($a[1]['path'], $b[1]['path']));
 
-        $out = [];
-        foreach ($scored as [, $row]) {
+        $total = count($rest) + $suggestedCount;
+        foreach (array_slice($rest, 0, 1500) as [, $row]) {
             $out[] = ['id' => $row['id'], 'name' => $row['name'], 'path' => $row['path']];
-            if (count($out) >= 40) {
-                break;
-            }
         }
 
-        return ['success' => true, 'categories' => $out];
+        return ['success' => true, 'categories' => $out, 'suggested_count' => $suggestedCount, 'total' => $total];
     }
-
     public static function isMiraklListingChannel(string $channel): bool
     {
         $key = ListingChannelCounts::normalize($channel);
