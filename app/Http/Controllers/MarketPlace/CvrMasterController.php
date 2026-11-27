@@ -963,10 +963,10 @@ class CvrMasterController extends Controller
             $pushFailedBySku = [];
             try {
                 if (Schema::hasTable('price_push_pendings')) {
-                    $pushFailedBySku = \App\Models\PricePushPending::outstanding()
-                        ->selectRaw('sku, COUNT(*) as c')
+                    // Same rows as the red alert (no AliExpress, no "not listed" SKUs)
+                    $pushFailedBySku = \App\Services\PricePushPendingService::alertableOutstanding()
                         ->groupBy('sku')
-                        ->pluck('c', 'sku')
+                        ->map(fn ($g) => $g->count())
                         ->all();
                 }
             } catch (\Throwable $e) {

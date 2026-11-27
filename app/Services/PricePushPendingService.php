@@ -25,8 +25,34 @@ class PricePushPendingService
     public const MANUAL_ONLY_MARKETPLACES = ['temu', 'temu2'];
     private const EXTRA_KEYS = ['self_pick_price', 'goods_id', 'sku_id', 'product_id'];
 
-    public const TASK_ASSIGNEE_NAME = 'Sneha';
+    public const TASK_ASSIGNEE_NAME = 'Shreya';
+    public const TASK_ASSIGNOR_EMAIL = 'president@5core.com';
     public const TASK_GROUP = 'Listing Not Found';
+
+    /**
+     * Rows that count for the red alert on /price-increase, its Hist-column counters and the alert e-mail.
+     * AliExpress is left out, and so is every row whose SKU is "not listed" on the channel (that one goes to
+     * the listing task for Shreya instead, see createListingTask()).
+     */
+    public static function isAlertable($row): bool
+    {
+        if (str_starts_with(self::key((string) $row->marketplace), 'aliexpress')) {
+            return false;
+        }
+
+        return ! self::isListingNotFound((string) $row->last_error);
+    }
+
+    /** Outstanding rows that are shown / mailed as "NOT pushed yet" (see isAlertable()). */
+    public static function alertableOutstanding(?array $skus = null)
+    {
+        $q = PricePushPending::outstanding();
+        if ($skus) {
+            $q->whereIn('sku', $skus);
+        }
+
+        return $q->orderByDesc('last_attempt_at')->get()->filter(fn ($r) => self::isAlertable($r))->values();
+    }
 
     /** Marketplace answers that mean "this SKU has no listing there" (as opposed to a temporary API error). */
     public static function isListingNotFound(string $message): bool
@@ -37,12 +63,13 @@ class PricePushPendingService
         );
     }
 
-    /** User "Sneha" (active), same lookup as the CP Master SKU-delete tasks. */
-    private function snehaUser(): ?User
+    /** The listing-task assignee (active user "Shreya"). */
+    private function listingTaskUser(): ?User
     {
+        $key = strtolower(self::TASK_ASSIGNEE_NAME);
         $matches = User::active()
-            ->where(function ($q) {
-                $q->whereRaw('LOWER(name) LIKE ?', ['sneha%'])->orWhereRaw('LOWER(email) LIKE ?', ['sneha%']);
+            ->where(function ($q) use ($key) {
+                $q->whereRaw('LOWER(name) LIKE ?', [$key . '%'])->orWhereRaw('LOWER(email) LIKE ?', [$key . '%']);
             })
             ->orderBy('id')
             ->get();
@@ -50,12 +77,12 @@ class PricePushPendingService
             return null;
         }
 
-        return $matches->first(fn ($u) => strtolower(trim((string) $u->name)) === 'sneha') ?? $matches->first();
+        return $matches->first(fn ($u) => strtolower(trim((string) $u->name)) === $key) ?? $matches->first();
     }
 
     /**
      * One task per SKU + channel (not repeated for 7 days, even after it is closed — the hourly retry keeps failing
-     * the same way until the listing exists). Assigned to Sneha; assignor = the person who pushed.
+     * the same way until the listing exists). Assigned to Shreya; assignor = president@5core.com.
      */
     private function createListingTask(PricePushPending $row, string $message, ?string $by): void
     {
@@ -72,14 +99,13 @@ class PricePushPendingService
                 return;
             }
 
-            $assignee = $this->snehaUser();
+            $assignee = $this->listingTaskUser();
             if (! $assignee) {
-                Log::warning('Listing-not-found task: user Sneha not found', ['sku' => $row->sku, 'channel' => $row->channel]);
+                Log::warning('Listing-not-found task: user ' . self::TASK_ASSIGNEE_NAME . ' not found', ['sku' => $row->sku, 'channel' => $row->channel]);
 
                 return;
             }
-            $assignor = $by ? User::where('name', $by)->first() : null;
-            $assignorEmail = $assignor->email ?? self::ALERT_EMAIL;
+            $assignorEmail = self::TASK_ASSIGNOR_EMAIL;
             $channel = $row->channel ?: $row->marketplace;
 
             $start = now();
@@ -488,7 +514,7 @@ class PricePushPendingService
             ['message' => (string) $message, 'saved_only' => ! empty($body['saved_only'])],
             now()->addMinutes(30)
         );
-        if ($saved && ! $ok && $saved->alerted_at === null) {
+        if ($saved && ! $ok && $saved->alerted_at === null && self::isAlertable($saved)) {
             if ($this->sendAlert([$saved], 'A channel price could not be pushed. It will be retried every hour.')) {
                 $saved->forceFill(['alerted_at' => now()])->save();
             }
@@ -537,7 +563,7 @@ class PricePushPendingService
         if (! $this->available()) {
             return 0;
         }
-        $rows = PricePushPending::outstanding()->orderBy('sku')->get();
+        $rows = self::alertableOutstanding()->sortBy('sku')->values();
         if ($rows->isEmpty()) {
             return 0;
         }

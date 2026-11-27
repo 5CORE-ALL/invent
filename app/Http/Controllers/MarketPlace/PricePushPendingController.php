@@ -155,16 +155,13 @@ class PricePushPendingController extends Controller
         if (! $svc->available()) {
             return response()->json(['count' => 0, 'skus' => 0, 'items' => []]);
         }
-        $q = PricePushPending::outstanding();
         // ?sku=A  or  ?skus[]=A&skus[]=B  → only those SKUs (Hist column: "channels not updated" of a SKU / parent)
         $only = array_filter(array_map(
             fn ($s) => strtoupper(trim((string) $s)),
             array_merge((array) $request->query('skus', []), $request->filled('sku') ? [$request->query('sku')] : [])
         ));
-        if ($only) {
-            $q->whereIn('sku', array_values(array_unique($only)));
-        }
-        $rows = $q->orderByDesc('last_attempt_at')->limit(300)->get();
+        // AliExpress and "not listed" rows are not part of the alert (the not-listed ones become a task for Shreya)
+        $rows = PricePushPendingService::alertableOutstanding($only ? array_values(array_unique($only)) : null)->take(300)->values();
 
         $actions = $svc->actionsFor($rows);
 
@@ -196,7 +193,7 @@ class PricePushPendingController extends Controller
         }
         $rows = $request->filled('id')
             ? PricePushPending::outstanding()->where('id', (int) $request->input('id'))->get()
-            : PricePushPending::outstanding()->orderBy('last_attempt_at')->limit(12)->get();
+            : PricePushPendingService::alertableOutstanding()->sortBy('last_attempt_at')->take(12)->values();
         $ok = 0;
         foreach ($rows as $row) {
             $row->status = 'pending'; // allow a manual retry of a "failed" row
