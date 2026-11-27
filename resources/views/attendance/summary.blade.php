@@ -285,8 +285,9 @@
     .es-join-late { display: inline-block; margin-top: .1rem; padding: 0 .45rem; border-radius: 999px; background: #dc2626; color: #fff; font-size: .68rem; font-weight: 700; }
     .es-join-ok { display: inline-block; margin-top: .1rem; color: #15803d; font-size: .68rem; font-weight: 700; }
     .es-join-muted { color: #94a3b8; font-size: .72rem; }
-    .es-alert-cell { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: nowrap; white-space: nowrap; }
-    .es-alert-badge { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .55rem; border-radius: 999px; background: #dc2626; color: #fff; font-size: .7rem; font-weight: 700; line-height: 1.3; }
+    .es-table .es-alert-col { width: 160px; min-width: 160px; max-width: 160px; overflow: hidden; }
+    .es-alert-cell { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: .25rem .4rem; max-width: 100%; }
+    .es-alert-badge { display: inline-block; max-width: 100%; padding: .1rem .55rem; border-radius: 999px; background: #dc2626; color: #fff; font-size: .68rem; font-weight: 700; line-height: 1.35; white-space: normal; text-align: center; }
     tr.es-late-row .es-name { color: #b91c1c; }
     .es-pct { min-width: 90px; }
     .es-input-col { min-width: 84px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -512,7 +513,7 @@
                                 <th class="es-avatar-col" style="width:5%">Image</th>
                                 <th class="es-sort is-asc" data-sort="name" data-type="text" style="width:13%" aria-sort="ascending">Employee</th>
                                 @if($canSeeAlerts)
-                                <th class="es-sort es-alert-col" data-sort="alertScore" data-type="num" style="width:9%" title="Red alert: joined late / not joined yet, or open fraud-check alerts">Alert</th>
+                                <th class="es-sort es-alert-col" data-sort="alertScore" data-type="num" style="width:160px" title="Red alert: joined late / not joined yet, or open fraud-check alerts">Alert</th>
                                 @endif
                                 <th class="es-tm-col" style="width:4%" title="TM — open Task Manager for this employee as assignee (new tab)">TM</th>
                                 <th class="es-ts-col" style="width:4%" title="TS — open Task Summary for this employee (new tab)">TS</th>
