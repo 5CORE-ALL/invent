@@ -421,8 +421,11 @@
             if (m.next_increment !== null && m.next_increment !== undefined) {
                 return '<div class="sal-card nextincr approved"><div class="sal-card-label">Next month increment</div>'
                     + '<div class="sal-card-value">+' + esc(money(m.next_increment, cur)) + '</div>'
-                    + '<div class="sal-card-sub">✅ Approved for ' + esc(m.next_month_label || 'next month')
-                    + (m.next_salary !== null ? ' · new salary ' + esc(money(m.next_salary, cur)) : '') + '</div></div>';
+                    + '<div class="sal-card-sub">✅ ' + (m.next_from_label
+                        ? 'As per Increment page · ' + esc(m.next_from_label)
+                        : 'Approved for ' + esc(m.next_month_label || 'next month')
+                            + (m.next_salary !== null ? ' · new salary ' + esc(money(m.next_salary, cur)) : ''))
+                    + '</div></div>';
             }
             return '<div class="sal-card nextincr"><div class="sal-card-label">Next month increment</div>'
                 + '<div class="sal-card-value">—</div>'

@@ -83,13 +83,26 @@ class SalaryFabController extends Controller
             $inc = $nextRow ? (float) $nextRow->increment : 0.0;
 
             $row->setAttribute('next_month_label', $nextLabel);
-            $row->setAttribute('next_increment', $inc > 0 ? $inc : null);
-            // Next month's pay rate = carried-forward base (this month's PP + Incr, unless the sheet
-            // has a manual PP override) + the approved increment.
-            $base = $nextRow && $nextRow->salary_pp_overridden
-                ? (float) $nextRow->salary_pp
-                : (float) $row->salary_pp + (float) $row->increment;
-            $row->setAttribute('next_salary', $inc > 0 ? $base + $inc : null);
+            $row->setAttribute('next_from_label', null);
+
+            if ($inc > 0) {
+                $row->setAttribute('next_increment', $inc);
+                // Next month's pay rate = carried-forward base (this month's PP + Incr, unless the sheet
+                // has a manual PP override) + the approved increment.
+                $base = $nextRow->salary_pp_overridden
+                    ? (float) $nextRow->salary_pp
+                    : (float) $row->salary_pp + (float) $row->increment;
+                $row->setAttribute('next_salary', $base + $inc);
+            } elseif ((float) $row->increment > 0) {
+                // Next month isn't entered yet: show the increment listed on the Increment page
+                // (Payroll → Increment) for the current month.
+                $row->setAttribute('next_increment', (float) $row->increment);
+                $row->setAttribute('next_salary', null);
+                $row->setAttribute('next_from_label', $row->month_label);
+            } else {
+                $row->setAttribute('next_increment', null);
+                $row->setAttribute('next_salary', null);
+            }
         }
 
         return $latest;
@@ -167,6 +180,7 @@ class SalaryFabController extends Controller
             'next_month_label' => $row?->next_month_label,
             'next_increment' => $row?->next_increment,
             'next_salary' => $row?->next_salary,
+            'next_from_label' => $row?->next_from_label,
             'set_by' => $projection?->set_by,
             'future_updated_at' => $projection?->updated_at?->format('d M Y'),
         ];
