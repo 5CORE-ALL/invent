@@ -114,6 +114,17 @@ class LqsMarketplacePageService
                 ?? $yoastBySku['c:'.ShopifySku::compactSkuForLookup((string) $productMaster->sku)]
                 ?? [];
 
+            // A Product Master SKU that is not listed on Shopify (e.g. "sourcing" items, cartons, products
+            // not launched yet) has no Shopify row, no Yoast score and no sheet score, so it can never carry
+            // LQS data. Showing it only adds blank rows and empty parent groups to the Shopify page.
+            if ($slug === 'shopify'
+                && $shopifyRow === null
+                && $yoast === []
+                && $score === null
+                && ! $latestActionsBySku->has($normalizeSku($productMaster->sku))) {
+                continue;
+            }
+
             $inv = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
             $imageSrc = $shopifyRow ? ($shopifyRow->image_src ?? null) : null;
             $l30 = $this->firstNumber($api['l30'] ?? null, $score->l30 ?? null, $shopifyRow ? ($shopifyRow->quantity ?? null) : null);
