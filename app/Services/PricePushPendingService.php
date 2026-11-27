@@ -314,7 +314,8 @@ class PricePushPendingService
                 $row->last_error = null;
             } else {
                 $row->status = $row->attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
-                $row->last_error = mb_substr($message, 0, 1000);
+                // never store a blank reason (a channel that answers with an empty body used to show "not pushed" with no cause)
+                $row->last_error = mb_substr(trim($message) !== '' ? $message : 'Push failed: the channel returned no error text (check the push log).', 0, 1000);
             }
             $row->save();
 

@@ -1417,9 +1417,20 @@ class FaireApiService
             }
         }
 
+        // Faire answers 404 with an EMPTY body for a SKU that has no variant on the shop. The old
+        // `$last['error'] ?? …` kept that empty string, so the push showed no reason at all.
+        $httpStatus = (int) ($last['status'] ?? 0);
+        $apiError = trim((string) ($last['error'] ?? ''));
+        if ($apiError === '' && $httpStatus === 404) {
+            $apiError = 'Faire listing not found for SKU '.$sku.' (HTTP 404): no product variant with this SKU exists on Faire. '
+                .'Create the listing on Faire (or sync listings) and push again.';
+        } elseif ($apiError === '') {
+            $apiError = 'Faire price update failed (HTTP '.$httpStatus.', empty response).';
+        }
+
         return [
             'success' => false,
-            'message' => $last['error'] ?? ('Faire price update failed HTTP '.($last['status'] ?? 0)),
+            'message' => $apiError,
             'product_id' => $productId !== '' ? $productId : null,
             'variant_id' => $variantId !== '' ? $variantId : null,
             'status' => $last['status'] ?? null,
