@@ -678,8 +678,8 @@
         .card-body:has(> #pi-toolbar) { padding-top: 6px !important; padding-bottom: 6px !important; }
         #pi-toolbar { gap: 4px !important; }
         #pi-toolbar > * { flex: 0 0 auto; }
-        #pi-toolbar > .pi-search { flex: 1 1 110px; min-width: 90px; max-width: 170px; width: auto; font-size: 12px; }
-        @media (min-width: 1600px) { #pi-toolbar { flex-wrap: nowrap !important; } }
+        .summary-header-bar > .pi-search { flex: 1 1 110px; min-width: 90px; max-width: 170px; width: auto; height: 26px; font-size: 12px; }
+        @media (min-width: 1100px) { #pi-toolbar { flex-wrap: nowrap !important; } }
         #pi-toolbar .cvr-play-group .btn.rounded-circle { width: 20px; height: 20px; font-size: 9px; }
         #pi-toolbar .cvr-play-group #play-auto, #pi-toolbar .cvr-play-group #play-pause,
         #pi-toolbar .cvr-play-group #play-npft-auto, #pi-toolbar .cvr-play-group #play-npft-pause,
@@ -2471,6 +2471,9 @@
                     <span>Push Pending:</span>
                     <span class="summary-badge-value" id="pp-hdr-count" style="color:#dc3545;"></span>
                 </span>
+                <!-- SKU & Parent Search: fills the free space at the right of the badges row -->
+                <input type="text" id="parent-search" class="form-control form-control-sm pi-search ms-auto" placeholder="Search Parent...">
+                <input type="text" id="sku-search" class="form-control form-control-sm pi-search" placeholder="Search SKU...">
             </div>
             {{-- Red alert while at least one channel price push is still pending (retried hourly, e-mailed to software5@5core.com) --}}
             <div class="card-body py-3">
@@ -2733,10 +2736,6 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV" aria-label="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
-
-                    <!-- SKU & Parent Search (kept in the toolbar row) -->
-                    <input type="text" id="parent-search" class="form-control form-control-sm pi-search" placeholder="Search Parent...">
-                    <input type="text" id="sku-search" class="form-control form-control-sm pi-search" placeholder="Search SKU...">
 
                     {{-- Temu Clear/Push removed from outer toolbar — use OV L30 modal Temu push instead --}}
                 </div>
