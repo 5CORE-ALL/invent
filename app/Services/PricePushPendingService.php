@@ -54,6 +54,11 @@ class PricePushPendingService
             return false;
         }
 
+        // Alibaba "Api access frequency exceeds the limit. this ban will last N seconds": temporary throttle, retried later
+        if (preg_match('/access\s+frequency\s+exceeds\s+the\s+limit/i', $err)) {
+            return false;
+        }
+
         // Amazon: "did not accept the price update (status: INVALID) … product type specified is invalid or not supported"
         // is a problem in the Amazon listing data itself, not something the hourly retry can fix.
         if (self::key((string) $row->marketplace) === 'amazon'
@@ -88,7 +93,9 @@ class PricePushPendingService
             // Temu [150010188] "The mall and goods not match": the goods id is not in that Temu account = not listed there
             . '|mall\s+and\s+goods\s+not\s+match'
             // Amazon Listings API answered 404 for every spelling of the SKU = not in that Seller Central account
-            . '|could\s+not\s+find\s+this\s+offer)/i',
+            . '|could\s+not\s+find\s+this\s+offer'
+            // Alibaba: "No Alibaba product id for this SKU." / "Alibaba has no product for id N (listing deleted, offline or re-created)"
+            . '|no\s+\w+\s+product\s+id\s+for\s+this\s+sku|has\s+no\s+product\s+for\s+id)/i',
             $message
         );
     }
