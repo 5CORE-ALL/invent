@@ -590,14 +590,14 @@
             border-radius: 28px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.5);
         }
         .lossx-head {
-            position: relative; padding: 22px 24px 18px; color: #fff;
+            position: relative; padding: 14px 20px 12px; color: #fff;
             background: linear-gradient(135deg, var(--g1), var(--g2));
         }
         .lossx-head::after { content: ''; position: absolute; right: -50px; top: -60px; width: 220px; height: 220px; border-radius: 50%; background: rgba(255,255,255,.14); }
         .lossx-head h5 { margin: 6px 0 2px; font-weight: 800; font-size: 1.35rem; letter-spacing: -.01em; position: relative; z-index: 1; }
         .lossx-head .lossx-sub { position: relative; z-index: 1; }
         .lossx-head .btn-close { position: absolute; right: 18px; top: 18px; z-index: 2; filter: invert(1) grayscale(1) brightness(2); opacity: .9; }
-        .lossx-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; position: relative; z-index: 1; }
+        .lossx-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; position: relative; z-index: 1; }
         .lossx-stat { background: rgba(255,255,255,.18); backdrop-filter: blur(8px); border-radius: 16px; padding: 8px 14px; min-width: 110px; }
         .lossx-stat b { display: block; font-size: 1.25rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
         .lossx-stat span { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; opacity: .85; }
@@ -639,35 +639,36 @@
         .lossx-empty big { display: block; font-size: 2.4rem; margin-bottom: 6px; }
 
         /* ---------- Loss modal as a table: image first, no title, INV / L30 / Dil%, LMP by Channel, SPRICE $ (from /price-increase) ---------- */
-        .lossx-modal .modal-dialog { max-width: min(1500px, 97vw); }
-        .lossx-body { max-height: 68vh; overflow: auto; }
-        .lossx-grid { --lossx-cols: 52px minmax(120px, 1fr) repeat(6, 58px) repeat(3, 50px) minmax(170px, 1.1fr) minmax(310px, 1.4fr) minmax(250px, 1.1fr); min-width: 1620px; }
+        .lossx-modal .modal-dialog { max-width: min(1800px, 99vw); margin: .5rem auto; }
+        .lossx-body { max-height: calc(100vh - 215px); overflow-y: auto; overflow-x: hidden; padding: 12px 14px 14px; }
+        .lossx-grid { --lossx-cols: 46px minmax(80px, 1fr) repeat(6, minmax(36px, 48px)) repeat(3, minmax(34px, 44px)) minmax(96px, 1.1fr) minmax(138px, 1.5fr) minmax(124px, 1fr); min-width: 0; }
+        .lossx-grid .lossx-row, .lossx-grid .lossx-colhead { gap: 6px; padding-left: 8px; padding-right: 8px; }
         .lossx-colhead { display: grid; grid-template-columns: var(--lossx-cols); gap: 8px; align-items: end; padding: 6px 12px; margin-bottom: 6px; position: sticky; top: 0; z-index: 3; background: #0d0e1c; border-bottom: 1px solid rgba(255,255,255,.12); }
         .lossx-colhead span { font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: rgba(233,234,255,.55); text-align: center; line-height: 1.15; }
         .lossx-colhead span.is-left { text-align: left; }
-        .lossx-c { text-align: center; font-weight: 800; font-size: .88rem; font-variant-numeric: tabular-nums; min-width: 0; }
+        .lossx-c { text-align: center; font-weight: 800; font-size: .8rem; font-variant-numeric: tabular-nums; min-width: 0; }
         .lossx-c.is-loss { color: #ff7a93; }
         .lossx-dim { color: rgba(233,234,255,.35); font-weight: 600; }
-        .lossx-imgbox { position: relative; width: 52px; height: 52px; }
-        .lossx-img { width: 52px; height: 52px; object-fit: cover; border-radius: 12px; background: #fff; display: block; }
+        .lossx-imgbox { position: relative; width: 44px; height: 44px; }
+        .lossx-img { width: 44px; height: 44px; object-fit: cover; border-radius: 12px; background: #fff; display: block; }
         .lossx-img.is-missing { display: grid; place-items: center; background: rgba(255,255,255,.08); color: rgba(255,255,255,.4); }
         .lossx-imgbox .lossx-rank { position: absolute; left: -5px; top: -5px; width: 20px; height: 20px; border-radius: 7px; font-size: .62rem; border: 2px solid #0d0e1c; }
-        .lossx-item.is-sib { background: rgba(255,255,255,.02); border-style: dashed; margin-left: 22px; }
+        .lossx-item.is-sib { background: rgba(255,255,255,.02); border-style: dashed; border-left: 3px dashed rgba(125,211,252,.55); }
         .lossx-item.is-sib .lossx-row { cursor: default; padding-top: 5px; padding-bottom: 5px; }
-        .lossx-item.is-sib .lossx-img, .lossx-item.is-sib .lossx-imgbox { width: 40px; height: 40px; }
+        .lossx-item.is-sib .lossx-img, .lossx-item.is-sib .lossx-imgbox { width: 36px; height: 36px; }
         .lossx-sibtag { font-size: .58rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: 1px 6px; border-radius: 99px; background: rgba(125,211,252,.16); color: #7dd3fc; margin-left: 6px; vertical-align: middle; }
         .lossx-fam-gap { height: 6px; }
         .lossx-lmp-wrap { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
         .lossx-lmp { font-size: .7rem; font-weight: 700; padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
-        .lossx-sp { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap; }
-        .lossx-sp-in { width: 78px; height: 28px; font-size: .82rem; font-weight: 700; text-align: right; padding: 2px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.07); color: #fff; outline: none; }
+        .lossx-sp { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+        .lossx-sp-in { width: 70px; min-width: 0; height: 28px; font-size: .82rem; font-weight: 700; text-align: right; padding: 2px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.07); color: #fff; outline: none; }
         .lossx-sp-in:focus { border-color: var(--g2); box-shadow: 0 0 0 3px rgba(236,72,153,.25); }
         .lossx-sp-in.is-below { color: #ff7a93; }
         .lossx-sp-go { height: 28px; width: 30px; padding: 0; line-height: 1; border-radius: 8px; border: 1px solid #22c55e; background: rgba(34,197,94,.16); color: #4ade80; cursor: pointer; flex: 0 0 auto; }
         .lossx-sp-go:hover:not(:disabled) { background: #22c55e; color: #fff; }
         .lossx-sp-go:disabled { opacity: .7; cursor: progress; }
-        .lossx-chips { display: inline-flex; align-items: center; gap: 3px; margin-left: 3px; padding-left: 6px; border-left: 1px solid rgba(255,255,255,.18); }
-        .lossx-chip2 { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 5px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: .68rem; font-weight: 700; color: #111; }
+        .lossx-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; flex: 1 1 100%; margin: 1px 0 0; padding: 0; border: 0; }
+        .lossx-chip2 { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 4px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: .68rem; font-weight: 700; color: #111; }
         .lossx-chip2 i { font-style: normal; font-size: .54rem; font-weight: 700; color: #64748b; }
         .lossx-more { display: block; margin: 8px auto 0; }
         .lossx-estrow { display: flex; align-items: center; gap: 6px; }
@@ -687,12 +688,14 @@
         .lossx-chev { margin-left: 6px; font-size: .7rem; }
         .lossx-filter { border: 1px solid rgba(255,255,255,.14); background: #1a1b30; color: #cfd1ff; border-radius: 99px; padding: 6px 12px; font-size: .78rem; font-weight: 700; outline: none; }
         .lossx-act { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-        .lossx-act select { height: 28px; max-width: 128px; font-size: .74rem; font-weight: 700; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: #1a1b30; color: #fff; padding: 0 4px; outline: none; }
+        .lossx-act select { height: 28px; flex: 1 1 70px; min-width: 0; max-width: 100%; font-size: .74rem; font-weight: 700; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: #1a1b30; color: #fff; padding: 0 4px; outline: none; }
+        .lossx-act .lossx-reason-sel { order: 3; flex: 1 1 100%; }
+        .lossx-act .lossx-act-by { order: 4; }
         .lossx-act select:focus { border-color: var(--g2); }
         .lossx-act select.is-fixed { border-color: #22c55e; color: #4ade80; }
         .lossx-act select.is-ignored { border-color: #94a3b8; color: #cbd5e1; }
         .lossx-act select.is-need { border-color: #f59e0b; }
-        .lossx-hist-btn { height: 28px; width: 28px; padding: 0; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #cfd1ff; cursor: pointer; }
+        .lossx-hist-btn { flex: 0 0 28px; height: 28px; width: 28px; padding: 0; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #cfd1ff; cursor: pointer; }
         .lossx-hist-btn:hover { background: rgba(255,255,255,.1); }
         .lossx-act-by { flex-basis: 100%; font-size: .62rem; color: rgba(233,234,255,.5); line-height: 1.1; }
         .lossx-item.is-fixed { border-left: 3px solid #22c55e; }
