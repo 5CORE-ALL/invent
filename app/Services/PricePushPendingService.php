@@ -58,7 +58,12 @@ class PricePushPendingService
     public static function isListingNotFound(string $message): bool
     {
         return (bool) preg_match(
-            '/(no\s+\w+(\s+\w+)?\s+skucode|not\s+listed|listing\s+not\s+found|no\s+\w+\s+listing|(goodsid|skuid|product\s*id|item)\s+not\s+found|can.t\s+find\s+this\s+item|not\s+found\s+for\s+sku|sku\s+not\s+found)/i',
+            '/(no\s+\w+(\s+\w+)?\s+skucode|not\s+listed|listing\s+not\s+found|no\s+\w+\s+listing|(goodsid|skuid|product\s*id|item)\s+not\s+found|can.t\s+find\s+this\s+item|not\s+found\s+for\s+sku|sku\s+not\s+found'
+            // "SKU: X not found in Walmart API data", "Product not found", "Item ID not found", "Variant ID not found for SKU" …
+            . '|\b(sku|product|item|listing|variant|offer|asin|goods)\b[^.\n]{0,40}\bnot\s+found'
+            . '|not\s+found\s+(for|in|on)\s+(this\s+)?(sku|product|item|listing|walmart|shopify|prolight|ebay|amazon)'
+            . '|(product|sku|variant|item)[\s_]*id\b[^.\n]{0,30}\bmissing\s+for\s+sku'
+            . '|(product|listing|item)\s+(does\s+not|doesn.t)\s+exist)/i',
             $message
         );
     }
