@@ -77,6 +77,13 @@ class MissingListingController extends Controller
     {
         try {
             $cached = Cache::get(self::PAGE_CACHE_KEY);
+            if (! is_array($cached) || empty($cached['data'])) {
+                // "php artisan optimize:clear" / cache:clear wipes the cache; the last full table is also kept on disk.
+                $cached = $this->readDurablePayload();
+                if (is_array($cached)) {
+                    Cache::put(self::PAGE_CACHE_KEY, $cached, now()->addDays(self::PAGE_CACHE_TTL_DAYS));
+                }
+            }
             if (is_array($cached) && ! empty($cached['data'])) {
                 try {
                     $cached['data'] = $this->overlayListingModes($cached['data']);
@@ -143,8 +150,47 @@ class MissingListingController extends Controller
         @set_time_limit(180);
         $payload = $this->buildFullPagePayload();
         Cache::put(self::PAGE_CACHE_KEY, $payload, now()->addDays(self::PAGE_CACHE_TTL_DAYS));
+        $this->storeDurablePayload($payload);
 
         return $payload;
+    }
+
+    private function durablePayloadPath(): string
+    {
+        return storage_path('app/missing_listing_page_payload.json');
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function storeDurablePayload(array $payload): void
+    {
+        if (! empty($payload['partial']) || empty($payload['data'])) {
+            return;
+        }
+        try {
+            $path = $this->durablePayloadPath();
+            $tmp = $path.'.tmp';
+            if (@file_put_contents($tmp, json_encode($payload)) !== false) {
+                @rename($tmp, $path);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Missing Listing durable copy not saved: '.$e->getMessage());
+        }
+    }
+
+    /** @return array<string, mixed>|null */
+    private function readDurablePayload(): ?array
+    {
+        try {
+            $path = $this->durablePayloadPath();
+            if (! is_file($path)) {
+                return null;
+            }
+            $data = json_decode((string) file_get_contents($path), true);
+
+            return is_array($data) && ! empty($data['data']) && empty($data['partial']) ? $data : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**
