@@ -20,7 +20,8 @@ class MarketplaceListingCheck extends Command
     protected $signature = 'marketplace:listing-check
         {channel=macy : macy | bestbuy | purchasingpower | topdawg | aliexpress | alibaba}
         {--limit=200 : Max missing SKUs to print}
-        {--dump= : Comma-separated SKUs: print their raw Mirakl Connect product JSON}';
+        {--dump= : Comma-separated SKUs: print their raw Mirakl Connect product JSON}
+        {--probe= : Comma-separated SKUs: ask the MCM API (P31 by UPC/EAN/SHOP_SKU, OF21 by sku) and print the raw answers}';
 
     protected $aliases = ['macy:listing-check'];
 
@@ -122,6 +123,8 @@ class MarketplaceListingCheck extends Command
                 : '  not found in Connect');
         }
 
+        $this->probeSkus($upcs);
+
         $this->line('');
         $this->info('Not an offer on '.$label.' ('.$missing->count().'):');
         foreach ($missing->take((int) $this->option('limit')) as $row) {
@@ -154,6 +157,53 @@ class MarketplaceListingCheck extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Raw MCM answers for a few SKUs, to see how the marketplace really knows the product.
+     *
+     * @param  array<string, string>  $upcs  upper SKU => UPC (only for the missing rows)
+     */
+    private function probeSkus(array $upcs): void
+    {
+        $skus = array_values(array_filter(array_map('trim', explode(',', (string) $this->option('probe')))));
+        if ($skus === []) {
+            return;
+        }
+        $apiKey = trim((string) config('services.'.$this->cfgKey.'.mcm_api_key', ''));
+        $baseUrl = rtrim((string) config('services.'.$this->cfgKey.'.mcm_base_url', ''), '/');
+        if ($apiKey === '' || $baseUrl === '') {
+            $this->warn('Probe: MCM api key / base url missing.');
+
+            return;
+        }
+        $http = fn () => \Illuminate\Support\Facades\Http::withoutVerifying()
+            ->withHeaders(['Authorization' => $apiKey, 'Accept' => 'application/json'])->timeout(60);
+        $show = function (string $title, string $path, array $query) use ($http, $baseUrl): void {
+            $this->line('');
+            $this->info($title);
+            try {
+                $res = $http()->get($baseUrl.$path, $query);
+                $this->line('  HTTP '.$res->status().' '.substr((string) json_encode($res->json(), JSON_UNESCAPED_SLASHES), 0, 1800));
+            } catch (\Throwable $e) {
+                $this->line('  failed: '.$e->getMessage());
+            }
+        };
+
+        $pm = $this->productMasterUpcs($skus);
+        foreach ($skus as $sku) {
+            $upc = $upcs[strtoupper($sku)] ?? $pm[strtoupper($sku)] ?? '';
+            $this->line('');
+            $this->info("=== Probe {$sku} (UPC ".($upc !== '' ? $upc : 'none').') ===');
+            if ($upc !== '') {
+                $v = array_values(array_unique([$upc, str_pad($upc, 12, '0', STR_PAD_LEFT), str_pad($upc, 13, '0', STR_PAD_LEFT), str_pad($upc, 14, '0', STR_PAD_LEFT)]));
+                foreach (['UPC', 'EAN', 'GTIN'] as $type) {
+                    $show("P31 products by {$type}", '/api/products', ['product_references' => implode(',', array_map(fn ($x) => $type.'|'.$x, $v))]);
+                }
+            }
+            $show('P31 products by SHOP_SKU', '/api/products', ['product_references' => 'SHOP_SKU|'.$sku]);
+            $show('OF21 offers for this sku (inactive included)', '/api/offers', ['sku' => $sku, 'include_inactive_offers' => 'true']);
+        }
     }
 
     private function checkAlibaba(): int
