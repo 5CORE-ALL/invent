@@ -771,13 +771,31 @@ class AmazonSpApiService
                     // while Seller Central (amazon.com) shows the SKU.
                     $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken, 'ATVPDKIKX0DER');
                     if (empty($amazonSku)) {
+                        if ($this->listingLookupFailure === 'throttled') {
+                            // Not "offer not found": Amazon rate-limited the lookup, the SKU was never checked → retried later
+                            Log::warning("Amazon Price Update: Listings lookup throttled (429)", ['sku' => $sku]);
+                            return [
+                                'errors' => [[
+                                    'code' => 'QuotaExceeded',
+                                    'message' => 'Amazon Listings API is rate limited (429 QuotaExceeded), the SKU could not be checked right now. It is retried automatically.',
+                                ]]
+                            ];
+                        }
+                        if ($this->listingLookupFailure === 'denied') {
+                            Log::error("Amazon Price Update: Listings lookup denied (401/403)", ['sku' => $sku]);
+                            return [
+                                'errors' => [[
+                                    'code' => 'Unauthorized',
+                                    'message' => 'Amazon Listings API denied access (401/403): check the LWA refresh token, AMAZON_SELLER_ID and that the SP-API app has the Listings role.',
+                                ]]
+                            ];
+                        }
                         Log::error("Amazon Price Update: SKU not found in Amazon", ['sku' => $sku]);
                         return [
                             'errors' => [[
                                 'code' => 'InvalidInput',
-                                'message' => 'Listings API could not find this offer (US). ' .
-                                    'The SKU in Seller Central can still be right: verify .env AMAZON_SELLER_ID matches the account, ' .
-                                    'LWA/refresh token is current, the SP-API app has product listing (Listings) access, and check the log for 401/403/404.',
+                                'message' => 'Listings API could not find this offer (US): the SKU is not in this Seller Central account\'s US listings ' .
+                                    '(the token and seller ID were accepted; Amazon answered 404 for every spelling of the SKU).',
                             ]]
                         ];
                     }
@@ -1757,8 +1775,15 @@ class AmazonSpApiService
      *                                              config; pass explicitly when a caller
      *                                              (e.g. updateAmazonPriceUS) must align with a fixed region.
      */
+    /**
+     * Why the last findAmazonSkuFormat() returned null: 'throttled' (429 QuotaExceeded), 'denied' (401/403) or null (Amazon answered
+     * 404 for every spelling = the SKU is not in this seller account). Lets a price push say what really happened.
+     */
+    private ?string $listingLookupFailure = null;
+
     private function findAmazonSkuFormat($sku, $accessToken = null, ?string $listingsMarketplaceId = null)
     {
+        $this->listingLookupFailure = null;
         $sku = $this->normalizeListingsSellerSku(trim((string) $sku));
         if (empty($sku)) {
             return null;
@@ -1835,6 +1860,18 @@ class AmazonSpApiService
                         'status' => $response->status(),
                         'body' => $response->json(),
                     ]);
+                    $this->listingLookupFailure = 'denied';
+
+                    return null;
+                }
+
+                // Still throttled after the retry: the SKU was NOT checked. Stop here — the other spellings would only
+                // burn more of the Listings quota — and let the caller report a throttle, not "offer not found".
+                if ($response->status() === 429) {
+                    Log::warning('Listings Items API: throttled (429) while looking for the SKU, stopping the spelling search', [
+                        'sku' => $sku,
+                    ]);
+                    $this->listingLookupFailure = 'throttled';
 
                     return null;
                 }

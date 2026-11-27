@@ -72,7 +72,9 @@ class PricePushPendingService
             . '|(product|sku|variant|item)[\s_]*id\b[^.\n]{0,30}\bmissing\s+for\s+sku'
             . '|(product|listing|item)\s+(does\s+not|doesn.t)\s+exist'
             // Temu [150010188] "The mall and goods not match": the goods id is not in that Temu account = not listed there
-            . '|mall\s+and\s+goods\s+not\s+match)/i',
+            . '|mall\s+and\s+goods\s+not\s+match'
+            // Amazon Listings API answered 404 for every spelling of the SKU = not in that Seller Central account
+            . '|could\s+not\s+find\s+this\s+offer)/i',
             $message
         );
     }
