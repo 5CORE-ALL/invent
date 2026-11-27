@@ -515,6 +515,15 @@ class ImageMasterController extends Controller
     {
         $job = $store->load();
 
+        // A job stuck on "running" (worker killed/crashed, no update for 15+ min) would make every open
+        // Image Master page show the progress spinner and poll forever. Close it out so the page can finish loading.
+        if ($store->isStale($job, 900)) {
+            $job = $store->forceStop('Push stopped: the background worker stopped responding. Please push again.');
+            $store->appendMessage('Push stopped: no progress for 15+ minutes (worker stopped). Push again if needed.', false);
+            $job = $store->load();
+            $this->releaseUniqueJobLock(RunImageMasterPushJob::class, 'image-master-push');
+        }
+
         return response()->json($store->toApiResponse($job));
     }
 
