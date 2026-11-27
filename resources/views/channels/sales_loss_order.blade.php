@@ -2423,6 +2423,7 @@
         const orders = g.orders.slice().sort(function (a, b) { return (a.pct ?? 0) - (b.pct ?? 0); }).slice(0, 60).map(function (o) {
             return '<tr><td>' + esc(o.channel) + '</td><td>' + esc(o.order_id) + copyBtn(o.order_id, 'order number') + '</td><td>' + esc(o.date) + '</td><td>' + esc(o.qty) +
                 '</td><td>' + (o.amount === null ? '—' : money(o.amount, 2)) + '</td><td class="lossx-neg">' + pct(o.pct) +
+                '</td><td>' + pct(o.groi) + '</td><td>' + pct(o.gpft) +
                 '</td><td>' + pct(o.nroi) + '</td><td>' + pct(o.npft) +
                 '</td><td class="lossx-neg">' + (o.loss ? money(o.loss) : '—') + '</td></tr>';
         }).join('');
@@ -2440,7 +2441,7 @@
                 actCellHtml(skuKey(g.sku), g.sku) +
             '</div>' +
             '<div class="lossx-histbox"></div>' +
-            '<div class="lossx-orders"><table><thead><tr><th>Channel</th><th>Order</th><th>Date</th><th>Qty</th><th>Amount</th><th>Profit %</th><th>NROI%</th><th>NPRFT%</th><th>Est. loss</th></tr></thead><tbody>' +
+            '<div class="lossx-orders"><table><thead><tr><th>Channel</th><th>Order</th><th>Date</th><th>Qty</th><th>Amount</th><th>Profit %</th><th>GROI%</th><th>GPRFT%</th><th>NROI%</th><th>NPRFT%</th><th>Est. loss</th></tr></thead><tbody>' +
                 orders + '</tbody></table>' + more + '</div></div>';
     }
 

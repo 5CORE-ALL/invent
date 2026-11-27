@@ -223,10 +223,10 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
 
             $payload = request()->boolean('refresh')
                 ? null
-                : \Illuminate\Support\Facades\Cache::get('slo_loss_summary_v3');
+                : \Illuminate\Support\Facades\Cache::get('slo_loss_summary_v4');
             if (! is_array($payload)) {
                 $payload = $this->buildLossSummary();
-                \Illuminate\Support\Facades\Cache::put('slo_loss_summary_v3', $payload, 180);
+                \Illuminate\Support\Facades\Cache::put('slo_loss_summary_v4', $payload, 180);
             }
 
             return response()->json(['success' => true] + $payload);
@@ -342,6 +342,8 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
                     'qty' => max(1, (int) ($row['quantity'] ?? 1)),
                     'amount' => $amount > 0 ? round($amount, 2) : null,
                     'pct' => $pct,
+                    'groi' => is_numeric($row['groi_pct'] ?? null) ? round((float) $row['groi_pct'], 1) : null,
+                    'gpft' => is_numeric($row['gpft_pct'] ?? null) ? round((float) $row['gpft_pct'], 1) : null,
                     'nroi' => is_numeric($row['nroi_pct'] ?? null) ? round((float) $row['nroi_pct'], 1) : null,
                     'npft' => is_numeric($row['npft_pct'] ?? null) ? round((float) $row['npft_pct'], 1) : null,
                     'loss' => $loss,
