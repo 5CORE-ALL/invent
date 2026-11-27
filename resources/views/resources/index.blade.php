@@ -158,6 +158,15 @@
     }
     .res-tree-node.active .res-tree-count { background: rgba(13,110,253,.15); color: #0d6efd; }
     .res-tree-node.hidden-by-filter { display: none; }
+    .res-tree-rename {
+        width: 22px; height: 22px; flex-shrink: 0; margin-right: .35rem;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 0; background: transparent; color: #6c757d; border-radius: 6px; padding: 0;
+        opacity: 0; transition: opacity .12s;
+    }
+    .res-tree-row:hover .res-tree-rename, .res-tree-rename:focus { opacity: 1; }
+    .res-tree-rename:hover { background: rgba(13,110,253,.1); color: #0d6efd; }
+    @media (hover: none) { .res-tree-rename { opacity: 1; } }
     @media (max-width: 991.98px) {
         .res-sidebar { position: static; max-height: 320px; margin-bottom: 1rem; }
     }
@@ -212,6 +221,11 @@
                 <button type="button" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal" data-bs-target="#resFolderModal">
                     <i class="ri-folder-add-line"></i> New folder
                 </button>
+                @if($folderId > 0)
+                    <button type="button" class="btn btn-soft-secondary btn-sm res-tree-rename-open" data-folder-id="{{ $folderId }}" data-folder-name="{{ end($breadcrumbs)['name'] ?? '' }}" title="Rename this folder">
+                        <i class="ri-pencil-line"></i> Rename folder
+                    </button>
+                @endif
                 <button type="button" class="btn btn-soft-success btn-sm" data-bs-toggle="modal" data-bs-target="#resLinkModal">
                     <i class="ri-links-line"></i> Add link
                 </button>
@@ -326,6 +340,30 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-primary">Create</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {{-- Rename folder --}}
+    <div class="modal fade" id="resRenameModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="resRenameForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Rename folder</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <label class="form-label">Folder name</label>
+                        <input type="text" name="name" id="resRenameName" class="form-control" required maxlength="255">
+                        <input type="hidden" id="resRenameId">
+                        <div class="text-danger small mt-2 d-none" id="resRenameError"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="resRenameSave">Rename</button>
                     </div>
                 </form>
             </div>
@@ -848,6 +886,56 @@
         e.target.querySelector('[name=parent_id]').value = folderId;
         window.location.reload();
     });
+
+    // Rename a folder: from the pencil beside a folder in the sidebar, or the "Rename folder" button of the open folder.
+    (function () {
+        const modalEl = document.getElementById('resRenameModal');
+        const nameInput = document.getElementById('resRenameName');
+        const idInput = document.getElementById('resRenameId');
+        const errorEl = document.getElementById('resRenameError');
+        const saveBtn = document.getElementById('resRenameSave');
+
+        function openRename(id, name) {
+            idInput.value = id;
+            nameInput.value = name || '';
+            errorEl.classList.add('d-none');
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+
+        document.querySelectorAll('.res-tree-rename, .res-tree-rename-open').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                openRename(btn.dataset.folderId, btn.dataset.folderName);
+            });
+        });
+
+        modalEl.addEventListener('shown.bs.modal', () => { nameInput.focus(); nameInput.select(); });
+
+        document.getElementById('resRenameForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            const name = nameInput.value.trim();
+            if (!name) return;
+            saveBtn.disabled = true;
+            try {
+                const body = new URLSearchParams({ name, _method: 'PUT' });
+                const res = await fetch(`{{ url('/resources/folder') }}/${idInput.value}`, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body,
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    errorEl.textContent = json.message || (json.errors && Object.values(json.errors)[0]?.[0]) || 'Could not rename the folder.';
+                    errorEl.classList.remove('d-none');
+                    return;
+                }
+                window.location.reload();
+            } finally {
+                saveBtn.disabled = false;
+            }
+        });
+    })();
 
     document.getElementById('resLinkForm').addEventListener('submit', async e => {
         e.preventDefault();

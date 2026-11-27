@@ -24,6 +24,9 @@
                     <span class="res-tree-count">{{ $node['count'] }}</span>
                 @endif
             </a>
+            <button type="button" class="res-tree-rename" data-folder-id="{{ $node['id'] }}" data-folder-name="{{ $node['name'] }}" title="Rename folder" aria-label="Rename folder {{ $node['name'] }}">
+                <i class="ri-pencil-line"></i>
+            </button>
         </div>
         @if($hasChildren)
             <ul class="res-tree-list">

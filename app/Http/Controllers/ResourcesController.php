@@ -376,7 +376,21 @@ class ResourcesController extends Controller
             'name' => 'required|string|max:255',
         ]);
 
-        $folder->update(['name' => $validated['name']]);
+        $name = trim($validated['name']);
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Folder name cannot be empty.'], 422);
+        }
+
+        $duplicate = DriverFolder::query()
+            ->where('parent_id', $folder->parent_id)
+            ->where('id', '!=', $folder->id)
+            ->where('name', $name)
+            ->exists();
+        if ($duplicate) {
+            return response()->json(['success' => false, 'message' => 'A folder named "'.$name.'" already exists here.'], 422);
+        }
+
+        $folder->update(['name' => $name]);
 
         return response()->json(['success' => true, 'folder' => $folder]);
     }
