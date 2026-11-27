@@ -38,8 +38,8 @@
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
-    // Toolbar switches (Sprc Dil / Std prc vs dil) that each work on their own, both may be OFF (New Temu One). eBay 1-3 / Shopify B2C
-    // always work that way, with the switches inside their modals instead of the toolbar.
+    // Sprc Dil / Std prc vs dil are ON / OFF on their own on every page, both may be OFF. The switches sit inside each rule's modal,
+    // except where a page asks for toolbar switches (New Temu One).
     $ebaySprcDilIndependentSwitches = (bool) ($ebaySprcDilIndependentSwitches ?? false);
     // Pages that share this page's rule model (same Dil blocks). Save All writes to all of them; Save Only to this page.
     $ebaySprcDilModel = \App\Support\DilRuleModels::modelFor($ebaySprcDilChannel);
@@ -488,9 +488,9 @@
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
                     {{-- eBay 1 / Shopify B2C: each rule has its own ON / OFF switch inside its modal (no switches in the toolbar). --}}
-                    @unless(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'shopify_b2c', 'purchasing_power', 'aliexpress'], true))
-                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => $ebaySprcDilIndependentSwitches])
-                    @endunless
+                    @if($ebaySprcDilIndependentSwitches)
+                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => true])
+                    @endif
 @endif
 
 @if($ebaySprcDilPart === 'modals' || $ebaySprcDilPart === 'all')
@@ -506,9 +506,9 @@
                             onclick="document.getElementById('ebayDilGroiModal').classList.toggle('ebay-dg-hide-rules')"><i class="fas fa-list-ul me-1"></i> Rules</button>
                         @endif
                     </h5>
-                    @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'shopify_b2c', 'purchasing_power', 'aliexpress'], true))
+                    @unless($ebaySprcDilIndependentSwitches)
                     @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'dil_switch', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => true])
-                    @endif
+                    @endunless
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
@@ -998,7 +998,7 @@
 @endif
 
 @if($ebaySprcDilPart === 'script' || $ebaySprcDilPart === 'all')
-        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'script', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => $ebaySprcDilIndependentSwitches || in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'shopify_b2c', 'purchasing_power', 'aliexpress'], true)])
+        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'script', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => true])
         const EBAY_DIL_GROI_CHANNEL = @json($ebaySprcDilChannel);
         const EBAY_DIL_MODEL = @json($ebaySprcDilModel);
         const EBAY_DIL_GROI_ZERO_SOLD_MIN = @json($ebaySprcDilZeroSoldUsesMinGroi);

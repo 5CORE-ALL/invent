@@ -174,7 +174,8 @@
                     if (typeof ebayApplySprcDilToTable === 'function') {
                         Promise.resolve(ebayApplySprcDilToTable({ persist: true, push: false })).catch(function() { /* ignore */ });
                     }
-                } else if (typeof window.chStdApplyActivePrices === 'function') {
+                } else if (rule === 'std' && typeof window.chStdApplyActivePrices === 'function') {
+                    // Both switches OFF ('none'): no rule prices anything, S PRC stays as it is.
                     window.chStdApplyActivePrices();
                 }
                 if (typeof window.shopifyB2bRefreshSpriceCells === 'function') {

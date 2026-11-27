@@ -55,6 +55,12 @@ class PlsSprcDilAutoPushService
         ?callable $logger = null
     ): array {
         StdPrcVsDilPricer::flush();
+        // Sprc Dil and Std prc vs dil are ON / OFF on their own. Both OFF: no rule prices anything, S PRC stays as it is and nothing is pushed.
+        if (SpriceActiveRule::forChannel('pls') === 'none') {
+            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+
+            return SpriceActiveRule::noneSummary($dryRun);
+        }
         $pricer = StdPrcVsDilPricer::forChannel('pls');
         // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + Diff + Std max).
         $dilContext = SpriceActiveRule::usesStdPrc('pls') ? null : $this->loadDilContext();

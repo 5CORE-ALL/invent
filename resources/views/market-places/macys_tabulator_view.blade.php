@@ -408,6 +408,8 @@
     function macysLiveRuleSprice(data) {
         if (!data || isMacysParentRow(data)) return 0;
         try {
+            // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return 0;
             // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff, LMP, Std or Amz rule.
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
                 return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
@@ -550,7 +552,7 @@
     // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server re-saves S PRC right after the switch is saved.
     window.spriceOnRuleSwitched = function() {
         macysRefreshSpriceCells();
-        if (typeof showToast === 'function') showToast('S PRC now follows ' + (macysDilOn() ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+        if (typeof showToast === 'function') showToast((typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') ? 'S PRC rules are OFF, S PRC is left as it is' : 'S PRC now follows ' + (macysDilOn() ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
     };
     // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
     $(document).on('chStd:settled', function() { macysRefreshSpriceCells(); });

@@ -1210,6 +1210,8 @@
         // Hand-set S PRC (Price Increase modal): no rule price on top — the page shows the saved price
         if (data.sprice_manual && reverbSavedSprice(data) > 0) return 0;
         try {
+            // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+            if (reverbSpriceRule() === 'none') return 0;
             // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff, LMP or Std rule.
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
                 return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
@@ -1291,7 +1293,7 @@
     // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
     window.spriceOnRuleSwitched = function() {
         reverbRefreshSpriceCells();
-        if (typeof showToast === 'function') showToast('S PRC now follows ' + (reverbSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+        if (typeof showToast === 'function') showToast((reverbSpriceRule() === 'none' ? 'S PRC rules are OFF, S PRC is left as it is' : 'S PRC now follows ' + (reverbSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil')), 'info');
     };
     // A Sprc Dil edit (slab, Diff, LMP cap) was saved: the cells repaint from the new rule; the server saves it too.
     window.ebayOnDilRulesSaved = function() { reverbRefreshSpriceCells(); };

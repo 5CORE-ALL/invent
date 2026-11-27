@@ -527,6 +527,8 @@
         function mercWsLiveRuleSprice(d) {
             if (!d) return 0;
             try {
+                // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+                if (mercWsSpriceRule() === 'none') return 0;
                 if (mercWsSpriceRule() === 'dil') {
                     if (window._ebayDilRulesLoaded !== true) return 0;
                     const raw = mercWsDilRawSprice(d);

@@ -41,6 +41,12 @@ class ReverbSprcDilAutoPushService
         int $maxPushes = 0
     ): array {
         StdPrcVsDilPricer::flush();
+        // Sprc Dil and Std prc vs dil are ON / OFF on their own. Both OFF: no rule prices anything, S PRC stays as it is and nothing is pushed.
+        if (SpriceActiveRule::forChannel('reverb') === 'none') {
+            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+
+            return SpriceActiveRule::noneSummary($dryRun, $skipPush);
+        }
         $pricer = StdPrcVsDilPricer::forChannel('reverb');
         // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + Diff + LMP cap by Dil band + Std max).
         $dilContext = SpriceActiveRule::usesStdPrc('reverb') ? null : $this->loadDilContext();

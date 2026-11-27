@@ -317,6 +317,8 @@
     function tdLiveRuleSprice(data) {
         if (!data || tdIsParentRow(data)) return 0;
         try {
+            // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+            if (tdSpriceRule() === 'none') return 0;
             // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff or Std rule.
             if (window.chStdIsClearance && window.chStdIsClearance(data)) {
                 return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
@@ -408,7 +410,7 @@
     // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
     window.spriceOnRuleSwitched = function() {
         tdRefreshSpriceCells();
-        if (typeof tdShowToast === 'function') tdShowToast('S PRC now follows ' + (tdSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+        if (typeof tdShowToast === 'function') tdShowToast((tdSpriceRule() === 'none' ? 'S PRC rules are OFF, S PRC is left as it is' : 'S PRC now follows ' + (tdSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil')), 'info');
     };
     // A Sprc Dil edit (slab, Diff) was saved: the cells repaint from the new rule; the server saves it too.
     window.ebayOnDilRulesSaved = function() { tdRefreshSpriceCells(); };

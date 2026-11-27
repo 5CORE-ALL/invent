@@ -77,6 +77,34 @@ class SpriceActiveRule
         return $dil ? 'dil' : ($std ? 'std' : 'none');
     }
 
+    /**
+     * Run summary of a push / re-save job that did nothing because both rule switches are OFF.
+     * Every stat the jobs report is 0, so callers read it like any other (empty) run.
+     *
+     * @return array{dry_run: bool, skip_push: bool, stats: array<string, mixed>}
+     */
+    public static function noneSummary(bool $dryRun = false, bool $skipPush = false): array
+    {
+        return [
+            'dry_run' => $dryRun,
+            'skip_push' => $skipPush,
+            'stats' => [
+                'candidates' => 0,
+                'applied' => 0,
+                'pushed' => 0,
+                'blue' => 0,
+                'failed' => 0,
+                'cooldown' => 0,
+                'left_for_next_run' => 0,
+                'skipped_unchanged' => 0,
+                'price_repaired' => 0,
+                'skipped' => 0,
+                'push_failed' => 0,
+                'errors' => [],
+            ],
+        ];
+    }
+
     public static function normalize(string $channel): string
     {
         $channel = strtolower(trim($channel));

@@ -695,6 +695,8 @@
         function sheinLiveRuleSprice(data) {
             if (!data || data.is_parent) return 0;
             try {
+                // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+                if (sheinSpriceRule() === 'none') return 0;
                 // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP or Std rule.
                 if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
                     return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;

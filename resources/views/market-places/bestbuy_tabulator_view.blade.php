@@ -603,6 +603,8 @@
     function bestbuyLiveRuleParts(data) {
         if (!data || isBestbuyParentRow(data)) return null;
         try {
+            // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+            if (bestbuySpriceRule() === 'none') return null;
             // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP, Std or A Price rule.
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
                 const cp = typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;

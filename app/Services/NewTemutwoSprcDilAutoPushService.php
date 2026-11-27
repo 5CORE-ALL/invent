@@ -49,6 +49,12 @@ class NewTemutwoSprcDilAutoPushService
         bool $pushAll = false,
         int $cooldownMinutes = 600
     ): array {
+        // Sprc Dil and Std prc vs dil are ON / OFF on their own. Both OFF: no rule prices anything, S PRC stays as it is and nothing is pushed.
+        if (\App\Support\SpriceActiveRule::forChannel('newtemutwo') === 'none') {
+            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+
+            return \App\Support\SpriceActiveRule::noneSummary($dryRun, $skipPush);
+        }
         $pricer = StdPrcVsDilPricer::forChannel('newtemutwo');
 
         $this->log($logger, 'Loaded New Temu Two Std prc vs dil (newtemutwo_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap');

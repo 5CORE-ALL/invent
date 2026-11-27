@@ -86,6 +86,12 @@ class AlibabaSprcDilAutoPushService
             ];
         }
 
+        // Sprc Dil and Std prc vs dil are ON / OFF on their own. Both OFF: no rule prices anything, S PRC stays as it is and nothing is pushed.
+        if (SpriceActiveRule::forChannel(self::CHANNEL) === 'none') {
+            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+
+            return SpriceActiveRule::noneSummary($dryRun, $skipPush);
+        }
         $pricer = StdPrcVsDilPricer::forChannel(self::CHANNEL);
         $adsFrac = $this->channelAdsFrac();
         // The page switch decides the S PRC rule, same as Amazon: Std prc vs dil, or the Sprc Dil modal (Dil slab Target SNROI,

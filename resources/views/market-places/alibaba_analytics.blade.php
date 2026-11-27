@@ -852,7 +852,8 @@
         // Switch Sprc Dil <-> Std prc vs dil: the cells show the ON rule at once, the server saves the same S PRC right after.
         window.spriceOnRuleSwitched = function () {
             if (typeof chPromoToast === 'function') {
-                chPromoToast('info', 'S PRC now follows ' + ((typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') ? 'Sprc Dil' : 'Std prc vs dil') + '. Saving…');
+                const abRule = (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
+                chPromoToast('info', abRule === 'none' ? 'S PRC rules are OFF, S PRC is left as it is' : 'S PRC now follows ' + (abRule === 'dil' ? 'Sprc Dil' : 'Std prc vs dil') + '. Saving…');
             }
             abWaitForRuleSaveThenReload(1500);
         };

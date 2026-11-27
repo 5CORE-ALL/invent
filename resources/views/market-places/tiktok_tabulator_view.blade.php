@@ -1446,6 +1446,8 @@
             // Hand-set S PRC (Price Increase modal): no rule price on top — the page shows the saved price
             if (d.sprice_manual && ttSavedSprice(d) > 0) return 0;
             try {
+                // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+                if (ttSpriceRule() === 'none') return 0;
                 // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP or Std rule.
                 if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
                     return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(d)) || 0) : 0;

@@ -1178,6 +1178,14 @@
         function mercWosDisplayedSprice(data) {
             if (!data) return 0;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(data)) return 0;
+            // Both switches OFF: no rule prices anything, the page shows the saved S PRC as it is.
+            if (mercWosSpriceRule() === 'none') {
+                if (typeof chPromoTableSprice === 'function') {
+                    const savedNone = Number(chPromoTableSprice(data)) || 0;
+                    if (savedNone > 0) return savedNone;
+                }
+                return parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
+            }
             if (mercWosSpriceRule() === 'dil') {
                 if (typeof ebaySprcDilForRow === 'function') {
                     const dil = Number(ebaySprcDilForRow(data)) || 0;

@@ -74,6 +74,16 @@ class ChannelPushSpriceDailyEnqueue
         // automatic blue catch-up must not push an old saved S PRC.
         // The CVR Price Rule can still run on its own then: only the SKUs it priced (last run) are pushed.
         $cvrOnlySkus = null;
+        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay3', 'shopify_b2c'], true) && \App\Support\SpriceActiveRule::forChannel($channel) === 'none') {
+            // Every other channel: both switches OFF means no rule prices S PRC, so nothing is pushed.
+            return [
+                'channel' => $channel,
+                'queued' => 0,
+                'total' => 0,
+                'spawned' => false,
+                'message' => 'Skipped — Sprc Dil and Std prc vs dil are both OFF',
+            ];
+        }
         if (in_array($channel, ['ebay1', 'ebay2', 'ebay3', 'shopify_b2c'], true) && \App\Support\SpriceActiveRule::forChannel($channel) === 'none') {
             if (empty(\App\Support\EbayCvrPriceRule::config($channel)['enabled'])) {
                 return [

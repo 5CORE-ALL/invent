@@ -748,6 +748,8 @@
         function dobaLiveRuleSprice(data) {
             if (!data || isDobaParentRow(data)) return 0;
             try {
+                // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+                if (dobaSpriceRule() === 'none') return 0;
                 // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff or Std rule.
                 if (window.chStdIsClearance && window.chStdIsClearance(data)) {
                     return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;

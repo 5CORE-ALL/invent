@@ -47,6 +47,12 @@ class MacysRuleSpriceApplyService
     {
         // Rules saved a moment ago (a queue worker keeps the old ones in memory) must be read again.
         \App\Support\StdPrcVsDilPricer::flush();
+        // Sprc Dil and Std prc vs dil are ON / OFF on their own. Both OFF: no rule prices anything, S PRC stays as it is.
+        if (\App\Support\SpriceActiveRule::forChannel('macys') === 'none') {
+            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+
+            return \App\Support\SpriceActiveRule::noneSummary($dryRun);
+        }
         $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc('macys');
         $dilRules = $this->loadDilGroiRules();
         $this->dilContext = $this->applyStdPrcVsDil ? null : $this->loadDilContext();

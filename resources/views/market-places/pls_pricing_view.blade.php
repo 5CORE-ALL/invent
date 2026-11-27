@@ -367,6 +367,8 @@
     function plsLiveRuleSprice(data) {
         if (!data || plsIsParentRow(data)) return 0;
         try {
+            // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+            if (plsSpriceRule() === 'none') return 0;
             // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff or Std rule.
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
                 return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;

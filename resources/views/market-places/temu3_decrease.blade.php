@@ -2164,6 +2164,12 @@
             const hand = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
             if (hand > 0) return { sprice: +hand.toFixed(2), labels: [], lmpAlert: false, lmp: 0 };
         }
+        // Sprc Dil and Std prc vs dil both switched OFF: no rule sets a price, the page shows the saved S PRC as it is.
+        if (row && rawSprice === undefined && !extra.use_passed_as_discounted
+            && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+            const savedNone = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+            return { sprice: savedNone > 0 ? +savedNone.toFixed(2) : 0, labels: [], lmpAlert: false, lmp: 0 };
+        }
         // Clearance (Inv days clearance = YES): only the Clearance Target NROI% (last row of the Sprc Dil modal) prices it, in either
         // mode, the same Temu price formula the Sprc Dil column uses. No discount, Diff, Std or LMP rule applies.
         if (row && !isTemu3ParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) {
@@ -2297,7 +2303,8 @@
                     .then(temu3RepaintSCells)
                     .catch(function() { /* ignore */ });
             }
-        } else if (typeof window.chStdApplyActivePrices === 'function') {
+        } else if (rule === 'std' && typeof window.chStdApplyActivePrices === 'function') {
+            // Both switches OFF ('none'): no rule prices anything, S PRC stays as it is.
             window.chStdApplyActivePrices();
         }
     };

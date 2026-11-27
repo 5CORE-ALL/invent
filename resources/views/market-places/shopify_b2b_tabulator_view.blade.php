@@ -766,6 +766,14 @@
         if (!data || isShopifyB2bParentRow(data)) return 0;
         // Set by hand in the Price Increase modal: the page shows the saved price, not the rule price
         if (data.sprice_manual && (parseFloat(data.SPRICE) || 0) > 0) return parseFloat(data.SPRICE);
+        // Both switches OFF: no rule prices anything, the page shows the saved S PRC as it is.
+        if (shopifyB2bSpriceRule() === 'none') {
+            if (typeof chPromoTableSprice === 'function') {
+                const savedNone = Number(chPromoTableSprice(data)) || 0;
+                if (savedNone > 0) return savedNone;
+            }
+            return parseFloat(data.SPRICE) || 0;
+        }
         if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
             return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
         }

@@ -1069,6 +1069,8 @@
      * agree. Only SKUs whose painted price differs from the saved one are written. Nothing is pushed.
      */
     async function ntoPersistDisplayedSprice() {
+        // Sprc Dil and Std prc vs dil both switched OFF: no rule prices anything, nothing is saved.
+        if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return 0;
         temuClearCapMemo();
         const updates = [];
         const rows = [];

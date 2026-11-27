@@ -565,6 +565,8 @@
     function dpLiveRuleSprice(data) {
         if (!data || dpIsParentRow(data)) return 0;
         try {
+            // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+            if (dpSpriceRule() === 'none') return 0;
             if (dpSpriceRule() === 'dil') {
                 if (window._ebayDilRulesLoaded !== true) return 0;
                 const raw = dpDilRawSprice(data);
@@ -651,6 +653,7 @@
         clearTimeout(dpPersistTimer);
         dpPersistTimer = setTimeout(function() {
             if (dpPersistRunning || !table) return;
+            if (dpSpriceRule() === 'none') return;
             if (dpSpriceRule() === 'dil' ? window._ebayDilRulesLoaded !== true : window.__chStdSettled !== true) return;
             const updates = [];
             (table.getRows('all') || []).forEach(function(row) {
@@ -693,7 +696,7 @@
     // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule, then save it in the background.
     window.spriceOnRuleSwitched = function() {
         dpRefreshSpriceCells();
-        if (typeof showToast === 'function') showToast('S PRC now follows ' + (dpSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+        if (typeof showToast === 'function') showToast((dpSpriceRule() === 'none' ? 'S PRC rules are OFF, S PRC is left as it is' : 'S PRC now follows ' + (dpSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil')), 'info');
         dpPersistRuleSprices();
     };
     // A Sprc Dil edit (slab, Diff, LMP cap) was saved: the cells already repainted; save the new S PRC too.
