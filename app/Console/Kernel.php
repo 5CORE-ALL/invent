@@ -2974,6 +2974,19 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Intraday refresh of /facebook-all-ads-sheet: re-sync campaigns + last 30 days of
+        // insights + lifetime stats from Meta, then verify. Keeps the sheet from drifting
+        // between the daily 19:00–19:55 IST syncs (Meta keeps revising spend / impr / clicks).
+        foreach (['10:00', '15:00'] as $fixTime) {
+            $ist($schedule->command('facebook:verify-meta-match --fix')
+                ->dailyAt($fixTime)
+                ->timezone('Asia/Kolkata')
+                ->name('facebook-verify-meta-match-fix-' . str_replace(':', '', $fixTime))
+                ->withoutOverlapping(180)
+                ->runInBackground()
+                ->appendOutputTo($log));
+        }
+
         $ist($schedule->command('meta-ads:run-automation')
             ->dailyAt('20:30')
             ->timezone('Asia/Kolkata')
