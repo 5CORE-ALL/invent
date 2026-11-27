@@ -152,7 +152,14 @@
                 <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">
                     <i class="mdi mdi-monitor-screenshot me-1"></i>Screenshots
                 </label>
-                <input type="file" class="form-control" name="image" accept="image/*" style="font-size: 13.5px; padding: 3px 6px; height: 39px;">
+                <div id="quick_screenshot_list" class="d-flex flex-wrap gap-2 mb-1"></div>
+                <div id="quick_screenshot_paste" class="quick-ss-paste" tabindex="0" contenteditable="true" spellcheck="false">
+                    Click here, then <strong>Ctrl+V</strong> / <strong>Cmd+V</strong> to paste a snippet.
+                </div>
+                {{-- Picker only: files are mirrored into the hidden screenshots[] input below. --}}
+                <input type="file" class="form-control mt-1" id="quick_screenshot_picker" accept="image/*" multiple style="font-size: 13.5px; padding: 3px 6px; height: 39px;">
+                <input type="file" id="quick_screenshots_input" name="screenshots[]" accept="image/*" multiple class="d-none" tabindex="-1" aria-hidden="true">
+                <div class="text-muted" style="font-size: 11px; margin-top: 2px;">Win+Shift+S or Cmd+Shift+4, then paste. Or choose files. Max 12.</div>
             </div>
             
             @php
@@ -332,6 +339,50 @@
         #quick-task-create-channel-btn {
             font-size: 16.5px;
             font-weight: 600;
+        }
+        .quick-ss-paste {
+            border: 2px dashed #adb5bd;
+            border-radius: 6px;
+            background: #f8f9fa;
+            color: #6c757d;
+            font-size: 13px;
+            padding: 8px;
+            text-align: center;
+            cursor: text;
+            outline: none;
+        }
+        .quick-ss-paste:focus {
+            border-color: #667eea;
+            background: #eef0ff;
+        }
+        .quick-ss-thumb {
+            position: relative;
+            width: 64px;
+            height: 64px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .quick-ss-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .quick-ss-remove {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 20px;
+            height: 20px;
+            padding: 0;
+            border: 0;
+            background: rgba(220, 53, 69, 0.9);
+            color: #fff;
+            font-size: 14px;
+            line-height: 20px;
+            cursor: pointer;
         }
         .quick-task-title-row + .quick-task-title-row {
             margin-top: 6px;
@@ -1147,6 +1198,114 @@
 
             $('#quick-task-title-list').on('click', '.quick-task-title-remove', function () {
                 $(this).closest('.quick-task-title-row').remove();
+            });
+
+            // ---- Screenshots: paste (snippet) + multi-file picker ----
+            var quickShots = [];
+            var QUICK_SHOT_MAX = 12;
+
+            function syncQuickShotInput() {
+                var input = document.getElementById('quick_screenshots_input');
+                if (!input) return;
+                try {
+                    var dt = new DataTransfer();
+                    quickShots.forEach(function (s) { dt.items.add(s.file); });
+                    input.files = dt.files;
+                } catch (err) {
+                    // Very old browsers: files are still appended via FormData in AJAX submits.
+                }
+            }
+
+            function renderQuickShots() {
+                var $list = $('#quick_screenshot_list').empty();
+                quickShots.forEach(function (s, i) {
+                    var $t = $('<div class="quick-ss-thumb"/>');
+                    $('<img alt="Screenshot"/>').attr('src', s.url).appendTo($t);
+                    $('<button type="button" class="quick-ss-remove" title="Remove" data-index="' + i + '">&times;</button>').appendTo($t);
+                    $list.append($t);
+                });
+                syncQuickShotInput();
+            }
+
+            function addQuickShot(file) {
+                if (!file || !file.type || file.type.indexOf('image/') !== 0) return false;
+                if (quickShots.length >= QUICK_SHOT_MAX) {
+                    alert('You can attach up to ' + QUICK_SHOT_MAX + ' screenshots.');
+                    return false;
+                }
+                quickShots.push({ file: file, url: URL.createObjectURL(file) });
+                renderQuickShots();
+                return true;
+            }
+
+            window.resetQuickTaskScreenshots = function () {
+                quickShots.forEach(function (s) {
+                    try { URL.revokeObjectURL(s.url); } catch (err) {}
+                });
+                quickShots = [];
+                $('#quick_screenshot_picker').val('');
+                renderQuickShots();
+            };
+
+            function handleQuickPaste(ev) {
+                var cd = ev && ev.clipboardData;
+                if (!cd || !cd.items) return false;
+                var added = false;
+                for (var i = 0; i < cd.items.length; i++) {
+                    var item = cd.items[i];
+                    if (item.kind === 'file' && item.type && item.type.indexOf('image/') === 0) {
+                        var blob = item.getAsFile();
+                        if (!blob) continue;
+                        var ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+                        var f = new File([blob], 'screenshot_' + Date.now() + '_' + i + '.' + ext, { type: blob.type || 'image/png' });
+                        if (addQuickShot(f)) added = true;
+                    }
+                }
+                if (added) ev.preventDefault();
+                return added;
+            }
+
+            $('#quick_screenshot_picker').on('change', function () {
+                var files = this.files || [];
+                for (var i = 0; i < files.length; i++) addQuickShot(files[i]);
+                this.value = '';
+            });
+
+            $('#quick_screenshot_list').on('click', '.quick-ss-remove', function (e) {
+                e.preventDefault();
+                var idx = parseInt($(this).attr('data-index'), 10);
+                var s = quickShots[idx];
+                if (s) {
+                    try { URL.revokeObjectURL(s.url); } catch (err) {}
+                    quickShots.splice(idx, 1);
+                    renderQuickShots();
+                }
+            });
+
+            $('#quick_screenshot_paste').on('click', function () { this.focus(); });
+            $('#quick_screenshot_paste').on('paste', function (e) {
+                handleQuickPaste(e.originalEvent || e);
+                // Keep the box text unchanged (never let pasted content land inside it).
+                e.preventDefault();
+            });
+            $('#quick_screenshot_paste').on('keydown', function (e) {
+                // Allow paste / tab / navigation only; block typing into the box.
+                if (e.ctrlKey || e.metaKey || e.key === 'Tab') return;
+                e.preventDefault();
+            });
+
+            // Paste anywhere in the open panel (except inside text fields).
+            $(document).on('paste.quickShots', function (e) {
+                if (!$('body').hasClass('task-form-open') || !$('#floating-task-form').is(':visible')) return;
+                var t = e.target;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+                if (t && t.id === 'quick_screenshot_paste') return;
+                handleQuickPaste(e.originalEvent || e);
+            });
+
+            // form.reset() clears the hidden input; keep our list in step.
+            $('#quick-task-form').on('reset', function () {
+                setTimeout(function () { window.resetQuickTaskScreenshots(); }, 0);
             });
 
             // Handle form submission
