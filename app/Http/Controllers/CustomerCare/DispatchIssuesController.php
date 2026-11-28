@@ -768,6 +768,17 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ]);
     }
 
+    /** Incentive badge history dot: L30 claims-received snapshots saved on the 1st of every month. */
+    public function incentiveHistory(Request $request): JsonResponse
+    {
+        $department = trim((string) $request->query('department', 'Carrier')) ?: 'Carrier';
+
+        return response()->json([
+            'rate' => \App\Services\CustomerCare\CarrierClaimIncentive::RATE,
+            'history' => \App\Services\CustomerCare\CarrierClaimIncentive::history($department),
+        ]);
+    }
+
     public function updateClaimFiled(Request $request, int $id): JsonResponse
     {
         if (! Schema::hasColumn($this->issuesTable(), 'claim_filed')) {
@@ -1356,9 +1367,178 @@ class DispatchIssuesController extends IssueBoardControllerBase
             $data = collect($this->attachAllIssuesLinkFields($data->all()))->values();
         }
 
+        // Carrier Claims board: rows without a tracking number pick it up from /order-fulfillment (saved automatically).
+        if (request()->boolean('fetch_tracking')) {
+            $data = collect($this->attachFulfillmentTracking($data->all()))->values();
+        }
+
+        // Carrier Claims board: label created date (Veeqo shipment created) per tracking / order number.
+        if (request()->boolean('label_date')) {
+            $data = collect($this->attachLabelDates($data->all()))->values();
+        }
+
         return response()->json(['data' => $data]);
     }
 
+    /**
+     * Fills a missing `tracking_number` from the Order Fulfillment page (`order_fulfillment_trackings`),
+     * matched by order number (same SKU preferred, newest saved number otherwise), and saves it on the
+     * issue so the next load already has it. A tracking number already on the issue is never touched.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function attachFulfillmentTracking(array $rows): array
+    {
+        $table = $this->issuesTable();
+        if ($rows === []
+            || ! Schema::hasTable('order_fulfillment_trackings')
+            || ! Schema::hasColumn($table, 'tracking_number')) {
+            return $rows;
+        }
+
+        $key = static fn ($v): string => mb_strtolower(trim((string) $v));
+        $orders = [];
+        foreach ($rows as $row) {
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $k = $key($row['order_number'] ?? '');
+            if ($k !== '') {
+                $orders[$k] = trim((string) $row['order_number']);
+            }
+        }
+        if ($orders === []) {
+            return $rows;
+        }
+
+        $map = [];
+        foreach (array_chunk(array_values($orders), 500) as $chunk) {
+            $found = DB::table('order_fulfillment_trackings')
+                ->whereIn('order_id', $chunk)
+                ->whereNotNull('tracking_number')
+                ->where('tracking_number', '!=', '')
+                ->orderByDesc('id')
+                ->get(['order_id', 'sku', 'tracking_number']);
+            foreach ($found as $rec) {
+                $ok = $key($rec->order_id);
+                $tn = trim((string) $rec->tracking_number);
+                $map[$ok]['any'] ??= $tn;
+                $sk = $key($rec->sku ?? '');
+                if ($sk !== '') {
+                    $map[$ok]['sku'][$sk] ??= $tn;
+                }
+            }
+        }
+
+        foreach ($rows as $i => $row) {
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $ok = $key($row['order_number'] ?? '');
+            if ($ok === '' || ! isset($map[$ok])) {
+                continue;
+            }
+            $tn = $map[$ok]['sku'][$key($row['sku'] ?? '')] ?? $map[$ok]['any'] ?? null;
+            if ($tn === null || $tn === '') {
+                continue;
+            }
+            $rows[$i]['tracking_number'] = $tn;
+            if (! empty($row['id'])) {
+                DB::table($table)
+                    ->where('id', (int) $row['id'])
+                    ->where(function ($q) {
+                        $q->whereNull('tracking_number')->orWhere('tracking_number', '');
+                    })
+                    ->update(['tracking_number' => mb_substr($tn, 0, 50)]);
+            }
+        }
+
+        return $rows;
+    }
+    /**
+     * Adds `label_date` (raw) and `label_date_display` to each row: when the shipping label was created.
+     * Source: Veeqo billing shipments (`shipment_created_at`), matched by tracking number first, then by order number;
+     * the earliest non-cancelled shipment wins so a later replacement label does not overwrite the original.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function attachLabelDates(array $rows): array
+    {
+        if ($rows === [] || ! Schema::hasTable('veeqo_billing_shipments')) {
+            return $rows;
+        }
+
+        $normTn = static fn ($v): string => strtoupper(preg_replace('/\s+/', '', trim((string) $v)) ?? '');
+        $normOrder = static fn ($v): string => mb_strtolower(trim((string) $v));
+
+        $tracks = [];
+        $orders = [];
+        foreach ($rows as $row) {
+            $tn = $normTn($row['tracking_number'] ?? '');
+            if ($tn !== '') {
+                $tracks[$tn] = $tn;
+            }
+            $on = $normOrder($row['order_number'] ?? '');
+            if ($on !== '') {
+                $orders[$on] = trim((string) $row['order_number']);
+            }
+        }
+
+        $byTracking = [];
+        $byOrder = [];
+        $collect = function ($found) use (&$byTracking, &$byOrder, $normTn, $normOrder): void {
+            if (empty($found->shipment_created_at)) {
+                return;
+            }
+            $at = (string) $found->shipment_created_at;
+            $tk = $normTn($found->tracking_number ?? '');
+            if ($tk !== '' && (! isset($byTracking[$tk]) || $at < $byTracking[$tk])) {
+                $byTracking[$tk] = $at;
+            }
+            $ok = $normOrder($found->order_number ?? '');
+            if ($ok !== '' && (! isset($byOrder[$ok]) || $at < $byOrder[$ok])) {
+                $byOrder[$ok] = $at;
+            }
+        };
+        $base = fn () => DB::table('veeqo_billing_shipments')
+            ->select(['tracking_number', 'order_number', 'shipment_created_at'])
+            ->whereNotNull('shipment_created_at')
+            ->where(function ($q) {
+                $q->whereNull('tracking_cancelled')->orWhere('tracking_cancelled', false);
+            });
+        foreach (array_chunk(array_values($tracks), 500) as $chunk) {
+            foreach ($base()->whereIn('tracking_number', $chunk)->get() as $found) {
+                $collect($found);
+            }
+        }
+        foreach (array_chunk(array_values($orders), 500) as $chunk) {
+            foreach ($base()->whereIn('order_number', $chunk)->get() as $found) {
+                $collect($found);
+            }
+        }
+
+        $tz = config('app.timezone');
+        foreach ($rows as $i => $row) {
+            $at = $byTracking[$normTn($row['tracking_number'] ?? '')]
+                ?? $byOrder[$normOrder($row['order_number'] ?? '')]
+                ?? null;
+            if ($at === null) {
+                $rows[$i]['label_date'] = null;
+                $rows[$i]['label_date_display'] = null;
+                $rows[$i]['label_date_full'] = null;
+
+                continue;
+            }
+            $dt = \Carbon\Carbon::parse($at)->timezone($tz);
+            $rows[$i]['label_date'] = $dt->format('Y-m-d H:i:s');
+            $rows[$i]['label_date_display'] = $dt->format($dt->year === now($tz)->year ? 'j M' : 'j M Y');
+            $rows[$i]['label_date_full'] = $dt->format('d-m-Y H:i');
+        }
+
+        return $rows;
+    }
     /**
      * Per-row history endpoint backing the "History" button rendered in each
      * row of the All Issues table. Returns every history entry for the given

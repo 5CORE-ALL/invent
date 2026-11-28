@@ -1,7 +1,32 @@
 @extends('layouts.vertical', ['title' => $pageTitle ?? 'QC PKG issues', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @php
-    $woOrderId = (bool) ($showOrderIdField ?? false);
+    // Marketplace name -> logo URL (MKT column logo mode). Keys are lowercase letters/digits only.
+    $marketplaceLogoMap = [];
+    if ($marketplaceLogoOnly ?? false) {
+        $mkNorm = fn (string $v) => preg_replace('/[^a-z0-9]+/', '', strtolower($v));
+        foreach (\App\Services\MarketplaceManager\MarketplaceManagerRegistry::channels() as $mkCh) {
+            if (empty($mkCh['logo'])) { continue; }
+            $mkUrl = asset($mkCh['logo']);
+            foreach (array_merge([$mkCh['label'] ?? '', $mkCh['slug'] ?? '', $mkCh['short'] ?? ''], $mkCh['mp_channel_keys'] ?? []) as $mkName) {
+                $mkKey = $mkNorm((string) $mkName);
+                if ($mkKey !== '' && !isset($marketplaceLogoMap[$mkKey])) { $marketplaceLogoMap[$mkKey] = $mkUrl; }
+            }
+        }
+        // Names used on issue boards that the registry does not carry (or carries with a number).
+        foreach ([
+            'ebay' => 'images/marketplaces/ebay.png',
+            'walmart' => 'uploads/walmart.png',
+            'shopify' => 'uploads/shopify.png',
+            'tiktok' => 'uploads/tiktok.png',
+            'wayfair' => 'uploads/wayfair.png',
+            'macys' => 'uploads/macy.png',
+            'macy' => 'uploads/macy.png',
+            'bestbuy' => 'uploads/bestbuy.jpeg',
+        ] as $mkName => $mkPath) {
+            $marketplaceLogoMap[$mkName] = asset($mkPath);
+        }
+    }    $woOrderId = (bool) ($showOrderIdField ?? false);
     $hideActionRemarkFlag = (bool) ($hideActionRemark ?? false);
     $showLossColumn = (bool) ($showLossColumn ?? (($showDispatchExtras ?? false) || ($showOrderIdField ?? false)));
     $lossColspanExtra = ($showLossColumn && !($showDispatchExtras ?? false)) ? 1 : 0;
@@ -696,17 +721,71 @@
         .orders-hold-table th.orders-hold-col-carrier,
         .orders-hold-table td.orders-hold-col-carrier {
             width: 1%;
-            min-width: 5.5rem;
-            max-width: 7rem;
+            min-width: 8.25rem;
+            max-width: 10.5rem;
             vertical-align: middle;
         }
 
+        .orders-hold-table .mkt-logo-img {
+            height: 26px;
+            width: auto;
+            max-width: 64px;
+            object-fit: contain;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .orders-hold-table .carrier-logo-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .orders-hold-table .carrier-logo-img {
+            height: 28px;
+            width: auto;
+            max-width: 84px;
+            object-fit: contain;
+            flex: 0 0 auto;
+        }
+        .orders-hold-table .carrier-logo-name {
+            font-weight: 600;
+            font-size: 0.8125rem;
+        }
         .orders-hold-table .carrier-issue-carrier-select {
+            width: 100%;
             font-size: 0.8125rem;
             padding-top: 0.15rem;
             padding-bottom: 0.15rem;
         }
 
+        /* Frozen right-hand columns (History + Created By): stay visible while the table scrolls sideways. */
+        .orders-hold-table .qc-frozen-right {
+            position: sticky;
+            background-color: #fff;
+            z-index: 2;
+            box-sizing: border-box;
+        }
+        .orders-hold-table thead .qc-frozen-right {
+            background-color: #f8f9fa;
+            z-index: 3;
+        }
+        .orders-hold-table .qc-frozen-created-by {
+            right: 0;
+            width: 96px;
+            min-width: 96px;
+            max-width: 96px;
+        }
+        .orders-hold-table .qc-frozen-history {
+            right: 96px;
+            width: 56px;
+            min-width: 56px;
+            max-width: 56px;
+            box-shadow: -3px 0 4px -2px rgba(0, 0, 0, 0.18);
+        }
+        .orders-hold-table tbody tr:hover .qc-frozen-right {
+            background-color: #eef2f7;
+        }
         .orders-hold-col-created-by {
             width: 8%;
             min-width: 90px;
@@ -900,6 +979,23 @@
 
         .copy-tracking-btn.copied {
             color: #198754;
+        }
+
+        .tracking-dot-mark {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            line-height: 0;
+            vertical-align: middle;
+        }
+
+        .tracking-dot-mark--green {
+            background: #198754;
+        }
+
+        .tracking-dot-mark--red {
+            background: #dc3545;
         }
 
         .tracking-cell:hover .tracking-dot {
@@ -1159,6 +1255,50 @@
             width: 100%;
         }
 
+        /* Autofit must not resize the frozen right-hand columns (sticky offsets depend on these widths). */
+        .orders-hold-table.orders-hold-table--autofit th.qc-frozen-created-by,
+        .orders-hold-table.orders-hold-table--autofit td.qc-frozen-created-by {
+            width: 96px !important;
+            min-width: 96px;
+            max-width: 96px;
+        }
+        .orders-hold-table.orders-hold-table--autofit th.qc-frozen-history,
+        .orders-hold-table.orders-hold-table--autofit td.qc-frozen-history {
+            width: 56px !important;
+            min-width: 56px;
+            max-width: 56px;
+        }
+        /* Issue? column kept narrow (opt-in: $issueColumnNarrow); long text wraps onto extra lines. */
+        .orders-hold-table.orders-hold-table--issue-narrow th.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--issue-narrow td.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--issue-narrow th.dispatch-what-col,
+        .orders-hold-table.orders-hold-table--issue-narrow td.dispatch-what-cell,
+        .orders-hold-table.orders-hold-table--issue-narrow.orders-hold-table--autofit th.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--issue-narrow.orders-hold-table--autofit td.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--issue-narrow.orders-hold-table--autofit th.dispatch-what-col,
+        .orders-hold-table.orders-hold-table--issue-narrow.orders-hold-table--autofit td.dispatch-what-cell {
+            width: 150px !important;
+            min-width: 120px;
+            max-width: 150px !important;
+            white-space: normal !important;
+            word-break: break-word;
+            line-height: 1.2;
+        }
+        .orders-hold-table.orders-hold-table--issue-narrow td.dispatch-what-cell .what-cell-wrap {
+            max-width: 100%;
+            white-space: normal;
+        }
+        /* SKU column at half width (opt-in: $skuColumnHalfWidth). */
+        .orders-hold-table.orders-hold-table--sku-half th.orders-hold-col-sku,
+        .orders-hold-table.orders-hold-table--sku-half td.orders-hold-col-sku,
+        .orders-hold-table.orders-hold-table--sku-half.orders-hold-table--autofit th.orders-hold-col-sku,
+        .orders-hold-table.orders-hold-table--sku-half.orders-hold-table--autofit td.orders-hold-col-sku {
+            width: 100px !important;
+            min-width: 100px;
+            max-width: 100px;
+            white-space: normal;
+            word-break: break-word;
+        }
         .sku-image-preview {
             width: 88px;
             height: 88px;
@@ -1213,6 +1353,14 @@
 
         .l30-badge:hover {
             box-shadow: 0 2px 8px rgba(224, 82, 82, .2);
+        }
+
+        /* All-time loss: solid red so it stands apart from the L30 badge. Not clickable. */
+        .l30-badge.alltime-loss-badge {
+            background: #dc3545;
+            border-color: #b02a37;
+            color: #fff;
+            cursor: default;
         }
 
         .l30-issues-badge {
@@ -1349,6 +1497,78 @@
             --bs-badge-color: #212529;
         }
 
+        .carrier-claims-summary--notfiled {
+            background: #fdecea !important;
+            color: #842029 !important;
+            border-color: #f5c2c7;
+            --bs-badge-color: #842029;
+        }
+
+        .carrier-claims-summary--incentive {
+            background: #fff3d6 !important;
+            color: #7a4d00 !important;
+            border-color: #ffd98a;
+            --bs-badge-color: #7a4d00;
+        }
+        .missing-count {
+            display: block;
+            width: fit-content;
+            min-width: 20px;
+            margin: 3px auto 0;
+            padding: 0 7px;
+            border-radius: 999px;
+            background: #dc3545;
+            color: #fff;
+            font-size: 0.66rem;
+            font-weight: 800;
+            line-height: 1.5;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+        .missing-mark {
+            display: inline-block;
+            min-width: 22px;
+            padding: 0 8px;
+            border-radius: 8px;
+            background: #ffe3e8;
+            color: #dc3545;
+            font-weight: 800;
+            line-height: 1.5;
+        }
+        .incentive-history-dot {
+            display: inline-block;
+            width: 11px;
+            height: 11px;
+            padding: 0;
+            margin-left: 4px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            background: #adb5bd;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        .incentive-history-dot.has-history { background: #7c5cff; }
+        .incentive-history-dot:hover { transform: scale(1.25); }
+        .incentive-history-panel {
+            position: fixed;
+            z-index: 2000;
+            width: 280px;
+            max-height: 320px;
+            overflow: auto;
+            padding: 10px 12px;
+            background: #fff;
+            border: 1px solid #e5e0ff;
+            border-radius: 16px;
+            box-shadow: 0 18px 40px -16px rgba(60, 40, 140, 0.45);
+            font-size: 12.5px;
+            color: #1d1b3a;
+        }
+        .incentive-history-panel .ihp-title { font-weight: 800; margin-bottom: 2px; }
+        .incentive-history-panel .ihp-sub { color: #6f6b8d; font-size: 11px; margin-bottom: 8px; }
+        .incentive-history-panel .ihp-row { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-top: 1px dashed #ece7ff; }
+        .incentive-history-panel .ihp-row b { color: #05694b; }
+        .incentive-history-panel .ihp-empty { color: #6f6b8d; padding: 6px 0; }
         .carrier-claims-summary--filed {
             background: #e7f5ff !important;
             color: #0c5460 !important;
@@ -1389,6 +1609,88 @@
             padding: 0.42rem 0.65rem;
         }
 
+        /* toolbarOneLine: every toolbar control (buttons, badges, filters, search, claim totals, count) on a single row on desktop. */
+        @media (min-width: 992px) {
+            .issues-toolbar--oneline .row,
+            .issues-toolbar--oneline .issues-toolbar-actions,
+            .issues-toolbar--oneline .issues-toolbar-actions-primary,
+            .issues-toolbar--oneline .issues-toolbar-actions-secondary,
+            .issues-toolbar--oneline .issues-toolbar-dates {
+                flex-wrap: nowrap !important;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions {
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: 0.4rem !important;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions-primary,
+            .issues-toolbar--oneline .issues-toolbar-actions-secondary {
+                gap: 0.35rem !important;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions-primary {
+                flex: 0 0 auto;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions-secondary {
+                flex: 1 1 0;
+                min-width: 0;
+                justify-content: flex-start;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions .form-select,
+            .issues-toolbar--oneline .issues-toolbar-actions #carrier-filter-select,
+            .issues-toolbar--oneline .issues-toolbar-actions #claimable-filter-select,
+            .issues-toolbar--oneline .issues-toolbar-actions #claim-filed-filter-select,
+            .issues-toolbar--oneline .issues-toolbar-actions #claim-received-filter-select {
+                min-width: 0;
+                width: auto;
+                max-width: 130px;
+                font-size: 0.75rem;
+                padding-left: 0.4rem;
+                padding-right: 1.5rem;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-search {
+                flex: 0 1 150px;
+                min-width: 110px;
+                max-width: 170px;
+            }
+
+            .issues-toolbar--oneline .l30-badge,
+            .issues-toolbar--oneline .l30-issues-badge {
+                font-size: 0.75rem;
+                padding: 0.25rem 0.45rem;
+                white-space: nowrap;
+            }
+
+            .issues-toolbar--oneline .carrier-claims-summary-wrap.carrier-claims-summary--fill {
+                flex: 1 1 0;
+                gap: 0.35rem !important;
+            }
+
+            .issues-toolbar--oneline .carrier-claims-summary-badge {
+                padding: 0.2rem 0.4rem;
+                white-space: nowrap;
+                line-height: 1.2;
+            }
+
+            .issues-toolbar--oneline .carrier-claims-summary-badge .fw-semibold.small {
+                font-size: 0.72rem;
+            }
+
+            .issues-toolbar--oneline .carrier-claims-summary-line {
+                font-size: 0.78rem;
+            }
+
+            .issues-toolbar--oneline #hold_issue_total_count {
+                font-size: 0.85rem !important;
+                padding: 0.3rem 0.5rem !important;
+            }
+        }
+
         /* Remove black backdrop completely */
         .modal-backdrop {
             display: none !important;
@@ -1422,13 +1724,261 @@
             width: 100%;
             max-width: 100%;
         }
-        @if (!empty($showMonthlyReport))
+        @if ($genzUi ?? false)
+        /* ====================================================================
+           GEN-Z UI (opt-in via $genzUi). Everything is scoped to body.genz-ui
+           so other boards are untouched. Soft gradients, glass cards, big
+           radii, pill buttons, pastel chips, bouncy hovers.
+           ==================================================================== */
+        body.genz-ui {
+            --gz-violet: #7c5cff;
+            --gz-violet-2: #a78bfa;
+            --gz-pink: #ff5fa2;
+            --gz-mint: #1fd3a0;
+            --gz-sun: #ffc94d;
+            --gz-sky: #4cc9f0;
+            --gz-ink: #1d1b3a;
+            --gz-muted: #6f6b8d;
+            --gz-line: #ece7ff;
+            --gz-glass: rgba(255, 255, 255, 0.82);
+            --gz-shadow: 0 10px 30px -12px rgba(124, 92, 255, 0.35);
+            font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            color: var(--gz-ink);
+            background: linear-gradient(135deg, #f1ecff 0%, #ffeef6 48%, #e6fbf3 100%) fixed !important;
+        }
+        body.genz-ui .content-page,
+        body.genz-ui .content,
+        body.genz-ui #wrapper,
+        body.genz-ui .wrapper {
+            background: transparent !important;
+        }
+
+        /* page title */
+        body.genz-ui .page-title-box .page-title {
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            background: linear-gradient(90deg, var(--gz-violet), var(--gz-pink));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        body.genz-ui .page-title-box .breadcrumb-item a { color: var(--gz-muted); }
+        body.genz-ui .page-title-box .breadcrumb-item.active { color: var(--gz-violet); font-weight: 700; }
+
+        /* cards */
+        body.genz-ui .card {
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            border-radius: 24px;
+            background: var(--gz-glass);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+            box-shadow: var(--gz-shadow);
+            overflow: hidden;
+        }
+        body.genz-ui .card-header {
+            background: transparent;
+            border-bottom: 1px dashed var(--gz-line) !important;
+        }
+
+        /* buttons (toolbar + modals) */
+        body.genz-ui .issues-toolbar-header .btn,
+        body.genz-ui .modal .btn {
+            border-radius: 999px;
+            font-weight: 700;
+            border-width: 0;
+            transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+        }
+        body.genz-ui .issues-toolbar-header .btn:hover,
+        body.genz-ui .modal .btn:hover {
+            transform: translateY(-2px) scale(1.04);
+            filter: saturate(1.15);
+        }
+        body.genz-ui .issues-toolbar-header .btn:active,
+        body.genz-ui .modal .btn:active { transform: scale(.96); }
+        body.genz-ui .issues-toolbar-header .btn-primary,
+        body.genz-ui .modal .btn-primary {
+            background: linear-gradient(135deg, var(--gz-violet), var(--gz-pink));
+            color: #fff;
+            box-shadow: 0 8px 18px -8px rgba(255, 95, 162, 0.7);
+        }
+        body.genz-ui .issues-toolbar-header .btn-success,
+        body.genz-ui .modal .btn-success {
+            background: linear-gradient(135deg, var(--gz-mint), #7be495);
+            color: #053b2c;
+            box-shadow: 0 8px 18px -8px rgba(31, 211, 160, 0.7);
+        }
+        body.genz-ui .issues-toolbar-header .btn-warning {
+            background: linear-gradient(135deg, var(--gz-sun), #ff9f6b);
+            color: #4a2a00;
+        }
+        body.genz-ui .issues-toolbar-header .btn-outline-secondary,
+        body.genz-ui .issues-toolbar-header .btn-outline-info,
+        body.genz-ui .modal .btn-secondary,
+        body.genz-ui .modal .btn-light,
+        body.genz-ui .modal .btn-outline-secondary {
+            background: #f3efff;
+            color: var(--gz-violet);
+            box-shadow: inset 0 0 0 1.5px var(--gz-line);
+        }
+        body.genz-ui .modal .btn-danger,
+        body.genz-ui .modal .btn-outline-danger {
+            background: #ffe6ee;
+            color: #d61f5a;
+        }
+
+        /* inputs */
+        body.genz-ui .form-control,
+        body.genz-ui .form-select,
+        body.genz-ui .input-group-text {
+            border: 1.5px solid var(--gz-line);
+            border-radius: 14px;
+            background-color: #fff;
+            color: var(--gz-ink);
+            transition: box-shadow .15s ease, border-color .15s ease;
+        }
+        body.genz-ui .form-control:focus,
+        body.genz-ui .form-select:focus {
+            border-color: var(--gz-violet-2);
+            box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.16);
+        }
+        body.genz-ui .issues-toolbar-search .input-group { border-radius: 999px; overflow: hidden; }
+        body.genz-ui .issues-toolbar-search .input-group-text { border-radius: 999px 0 0 999px; background: #f3efff; color: var(--gz-violet); }
+        body.genz-ui .issues-toolbar-search .form-control { border-radius: 0 999px 999px 0; }
+        body.genz-ui .issues-toolbar-header .form-select { border-radius: 999px; font-weight: 600; }
+        body.genz-ui .form-label { font-weight: 700; font-size: 0.8rem; color: var(--gz-ink); letter-spacing: .01em; }
+
+        /* chips: loss badges + claims summary */
+        body.genz-ui .l30-badge,
+        body.genz-ui .l30-issues-badge {
+            border: 0 !important;
+            border-radius: 999px !important;
+            font-weight: 800;
+            box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.35);
+            transition: transform .15s ease;
+        }
+        body.genz-ui .l30-badge:hover,
+        body.genz-ui .l30-issues-badge:hover { transform: translateY(-2px) scale(1.04); }
+        body.genz-ui .l30-badge.alltime-loss-badge {
+            background: linear-gradient(135deg, #ff4d6d, #ff8fa3) !important;
+            color: #fff !important;
+        }
+        body.genz-ui .carrier-claims-summary-badge {
+            border: 0 !important;
+            border-radius: 18px !important;
+            padding: 0.4rem 0.8rem !important;
+            box-shadow: 0 8px 18px -12px rgba(29, 27, 58, 0.45);
+            transition: transform .15s ease;
+        }
+        body.genz-ui .carrier-claims-summary-badge:hover { transform: translateY(-2px); }
+        body.genz-ui .carrier-claims-summary--notfiled { background: linear-gradient(135deg, #ffe0e8, #ffd0dc) !important; color: #b3123f !important; }
+        body.genz-ui .carrier-claims-summary--incentive { background: linear-gradient(135deg, #ffe9b8, #ffd0a0) !important; color: #7a3d00 !important; }
+        body.genz-ui .incentive-history-panel { border-radius: 20px; border: 1px solid rgba(255,255,255,.9); box-shadow: 0 24px 50px -20px rgba(124,92,255,.55); }
+        body.genz-ui .carrier-claims-summary--filed { background: linear-gradient(135deg, #dcd4ff, #e9e4ff) !important; color: #4a2fc9 !important; }
+        body.genz-ui .carrier-claims-summary--pending { background: linear-gradient(135deg, #fff1c4, #ffe29a) !important; color: #7a4d00 !important; }
+        body.genz-ui .carrier-claims-summary--received { background: linear-gradient(135deg, #c9f7e6, #a6f0d0) !important; color: #05694b !important; }
+        body.genz-ui .carrier-claims-summary-badge .fw-semibold.small {
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            font-size: .62rem !important;
+        }
+        body.genz-ui #hold_issue_total_count { border-radius: 999px; background: #f3efff !important; color: var(--gz-violet) !important; font-weight: 800; }
+
+        /* table */
+        body.genz-ui .table-responsive { border-radius: 0 0 24px 24px; }
+        body.genz-ui .orders-hold-table {
+            --bs-table-striped-bg: rgba(124, 92, 255, 0.035);
+            --bs-table-hover-bg: rgba(124, 92, 255, 0.09);
+            border: 0;
+            font-size: 12.5px;
+        }
+        body.genz-ui .orders-hold-table th,
+        body.genz-ui .orders-hold-table td {
+            border: 0;
+            border-bottom: 1px solid var(--gz-line);
+        }
+        body.genz-ui .orders-hold-table thead th {
+            background: linear-gradient(180deg, #f5f1ff, #ece6ff) !important;
+            color: var(--gz-violet);
+            font-size: 0.68rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            border-bottom: 2px solid #ddd3ff;
+        }
+        body.genz-ui .orders-hold-table tbody tr { transition: background-color .12s ease; }
+        body.genz-ui .orders-hold-table tbody td { color: var(--gz-ink); }
+        body.genz-ui .orders-hold-table .qc-frozen-right { background-color: #fff; }
+        body.genz-ui .orders-hold-table thead .qc-frozen-right { background: #ece6ff !important; }
+        body.genz-ui .orders-hold-table tbody tr:hover .qc-frozen-right { background-color: #f1ecff; }
+        body.genz-ui .sku-thumb,
+        body.genz-ui .sku-thumb-placeholder { border-radius: 12px; border: 2px solid #fff; box-shadow: 0 6px 14px -8px rgba(29, 27, 58, 0.5); }
+        body.genz-ui .mkt-logo-img,
+        body.genz-ui .carrier-logo-img { filter: drop-shadow(0 2px 3px rgba(29, 27, 58, 0.12)); transition: transform .15s ease; }
+        body.genz-ui .orders-hold-table tbody tr:hover .mkt-logo-img,
+        body.genz-ui .orders-hold-table tbody tr:hover .carrier-logo-img { transform: scale(1.12); }
+        body.genz-ui .claimable-dot,
+        body.genz-ui .claim-filed-dot,
+        body.genz-ui .claim-received-dot,
+        body.genz-ui .tracking-dot-mark { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 3px 8px -2px rgba(29, 27, 58, 0.35); }
+        body.genz-ui .qc-row-history-btn { transition: transform .15s ease; }
+        body.genz-ui .qc-row-history-btn:hover { transform: scale(1.25) rotate(-8deg); }
+
+        /* modals */
+        body.genz-ui .modal-backdrop.show { opacity: 1; background: rgba(29, 27, 58, 0.38); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+        body.genz-ui .modal-content {
+            border: 1px solid rgba(255, 255, 255, 0.9) !important;
+            border-radius: 28px !important;
+            background: rgba(255, 255, 255, 0.94) !important;
+            -webkit-backdrop-filter: blur(18px);
+            backdrop-filter: blur(18px);
+            box-shadow: 0 30px 70px -25px rgba(124, 92, 255, 0.55) !important;
+            overflow: hidden;
+        }
+        body.genz-ui #ordersOnHoldIssueModal .modal-content { background: rgba(255, 255, 255, 0.96) !important; }
+        body.genz-ui .modal-header {
+            border-bottom: 0;
+            padding: 1.1rem 1.4rem;
+            background: linear-gradient(135deg, #f1ecff, #ffeaf4);
+        }
+        body.genz-ui .modal-title { font-weight: 800; letter-spacing: -0.01em; color: var(--gz-ink); }
+        body.genz-ui .modal-header .btn-close { background-color: #fff; border-radius: 999px; opacity: 1; padding: .55rem; box-shadow: 0 4px 10px -4px rgba(29, 27, 58, .35); }
+        body.genz-ui .modal-body { padding: 1.25rem 1.4rem; }
+        body.genz-ui .modal-footer { border-top: 1px dashed var(--gz-line); background: rgba(247, 244, 255, 0.7); }
+        body.genz-ui #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb { background-color: var(--gz-violet-2); border-radius: 999px; }
+        body.genz-ui #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-track { background: #f3efff; border-radius: 999px; }
+        body.genz-ui #ordersOnHoldIssueModal .modal-body { scrollbar-color: var(--gz-violet-2) #f3efff; }
+        body.genz-ui #rowHistoryModal .ai-history-table-wrap { border-radius: 18px; border-color: var(--gz-line); }
+        body.genz-ui #rowHistoryModal table.ai-history-table thead th { background: #f1ecff; color: var(--gz-violet); }
+        body.genz-ui #rowHistoryModal .ai-history-badge { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .04); }
+
+        /* soft scrollbars on the table */
+        body.genz-ui .table-responsive { scrollbar-color: var(--gz-violet-2) transparent; }
+        body.genz-ui .table-responsive::-webkit-scrollbar { height: 10px; }
+        body.genz-ui .table-responsive::-webkit-scrollbar-thumb { background: var(--gz-violet-2); border-radius: 999px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            body.genz-ui *, body.genz-ui *::before, body.genz-ui *::after { transition: none !important; animation: none !important; }
+        }
+        @endif        @if (!empty($showMonthlyReport))
             @include('partials.issue-board-report', ['ibrPart' => 'css', 'ibrDepts' => $monthlyReportDepts ?? []])
         @endif
     </style>
 @endsection
 
 @section('content')
+    @if ($genzUi ?? false)
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <script>document.body.classList.add('genz-ui');</script>
+    @endif
+    @if (!empty($sopUrl ?? null))
+        @push('page-title-after')
+            <a href="{{ $sopUrl }}" target="_blank" rel="noopener noreferrer" title="Open SOP" aria-label="Open SOP"
+                style="display:inline-flex;align-items:center;justify-content:center;line-height:1;text-decoration:none;">
+                <img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" style="width:36px;height:36px;display:block;">
+            </a>
+        @endpush
+    @endif
     @include('layouts.shared.page-title', [
         'page_title' => $pageTitle ?? 'QC PKG issues',
         'sub_title' => 'Customer Care',
@@ -1447,7 +1997,7 @@
             @endif
 
             <div class="card mt-3">
-                <div class="card-header issues-toolbar-header py-2 py-md-3 border-bottom">
+                <div class="card-header issues-toolbar-header @if ($toolbarOneLine ?? false) issues-toolbar--oneline @endif py-2 py-md-3 border-bottom">
                     <div class="row g-2 g-md-3 align-items-center">
                         @if (($recordsTitle ?? null) !== '')
                             <div class="col-12 col-xl-auto">
@@ -1458,28 +2008,40 @@
                             <div
                                 class="issues-toolbar-actions d-flex flex-column flex-xl-row flex-wrap align-items-stretch align-items-xl-center gap-2 gap-xl-3">
                                 <div class="issues-toolbar-actions-primary d-flex flex-wrap align-items-center gap-2">
-                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal"
+                                    @if ($rowCountLeft ?? false)
+                                        {{-- Row count at the far left of the toolbar (rowCountLeft). --}}
+                                        <span class="badge bg-light text-dark align-self-center flex-shrink-0"
+                                            id="hold_issue_total_count" title="Rows" style="font-size:1.05rem;padding:.42rem .65rem;">0</span>
+                                    @endif
+                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" @if ($iconOnlyToolbarButtons ?? false) title="{{ $addIssueButtonText ?? 'Add issue' }}" aria-label="{{ $addIssueButtonText ?? 'Add issue' }}" @endif
                                         data-bs-target="#ordersOnHoldIssueModal">
-                                        <i class="bi bi-plus-lg me-1"></i>
-                                        {{ $addIssueButtonText ?? 'Add QC & Packing Issue' }}
+                                        <i class="bi bi-plus-lg @if (!($iconOnlyToolbarButtons ?? false)) me-1 @endif"></i>
+                                        @if (!($iconOnlyToolbarButtons ?? false)){{ $addIssueButtonText ?? 'Add QC & Packing Issue' }}@endif
                                     </button>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnShowHistory">
-                                        <i class="bi bi-clock-history me-1"></i> History
+                                    @if (!($hideHistoryButton ?? false))
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnShowHistory" @if ($iconOnlyToolbarButtons ?? false) title="History" aria-label="History" @endif>
+                                        <i class="bi bi-clock-history @if (!($iconOnlyToolbarButtons ?? false)) me-1 @endif"></i>@if (!($iconOnlyToolbarButtons ?? false)) History @endif
                                     </button>
+                                    @endif
                                     @if (!empty($showMonthlyReport))
                                         <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-month">
                                             <i class="bi bi-graph-up me-1"></i> Monthly Report &amp; Graph
                                         </button>
                                     @endif
-                                    <button type="button" class="btn btn-success btn-sm" id="btnExportCsv">
-                                        <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
+                                    <button type="button" class="btn btn-success btn-sm" id="btnExportCsv" @if ($iconOnlyToolbarButtons ?? false) title="Export CSV" aria-label="Export CSV" @endif>
+                                        <i class="bi bi-file-earmark-spreadsheet @if (!($iconOnlyToolbarButtons ?? false)) me-1 @endif"></i>@if (!($iconOnlyToolbarButtons ?? false)) Export CSV @endif
                                     </button>
                                     @if (empty($hideImportCsv))
-                                        <button type="button" class="btn btn-outline-info btn-sm" id="btnImportCsv">
-                                            <i class="bi bi-upload me-1"></i> Import CSV
+                                        <button type="button" class="btn btn-outline-info btn-sm" id="btnImportCsv" @if ($iconOnlyToolbarButtons ?? false) title="Import CSV" aria-label="Import CSV" @endif>
+                                            <i class="bi bi-upload @if (!($iconOnlyToolbarButtons ?? false)) me-1 @endif"></i>@if (!($iconOnlyToolbarButtons ?? false)) Import CSV @endif
                                         </button>
                                     @endif
                                     @if ($showDispatchExtras ?? false)
+                                        <div id="alltime-loss-badge" class="l30-badge alltime-loss-badge"
+                                            title="All-time loss: Amazon price × qty of every issue on this board (ignores the filters)">
+                                            <i class="bi bi-graph-down-arrow"></i>
+                                            All time: <span id="alltime-loss-total">…</span>
+                                        </div>
                                         <div id="l30-loss-badge" class="l30-badge" role="button" data-bs-toggle="modal"
                                             data-bs-target="#l30LossModal" title="Last 30 Days Loss — click for detail">
                                             <i class="bi bi-graph-down-arrow"></i>
@@ -1544,6 +2106,18 @@
                                     @if ($showDateRangeFilter ?? false)
                                         <div class="issues-toolbar-dates d-flex flex-wrap align-items-center gap-1"
                                             title="Filter by created date">
+                                            @if ($showPeriodFilter ?? false)
+                                                <select id="issues-period-select" class="form-select form-select-sm"
+                                                    style="width:auto" aria-label="Period" title="Period">
+                                                    <option value="30">L30</option>
+                                                    <option value="60">L60</option>
+                                                    <option value="90">L90</option>
+                                                    <option value="all">All time</option>
+                                                    <option value="custom" hidden>Custom</option>
+                                                </select>
+                                            @endif
+                                            {{-- hideDateInputs: the L30/L60/L90 picker drives the dates; the inputs stay in the DOM (hidden) for the filter code. --}}
+                                            <div class="d-flex align-items-center gap-1 @if ($hideDateInputs ?? false) d-none @endif">
                                             <label class="small text-muted mb-0 text-nowrap"
                                                 for="issues-date-from">From</label>
                                             <input type="date" id="issues-date-from"
@@ -1557,6 +2131,7 @@
                                                 aria-label="Clear date filter">
                                                 <i class="bi bi-x-lg"></i>
                                             </button>
+                                            </div>
                                         </div>
                                     @endif
                                 </div>
@@ -1584,12 +2159,20 @@
                                         <div
                                             class="d-flex flex-wrap align-items-stretch gap-2 carrier-claims-summary-wrap carrier-claims-summary--fill flex-grow-1">
                                             <span
+                                                class="badge carrier-claims-summary-badge carrier-claims-summary--notfiled text-wrap text-start"
+                                                role="status" title="Claimable cases whose claim is not filed yet (non-claimable cases are not counted)">
+                                                <span class="d-block fw-semibold small">Not Filed</span>
+                                                <span class="d-block carrier-claims-summary-line"><span
+                                                        id="carrierClaimsNotFiledCount">0</span> · $<span
+                                                        id="carrierClaimsNotFiledAmount">0</span></span>
+                                            </span>
+                                            <span
                                                 class="badge carrier-claims-summary-badge carrier-claims-summary--filed text-wrap text-start"
                                                 role="status">
                                                 <span class="d-block fw-semibold small">Claims Filed</span>
                                                 <span class="d-block carrier-claims-summary-line"><span
                                                         id="carrierClaimsFiledCount">0</span> · $<span
-                                                        id="carrierClaimsFiledAmount">0.00</span></span>
+                                                        id="carrierClaimsFiledAmount">0</span></span>
                                             </span>
                                             <span
                                                 class="badge carrier-claims-summary-badge carrier-claims-summary--pending text-wrap text-start"
@@ -1597,7 +2180,7 @@
                                                 <span class="d-block fw-semibold small">Pending Claims</span>
                                                 <span class="d-block carrier-claims-summary-line"><span
                                                         id="carrierClaimsPendingCount">0</span> · $<span
-                                                        id="carrierClaimsPendingAmount">0.00</span></span>
+                                                        id="carrierClaimsPendingAmount">0</span></span>
                                             </span>
                                             <span
                                                 class="badge carrier-claims-summary-badge carrier-claims-summary--received text-wrap text-start"
@@ -1605,12 +2188,26 @@
                                                 <span class="d-block fw-semibold small">Claims Recd</span>
                                                 <span class="d-block carrier-claims-summary-line"><span
                                                         id="carrierClaimsReceivedCount">0</span> · $<span
-                                                        id="carrierClaimsReceivedAmount">0.00</span></span>
+                                                        id="carrierClaimsReceivedAmount">0</span></span>
                                             </span>
-                                        </div>
+                                            @if (!empty($incentiveHistoryUrl ?? null))
+                                                <span
+                                                    class="badge carrier-claims-summary-badge carrier-claims-summary--incentive text-wrap text-start"
+                                                    role="status" id="carrierIncentiveBadge"
+                                                    title="Incentive = claim received amount x 1 (follows the filters)">
+                                                    <span class="d-block fw-semibold small">Incentive
+                                                        <button type="button" class="incentive-history-dot" id="incentiveHistoryDot"
+                                                            title="History: L30 received amount saved on the 1st of every month"
+                                                            aria-label="Incentive history"></button></span>
+                                                    <span class="d-block carrier-claims-summary-line">&#8377;<span
+                                                            id="carrierIncentiveAmount">0</span></span>
+                                                </span>
+                                            @endif                                        </div>
                                     @endif
-                                    <span class="badge bg-light text-dark align-self-center flex-shrink-0"
-                                        id="hold_issue_total_count">0</span>
+                                    @if (!($rowCountLeft ?? false))
+                                        <span class="badge bg-light text-dark align-self-center flex-shrink-0"
+                                            id="hold_issue_total_count">0</span>
+                                    @endif
                                 </div>
                             </div>
                         </div>
@@ -1621,10 +2218,10 @@
                 @endif
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table{{ ($autofitTableColumns ?? false) ? ' orders-hold-table--autofit' : '' }}">
+                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table{{ ($autofitTableColumns ?? false) ? ' orders-hold-table--autofit' : '' }}{{ ($skuColumnHalfWidth ?? false) ? ' orders-hold-table--sku-half' : '' }}{{ ($issueColumnNarrow ?? false) ? ' orders-hold-table--issue-narrow' : '' }}">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="orders-hold-col-idx">#</th>
+                                    @if (!($hideIdColumn ?? false)) <th class="orders-hold-col-idx">#</th> @endif
                                     <th class="orders-hold-col-img"></th>
                                     <th class="orders-hold-col-sku">SKU</th>
                                     @if ($showDispatchExtras ?? false)
@@ -1640,21 +2237,26 @@
                                     <th
                                         class="orders-hold-col-what @if ($showDispatchExtras ?? false) dispatch-what-col @endif">
                                         Issue?</th>
+                                    @if (!($hideActionColumn ?? false))
                                     <th
                                         class="orders-hold-col-action @if ($showDispatchExtras ?? false) dispatch-action-col @endif">
                                         Action</th>
+                                    @endif
                                     @if (($showCarrierColumn ?? false) && ($carrierColumnAfterAction ?? false))
                                         <th class="orders-hold-col-carrier">Carrier</th>
                                     @endif
                                     @if ($showClaimTrackingColumn ?? false)
                                         <th class="orders-hold-col-action">Tracking</th>
                                     @endif
+                                    @if ($showLabelDateColumn ?? false)
+                                        <th class="orders-hold-col-action text-center" title="When the shipping label was created">Label<br>Date</th>
+                                    @endif
                                     {{-- Read-only "view all column data" magnifier; opens a modal
                                          showing every relevant field for the row. --}}
                                     @if ($showDetailsColumn ?? false)
                                         <th class="orders-hold-col-action text-center">Details</th>
                                     @endif
-                                    @if ($showRowHistoryColumn ?? false)
+                                    @if (($showRowHistoryColumn ?? false) && !($historyBeforeCreatedBy ?? false))
                                         <th class="orders-hold-col-action text-center">History</th>
                                     @endif
                                     {{-- Carrier column stays visible when $showCarrierColumn is set.
@@ -1684,7 +2286,7 @@
                                                 title="Click to filter green or red">Claim<br>able<span
                                                     class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
-                                        @if ($showClaimableRemarkColumn ?? false)
+                                        @if (($showClaimableRemarkColumn ?? false) && !($claimableRemarkInModal ?? false))
                                             <th class="orders-hold-col-claimable-remark text-center"
                                                 title="Why this case is not claimable (50 words max)">Notes</th>
                                         @endif
@@ -1720,7 +2322,10 @@
                                     @if (!($hideCloseColumn ?? false))
                                         <th class="orders-hold-col-close">Close</th>
                                     @endif
-                                    <th class="orders-hold-col-created-by">Created By</th>
+                                    @if (($showRowHistoryColumn ?? false) && ($historyBeforeCreatedBy ?? false))
+                                        <th class="orders-hold-col-action text-center qc-frozen-right qc-frozen-history">History</th>
+                                    @endif
+                                    <th class="orders-hold-col-created-by{{ ($historyBeforeCreatedBy ?? false) ? ' qc-frozen-right qc-frozen-created-by' : '' }}">Created By</th>
                                     {{-- Optional Dept column rendered AFTER Created By
                                          (used by /customer-care/carrier-and-claim where
                                          the original Dept column is hidden). --}}
@@ -1737,7 +2342,7 @@
                                                 title="Click to filter green or red">Claim<br>able<span
                                                     class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
-                                        @if ($showClaimableRemarkColumn ?? false)
+                                        @if (($showClaimableRemarkColumn ?? false) && !($claimableRemarkInModal ?? false))
                                             <th class="orders-hold-col-claimable-remark text-center"
                                                 title="Why this case is not claimable (50 words max)">Notes</th>
                                         @endif
@@ -1764,7 +2369,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) + $lossColspanExtra - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showClaimTrackingColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) + $lossColspanExtra - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showClaimTrackingColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) - ($hideIdColumn ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -2218,6 +2823,30 @@
                                 </div>
                             @endif
 
+                            @if (($claimAmountsInModal ?? false) && ($showAmpUsdColumn ?? false))
+                                <div class="col-md-6 d-none" id="hold_issue_amp_usd_wrap">
+                                    <label for="hold_issue_amp_usd" class="form-label">AMT $</label>
+                                    <input type="text" class="form-control" id="hold_issue_amp_usd" maxlength="6"
+                                        inputmode="text" autocomplete="off" placeholder="Claim amount">
+                                </div>
+                            @endif
+                            @if (($claimAmountsInModal ?? false) && ($showAmtRecColumn ?? false))
+                                <div class="col-md-6 d-none" id="hold_issue_amt_rec_wrap">
+                                    <label for="hold_issue_amt_rec" class="form-label">Amt Rec</label>
+                                    <input type="text" class="form-control" id="hold_issue_amt_rec" maxlength="6"
+                                        inputmode="text" autocomplete="off" placeholder="Amount received">
+                                </div>
+                            @endif
+                            @if (($showClaimableRemarkColumn ?? false) && ($claimableRemarkInModal ?? false))
+                                {{-- Notes: why this case is not claimable (50 words max). Shown when editing an existing issue. --}}
+                                <div class="col-12 d-none" id="hold_issue_claimable_remark_wrap">
+                                    <label for="hold_issue_claimable_remark" class="form-label">Notes
+                                        <span class="text-muted small fw-normal">(why not claimable, 50 words max)</span></label>
+                                    <textarea class="form-control" id="hold_issue_claimable_remark" rows="2"
+                                        placeholder="Why not claimable?" aria-label="Not claimable reason"></textarea>
+                                    <div class="text-end small text-muted" id="hold_issue_claimable_remark_count">0/50</div>
+                                </div>
+                            @endif
                             <div class="col-md-6">
                                 <label for="hold_issue_text" class="form-label">Root Cause Found
                                     @if ($requireRootCauseFound ?? true)
@@ -2478,7 +3107,11 @@
             const hideActionRemark = @json((bool) ($hideActionRemark ?? false));
             const requireRootCauseFound = @json((bool) ($requireRootCauseFound ?? true));
             const showRowHistoryColumn = @json((bool) ($showRowHistoryColumn ?? false));
+            const historyBeforeCreatedBy = @json((bool) ($historyBeforeCreatedBy ?? false));
             const hideCloseColumn = @json((bool) ($hideCloseColumn ?? false));
+            const oldestFirstOrder = @json((bool) ($oldestFirst ?? false));
+            const hideGroupBadge = @json((bool) ($hideGroupBadge ?? false));
+            const lossReadOnly = @json((bool) ($lossReadOnly ?? false));
             const showClaimDatesInHistory = @json((bool) (($showClaimFiledColumn ?? false) || ($showClaimReceivedColumn ?? false)));
             const rowHistoryBaseUrl = @json($rowHistoryBaseUrl ?? url('/customer-care/all-issues/issues'));
             const singleEntryIssueBoard = @json((bool) ($singleEntryIssueBoard ?? false));
@@ -2540,11 +3173,22 @@
             const showClaimFiledColumn = @json((bool) ($showClaimFiledColumn ?? false));
             const showClaimableColumn = @json((bool) ($showClaimableColumn ?? false));
             const showClaimableRemarkColumn = @json((bool) ($showClaimableRemarkColumn ?? false));
+            const claimableRemarkInModal = @json((bool) (($showClaimableRemarkColumn ?? false) && ($claimableRemarkInModal ?? false)));
             const showAmpUsdColumn = @json((bool) ($showAmpUsdColumn ?? false));
             const showAmtRecColumn = @json((bool) ($showAmtRecColumn ?? false));
+            // AMT $ / Amt Rec are read-only in the table and edited from the edit modal.
+            // Empty data shows as a red dash on boards that opt in ($highlightMissing).
+            const highlightMissing = @json((bool) ($highlightMissing ?? false));
+            function missingMark() {
+                return highlightMissing ? '<span class="missing-mark" title="Data missing">—</span>' : '—';
+            }
+            const claimAmountsInModal = @json((bool) (($claimAmountsInModal ?? false) && (($showAmpUsdColumn ?? false) || ($showAmtRecColumn ?? false))));
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
             const showCarrierColumn = @json((bool) ($showCarrierColumn ?? false));
             const showClaimTrackingColumn = @json((bool) ($showClaimTrackingColumn ?? false));
+            const showLabelDateColumn = @json((bool) ($showLabelDateColumn ?? false));
+            // Missing tracking numbers are filled in automatically from the Order Fulfillment page.
+            const autoFetchTracking = @json((bool) ($autoFetchTracking ?? false));
             const hideReplacementTrackingOnBoard = @json((bool) ($hideReplacementTrackingOnBoard ?? false));
             const claimsStatsUrl = @json($claimsStatsUrl ?? null);
             const showClaimsSummaryBadges = @json((bool) ($showClaimsSummaryBadges ?? false));
@@ -3089,18 +3733,51 @@
                     activeDateTo = toEl.value || '';
                     syncBounds();
                     renderRows();
-                    if (!dateRangeIsActive()) {
-                        loadClaimsStats();
-                    }
                 }
 
-                fromEl.addEventListener('change', applyDateInputs);
-                toEl.addEventListener('change', applyDateInputs);
+                const periodEl = document.getElementById('issues-period-select');
+
+                function ymdDaysAgo(days) {
+                    const d = new Date();
+                    d.setDate(d.getDate() - days);
+                    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0');
+                }
+
+                // L30 / L60 / L90 = created in the last N days up to today; All time = no date limit.
+                function applyPeriod(value) {
+                    fromEl.value = value === 'all' || value === 'custom' ? '' : ymdDaysAgo(parseInt(value, 10));
+                    toEl.value = '';
+                    if (periodEl) periodEl.value = value;
+                    applyDateInputs();
+                }
+
+                fromEl.addEventListener('change', () => {
+                    if (periodEl) periodEl.value = 'custom';
+                    applyDateInputs();
+                });
+                toEl.addEventListener('change', () => {
+                    if (periodEl) periodEl.value = 'custom';
+                    applyDateInputs();
+                });
                 clearBtn?.addEventListener('click', () => {
+                    if (periodEl) {
+                        applyPeriod('all');
+                        return;
+                    }
                     fromEl.value = '';
                     toEl.value = '';
                     applyDateInputs();
                 });
+                if (periodEl) {
+                    periodEl.addEventListener('change', () => applyPeriod(periodEl.value));
+                    // Default period (L30) is in force before the first rows load.
+                    const initial = @json((string) ($defaultPeriodDays ?? '30'));
+                    fromEl.value = initial === 'all' ? '' : ymdDaysAgo(parseInt(initial, 10) || 30);
+                    periodEl.value = initial === 'all' ? 'all' : String(parseInt(initial, 10) || 30);
+                    activeDateFrom = fromEl.value || '';
+                    syncBounds();
+                }
             })();
 
             function escAttr(value) {
@@ -3216,6 +3893,13 @@
             }
 
             function lossCellHtml(row) {
+                if (lossReadOnly) {
+                    // Autofilled from the Amazon price: shown as plain text, not an input.
+                    const shown = lossCellDisplay(row);
+                    return '<td class="orders-hold-loss-cell text-center" title="' +
+                        escAttr(lossCellTooltip(row).replace('Click to enter Loss $', 'No Amazon price on file')) + '">' +
+                        (shown === '—' ? missingMark() : escapeHtml(shown)) + '</td>';
+                }
                 const v = lossInputDisplayValue(row);
                 return '<td class="orders-hold-loss-cell" title="' + escAttr(lossCellTooltip(row)) + '">' +
                     '<input type="number" step="0.01" class="form-control form-control-sm issue-loss-input" ' +
@@ -3325,7 +4009,7 @@
                     ? ' title="' + escAttr(titleParts.join(' · ')) + '"'
                     : '';
 
-                return '<td class="orders-hold-col-created-by"' + titleAttr + '>' +
+                return '<td class="orders-hold-col-created-by' + (historyBeforeCreatedBy ? ' qc-frozen-right qc-frozen-created-by' : '') + '"' + titleAttr + '>' +
                     '<div class="created-by-combo">' +
                     '<div class="created-by-name">' + escapeHtml(name) + '</div>' +
                     dateHtml +
@@ -3386,7 +4070,112 @@
                     '</td>';
             }
 
+            // MKT column: logo only (name in the tooltip); falls back to the name when no logo is known.
+            const marketplaceLogoOnly = @json((bool) ($marketplaceLogoOnly ?? false));
+            const MARKETPLACE_LOGOS = @json($marketplaceLogoMap);
+
+            function marketplaceLogoCellHtml(row) {
+                const name = String(row.marketplace_1 ?? '').trim();
+                if (!name) return '<td class="text-center">' + missingMark() + '</td>';
+                const logo = MARKETPLACE_LOGOS[name.toLowerCase().replace(/[^a-z0-9]+/g, '')];
+                if (!logo) return '<td title="' + escAttr(name) + '">' + escapeHtml(name) + '</td>';
+                return '<td class="text-center" title="' + escAttr(name) + '">' +
+                    '<img src="' + escAttr(logo) + '" alt="' + escAttr(name) + '" class="mkt-logo-img"></td>';
+            }
+            // Incentive history dot: L30 received amount saved on the 1st of every month (server snapshot).
+            const incentiveHistoryUrl = @json($incentiveHistoryUrl ?? null);
+            (function() {
+                const dot = document.getElementById('incentiveHistoryDot');
+                if (!dot || !incentiveHistoryUrl) return;
+                let history = [];
+                let panel = null;
+                const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+                function dateLabel(ymd) {
+                    const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+                    return m ? (parseInt(m[3], 10) + ' ' + MONTHS[parseInt(m[2], 10) - 1] + ' ' + m[1]) : String(ymd || '');
+                }
+                const rupees = (n) => '\u20B9' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+
+                function closePanel() {
+                    if (panel) {
+                        panel.remove();
+                        panel = null;
+                    }
+                }
+
+                function openPanel() {
+                    closePanel();
+                    panel = document.createElement('div');
+                    panel.className = 'incentive-history-panel';
+                    let html = '<div class="ihp-title">Incentive history</div>' +
+                        '<div class="ihp-sub">L30 claims received, saved automatically on the 1st of every month.</div>';
+                    if (!history.length) {
+                        html += '<div class="ihp-empty">No snapshot saved yet.</div>';
+                    } else {
+                        history.forEach((h) => {
+                            html += '<div class="ihp-row"><span>' + escapeHtml(dateLabel(h.date)) + ' <span class="text-muted">(' +
+                                Number(h.count || 0) + ' claims)</span></span><b>' + rupees(h.incentive) + '</b></div>';
+                        });
+                    }
+                    panel.innerHTML = html;
+                    document.body.appendChild(panel);
+                    const r = dot.getBoundingClientRect();
+                    const w = panel.offsetWidth || 280;
+                    panel.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left - 20)) + 'px';
+                    panel.style.top = (r.bottom + 8) + 'px';
+                }
+
+                async function loadHistory() {
+                    try {
+                        const res = await fetch(incentiveHistoryUrl, {
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        const data = await res.json().catch(() => null);
+                        history = res.ok && data && Array.isArray(data.history) ? data.history : [];
+                    } catch (e) {
+                        history = [];
+                    }
+                    dot.classList.toggle('has-history', history.length > 0);
+                    if (history.length) {
+                        dot.title = 'History - last: ' + dateLabel(history[0].date) + ' ' + rupees(history[0].incentive);
+                    }
+                }
+
+                dot.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    if (panel) closePanel(); else openPanel();
+                });
+                document.addEventListener('click', (ev) => {
+                    if (panel && !panel.contains(ev.target)) closePanel();
+                });
+                document.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Escape') closePanel();
+                });
+                loadHistory();
+            })();
+            // Carrier logos are saved locally in public/images/carriers (fetched once from the internet).
+            const CARRIER_LOGOS = {
+                USPS: @json(asset('images/carriers/usps.png')),
+                FEDEX: @json(asset('images/carriers/fedex.png')),
+                UPS: @json(asset('images/carriers/ups.png')),
+                GOFO: @json(asset('images/carriers/gofo.png')),
+            };
+            const carrierLogoReadOnly = @json((bool) ($carrierLogoReadOnly ?? false));
+
+            function carrierLogoCellHtml(row) {
+                const v = String(row.issue_carrier ?? '').trim();
+                if (!v) return '<td class="orders-hold-col-carrier text-center">' + missingMark() + '</td>';
+                const logo = CARRIER_LOGOS[v.toUpperCase()];
+                return '<td class="orders-hold-col-carrier text-center" title="' + escAttr(v) + '">' +
+                    '<span class="carrier-logo-cell">' +
+                    (logo ? '<img src="' + escAttr(logo) + '" alt="' + escAttr(v) + '" class="carrier-logo-img">' :
+                        '<span class="carrier-logo-name">' + escapeHtml(v) + '</span>') +
+                    '</span></td>';
+            }
+
             function carrierSelectCellHtml(row) {
+                if (carrierLogoReadOnly) return carrierLogoCellHtml(row);
                 const v = String(row.issue_carrier ?? '').trim();
                 let html = '<td class="orders-hold-col-carrier">' +
                     '<select class="form-select form-select-sm carrier-issue-carrier-select" data-issue-id="' + escAttr(
@@ -3557,6 +4346,9 @@
 
             function ampUsdCellHtml(row) {
                 const v = String(row.amp_usd ?? '').slice(0, 6);
+                if (claimAmountsInModal) {
+                    return '<td class="orders-hold-col-amp-usd text-center">' + (v ? escapeHtml(v) : missingMark()) + '</td>';
+                }
                 return '<td class="orders-hold-col-amp-usd">' +
                     '<input type="text" class="form-control form-control-sm carrier-amp-usd-input" maxlength="6" ' +
                     'value="' + escAttr(v) + '" data-issue-id="' + escAttr(String(row.id)) + '" ' +
@@ -3605,6 +4397,9 @@
             // ── "Amt Rec" (Amount Received): mirrors AMT $ ─────────────────────
             function amtRecCellHtml(row) {
                 const v = String(row.amt_rec ?? '').slice(0, 6);
+                if (claimAmountsInModal) {
+                    return '<td class="orders-hold-col-amt-rec text-center">' + (v ? escapeHtml(v) : (row.claim_received ? missingMark() : '<span class="text-muted">—</span>')) + '</td>';
+                }
                 return '<td class="orders-hold-col-amt-rec">' +
                     '<input type="text" class="form-control form-control-sm carrier-amt-rec-input" maxlength="6" ' +
                     'value="' + escAttr(v) + '" data-issue-id="' + escAttr(String(row.id)) + '" ' +
@@ -3652,15 +4447,18 @@
             function formatClaimsMoney(n) {
                 const num = Number(n);
                 if (Number.isNaN(num)) {
-                    return '0.00';
+                    return '0';
                 }
                 return num.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
                 });
             }
 
-            function applyClaimsSummaryNumbers(filed, pending, received) {
+            // Incentive (rupees) = claim received amount x INCENTIVE_RATE; follows whatever filters are active.
+            const INCENTIVE_RATE = 1;
+
+            function applyClaimsSummaryNumbers(filed, pending, received, notFiled) {
                 const apply = (idCount, idAmt, bucket) => {
                     const elC = document.getElementById(idCount);
                     const elA = document.getElementById(idAmt);
@@ -3671,9 +4469,14 @@
                         elA.textContent = formatClaimsMoney(bucket?.amount ?? 0);
                     }
                 };
+                apply('carrierClaimsNotFiledCount', 'carrierClaimsNotFiledAmount', notFiled);
                 apply('carrierClaimsFiledCount', 'carrierClaimsFiledAmount', filed);
                 apply('carrierClaimsPendingCount', 'carrierClaimsPendingAmount', pending);
                 apply('carrierClaimsReceivedCount', 'carrierClaimsReceivedAmount', received);
+                const incEl = document.getElementById('carrierIncentiveAmount');
+                if (incEl) {
+                    incEl.textContent = Math.round((Number(received?.amount) || 0) * INCENTIVE_RATE).toLocaleString('en-IN');
+                }
             }
 
             function parseAmpUsdAmount(raw) {
@@ -3683,6 +4486,8 @@
                 return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
             }
 
+            const NOT_FILED_VALUE_PER_CLAIM = 90;
+
             function claimsSummaryFromRows(rows) {
                 let filedC = 0;
                 let filedA = 0;
@@ -3690,8 +4495,13 @@
                 let pendingA = 0;
                 let receivedC = 0;
                 let receivedA = 0;
+                let notFiledC = 0;
                 (rows || []).forEach((r) => {
                     const amt = parseAmpUsdAmount(r.amp_usd);
+                    // Not Filed: claim not filed yet AND the case is claimable (non-claimable cases are not counted).
+                    if (!r.claim_filed && rowIsClaimable(r)) {
+                        notFiledC += 1;
+                    }
                     if (r.claim_filed) {
                         filedC += 1;
                         filedA += amt;
@@ -3706,23 +4516,71 @@
                     }
                 });
                 return {
+                    // Not Filed is valued at a flat $90 per claim, not at the AMT $ column.
+                    notFiled: { count: notFiledC, amount: notFiledC * NOT_FILED_VALUE_PER_CLAIM },
                     filed: { count: filedC, amount: filedA },
                     pending: { count: pendingC, amount: pendingA },
                     received: { count: receivedC, amount: receivedA },
                 };
             }
 
+            // Red count under each column title = how many of the rows currently shown have that data missing.
+            const MISSING_RULES = {
+                'sku': (r) => !String(r.sku ?? '').trim(),
+                'ord': (r) => !String(r.order_number ?? '').trim(),
+                'loss$': (r) => lossCellDisplay(r) === '\u2014',
+                'qty': (r) => r.order_qty == null || r.order_qty === '',
+                'mkt': (r) => !String(r.marketplace_1 ?? '').trim(),
+                'issue?': (r) => !String(r.what_happened ?? '').trim(),
+                'carrier': (r) => !String(r.issue_carrier ?? '').trim(),
+                'tracking': (r) => !String(r.tracking_number ?? '').trim(),
+                'labeldate': (r) => !String(r.label_date_display ?? '').trim(),
+                'amt$': (r) => !String(r.amp_usd ?? '').trim(),
+                'amtrec': (r) => !!r.claim_received && !String(r.amt_rec ?? '').trim(),
+                'createdby': (r) => !String(r.created_by ?? '').trim(),
+            };
+            let missingHeaderCells = null;
+
+            function updateMissingCounts(rows) {
+                if (!highlightMissing) return;
+                const table = tableBody ? tableBody.closest('table') : null;
+                if (!table) return;
+                if (missingHeaderCells === null) {
+                    missingHeaderCells = [];
+                    table.querySelectorAll('thead th').forEach((th) => {
+                        const key = (th.textContent || '').replace(/\s+/g, '').toLowerCase();
+                        if (!MISSING_RULES[key]) return;
+                        const badge = document.createElement('span');
+                        badge.className = 'missing-count d-none';
+                        th.appendChild(badge);
+                        missingHeaderCells.push({ key, badge });
+                    });
+                }
+                const list = rows || [];
+                missingHeaderCells.forEach(({ key, badge }) => {
+                    let n = 0;
+                    for (let i = 0; i < list.length; i++) {
+                        if (MISSING_RULES[key](list[i])) n++;
+                    }
+                    badge.textContent = String(n);
+                    badge.title = n + ' row' + (n === 1 ? '' : 's') + ' with missing data';
+                    badge.classList.toggle('d-none', n === 0);
+                });
+            }
             function refreshDateFilteredClaimsSummary(rows) {
-                if (!showClaimsSummaryBadges || !dateRangeIsActive()) return;
+                // The Filed / Pending / Recd boxes always total exactly the rows left after every filter
+                // (period, carrier, claimable / filed / recd, search) — same rows as the table and the count.
+                updateMissingCounts(rows);
+                if (!showClaimsSummaryBadges || !holdIssueRows.length) return;
                 const summary = claimsSummaryFromRows(rows);
-                applyClaimsSummaryNumbers(summary.filed, summary.pending, summary.received);
+                applyClaimsSummaryNumbers(summary.filed, summary.pending, summary.received, summary.notFiled);
             }
 
             async function loadClaimsStats() {
                 if (!showClaimsSummaryBadges || !claimsStatsUrl) {
                     return;
                 }
-                if (dateRangeIsActive()) {
+                if (holdIssueRows.length) {
                     refreshDateFilteredClaimsSummary(getFilteredRows());
                     return;
                 }
@@ -3952,6 +4810,107 @@
                 return '<td class="qc-enhance-cell text-center">' + iconHtml + '</td>';
             }
 
+            function syncModalClaimableRemarkCount() {
+                const ta = document.getElementById('hold_issue_claimable_remark');
+                const cnt = document.getElementById('hold_issue_claimable_remark_count');
+                if (ta && cnt) cnt.textContent = countWords(ta.value) + '/' + CLAIMABLE_REMARK_MAX_WORDS;
+            }
+
+            function setModalClaimableRemark(record) {
+                if (!claimableRemarkInModal) return;
+                const wrap = document.getElementById('hold_issue_claimable_remark_wrap');
+                const ta = document.getElementById('hold_issue_claimable_remark');
+                if (!wrap || !ta) return;
+                if (record) {
+                    ta.value = clampWords(String(record.claimable_remark ?? ''), CLAIMABLE_REMARK_MAX_WORDS);
+                    wrap.classList.remove('d-none');
+                } else {
+                    ta.value = '';
+                    wrap.classList.add('d-none');
+                }
+                syncModalClaimableRemarkCount();
+            }
+
+            function setModalClaimAmounts(record) {
+                if (!claimAmountsInModal) return;
+                [['hold_issue_amp_usd', 'amp_usd'], ['hold_issue_amt_rec', 'amt_rec']].forEach(([id, key]) => {
+                    const inp = document.getElementById(id);
+                    const wrap = document.getElementById(id + '_wrap');
+                    if (!inp || !wrap) return;
+                    inp.value = record ? String(record[key] ?? '').slice(0, 6) : '';
+                    wrap.classList.toggle('d-none', !record);
+                });
+            }
+
+            async function saveClaimAmountsFromModal() {
+                if (!claimAmountsInModal || editingIssueId === null) return;
+                const r = holdIssueRows.find(x => String(x.id) === String(editingIssueId));
+                const fields = [['hold_issue_amp_usd', 'amp_usd', '/amp-usd'], ['hold_issue_amt_rec', 'amt_rec', '/amt-rec']];
+                let changed = false;
+                for (const [id, key, path] of fields) {
+                    const inp = document.getElementById(id);
+                    if (!inp) continue;
+                    const newV = String(inp.value || '').trim().slice(0, 6);
+                    const prev = r ? String(r[key] ?? '').trim().slice(0, 6) : '';
+                    if (newV === prev) continue;
+                    try {
+                        const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(editingIssueId) + path, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            body: JSON.stringify({ [key]: newV.length ? newV : null }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(data.message || 'Save failed');
+                        if (r) r[key] = newV;
+                        changed = true;
+                    } catch (e) {
+                        showAlert(e.message || 'Could not save claim amount');
+                    }
+                }
+                if (changed) loadClaimsStats();
+            }
+            async function saveClaimableRemarkFromModal() {
+                if (!claimableRemarkInModal || editingIssueId === null) return;
+                const ta = document.getElementById('hold_issue_claimable_remark');
+                if (!ta) return;
+                const newV = clampWords(ta.value, CLAIMABLE_REMARK_MAX_WORDS);
+                const r = holdIssueRows.find(x => String(x.id) === String(editingIssueId));
+                const prev = r ? clampWords(String(r.claimable_remark ?? ''), CLAIMABLE_REMARK_MAX_WORDS) : '';
+                if (newV === prev) return;
+                try {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(editingIssueId) +
+                        '/claimable-remark', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({ claimable_remark: newV.length ? newV : null }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.message || 'Save failed');
+                    if (r) r.claimable_remark = data.claimable_remark ?? newV;
+                } catch (e) {
+                    showAlert(e.message || 'Could not save notes');
+                }
+            }
+
+            document.addEventListener('input', (event) => {
+                if (!claimableRemarkInModal) return;
+                const ta = event.target.closest('#hold_issue_claimable_remark');
+                if (!ta) return;
+                if (countWords(ta.value) > CLAIMABLE_REMARK_MAX_WORDS) {
+                    ta.value = clampWords(ta.value, CLAIMABLE_REMARK_MAX_WORDS);
+                }
+                syncModalClaimableRemarkCount();
+            });
             async function saveCtnPkgFromModal() {
                 if (!ctnPkgInput) return;
                 const productId = productMasterIdInput ? parseInt(productMasterIdInput.value, 10) : NaN;
@@ -4226,6 +5185,29 @@
                     '</span>';
             }
 
+            // Carrier Claims Tracking column: green dot = tracking on file (hover shows it, clipboard copies it), red dot = no tracking.
+            // Label Date: when the shipping label was created (looked up server-side from the Veeqo shipment).
+            function labelDateCellHtml(row) {
+                const short = String(row?.label_date_display ?? '').trim();
+                if (!short) {
+                    return '<td class="text-center" title="No label found for this tracking / order">' + missingMark() + '</td>';
+                }
+                return '<td class="text-center text-nowrap" title="Label created ' + escAttr(row.label_date_full || short) + '">' +
+                    escapeHtml(short) + '</td>';
+            }
+            function trackingDotCellHtml(value) {
+                const text = String(value || '').trim();
+                if (!text) {
+                    return '<span class="tracking-dot-mark tracking-dot-mark--red" title="No tracking"></span>';
+                }
+                return '<span class="tracking-cell" title="' + escAttr(text) + '">' +
+                    '<span class="tracking-dot tracking-dot-mark tracking-dot-mark--green"></span>' +
+                    '<span class="tracking-full">' + escapeHtml(text) + '</span>' +
+                    '<button class="copy-tracking-btn" data-copy="' + escAttr(text) +
+                    '" title="Copy tracking"><i class="bi bi-clipboard"></i></button>' +
+                    '</span>';
+            }
+
             function linkHrefFromText(text) {
                 const t = String(text || '').trim();
                 if (!t) return '';
@@ -4286,7 +5268,7 @@
 
             function whatHappenedDotHtml(value) {
                 const text = String(value || '').trim();
-                if (!text) return '—';
+                if (!text) return missingMark();
                 if (text.toLowerCase() === '0 stock') {
                     return '<span class="what-happened-dot" title="0 Stock"></span>';
                 }
@@ -4330,7 +5312,7 @@
 
             function qcRowHistoryCellHtml(row) {
                 const id = row?.id != null ? String(row.id) : '';
-                return '<td class="orders-hold-col-action text-center qc-row-history-cell">' +
+                return '<td class="orders-hold-col-action text-center qc-row-history-cell' + (historyBeforeCreatedBy ? ' qc-frozen-right qc-frozen-history' : '') + '">' +
                     '<button type="button" class="qc-row-history-btn" data-id="' + escAttr(id) +
                     '" title="View this issue\'s edit history" aria-label="View history">' +
                     '<i class="bi bi-clock-history"></i></button>' +
@@ -4861,6 +5843,16 @@
                     }
                 });
                 totalCountEl.textContent = String(errorCount);
+                // "All time" loss badge: every row on this board (filters ignored), Amazon price x qty.
+                const allTimeLossEl = document.getElementById('alltime-loss-total');
+                if (allTimeLossEl && holdIssueRows.length) {
+                    let allTimeLoss = 0;
+                    holdIssueRows.forEach(r => {
+                        const v = parseFloat(r.amz_loss);
+                        if (Number.isFinite(v)) allTimeLoss += v;
+                    });
+                    allTimeLossEl.textContent = '$' + Math.round(allTimeLoss).toLocaleString('en-US');
+                }
             }
 
             function renderRows() {
@@ -4885,11 +5877,11 @@
                 const dataRowsHtml = filtered.map((row, index) => {
                     const buttonsHtml = qcRowActionButtonsHtml(row);
                     // Group badge: show small colored pill for multi-SKU groups
-                    const groupBadge = row.group_id ?
+                    const groupBadge = (row.group_id && !hideGroupBadge) ?
                         '<span class="badge bg-warning text-dark ms-1" style="font-size:0.7rem;" title="Grouped entry (1 error)">G</span>' :
                         '';
                     return '<tr>' +
-                        '<td>' + escapeHtml(row.id) + '</td>' +
+                        @if (!($hideIdColumn ?? false)) '<td>' + escapeHtml(row.id) + '</td>' + @endif
                         '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row
                                 .image_url) + '" class="sku-thumb" alt="">' :
                             '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') +
@@ -4906,7 +5898,7 @@
                                 @else
                                 '<span class="order-num-short">' + escapeHtml(row.order_number) + '</span>'
                                 @endif
-                                : '—') + '</td>' +
+                                : missingMark()) + '</td>' +
                             @if ($showLossColumn)
                             lossCellHtml(row) +
                             @endif
@@ -4920,23 +5912,25 @@
                                 @else
                                 '<span class="order-num-short">' + escapeHtml(row.order_number) + '</span>'
                                 @endif
-                                : '—') + '</td>' +
+                                : missingMark()) + '</td>' +
                             @if ($showLossColumn)
                             lossCellHtml(row) +
                             @endif
                         @elseif ($showLossColumn)
                             lossCellHtml(row) +
                         @endif
-                    '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') +
+                    '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : missingMark()) +
                     '</td>' +
-                    '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
+                    (marketplaceLogoOnly ? marketplaceLogoCellHtml(row) : '<td>' + (row.marketplace_1 ? escapeHtml(row.marketplace_1) : missingMark()) + '</td>') +
                         @if ($showDispatchExtras ?? false)
                             '<td class="dispatch-what-cell"><span class="what-cell-wrap">' + whatHappenedDotHtml
                                 (row.what_happened) + '</span></td>' +
                         @else
                             '<td class="orders-hold-col-what">' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         @endif
-                    @if ($showDispatchExtras ?? false)
+                    @if ($hideActionColumn ?? false)
+                        ''  +
+                    @elseif ($showDispatchExtras ?? false)
                         '<td class="dispatch-action-cell"><span class="action-cell-wrap">' + action1DisplayHtml(
                                 row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</span></td>' +
                     @else
@@ -4947,12 +5941,15 @@
                         carrierSelectCellHtml(row) +
                     @endif
                     @if ($showClaimTrackingColumn ?? false)
-                        '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
+                        '<td class="text-center">' + trackingDotCellHtml(row.tracking_number) + '</td>' +
+                    @endif
+                    @if ($showLabelDateColumn ?? false)
+                        labelDateCellHtml(row) +
                     @endif
                     @if ($showDetailsColumn ?? false)
                         qcDetailsCellHtml(row) +
                     @endif
-                    @if ($showRowHistoryColumn ?? false)
+                    @if (($showRowHistoryColumn ?? false) && !($historyBeforeCreatedBy ?? false))
                         qcRowHistoryCellHtml(row) +
                     @endif
                     @if (($showCarrierColumn ?? false) && !($carrierColumnAfterAction ?? false))
@@ -4976,7 +5973,7 @@
                     @if (($showClaimableColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimableCellHtml(row) +
                     @endif
-                    @if (($showClaimableRemarkColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
+                    @if (($showClaimableRemarkColumn ?? false) && !($claimableRemarkInModal ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimableRemarkCellHtml(row) +
                     @endif
                     @if (($showClaimFiledColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
@@ -5004,10 +6001,13 @@
                         '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
                     @endif
                     (hideCloseColumn ? '' : '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>') +
+                        @if (($showRowHistoryColumn ?? false) && ($historyBeforeCreatedBy ?? false))
+                            qcRowHistoryCellHtml(row) +
+                        @endif
                         @if ($mergeCreatedAtIntoCreatedBy ?? false)
                             combinedCreatedByCellHtml(row, 'created_at') +
                         @else
-                            '<td>' + escapeHtml(row.created_by) + '</td>' +
+                            '<td' + (historyBeforeCreatedBy ? ' class="qc-frozen-right qc-frozen-created-by"' : '') + '>' + escapeHtml(row.created_by) + '</td>' +
                         @endif
                         @if ($showDepartmentColumnAfterCreatedBy ?? false)
                             '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
@@ -5018,7 +6018,7 @@
                     @if (($showClaimableColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimableCellHtml(row) +
                     @endif
-                    @if (($showClaimableRemarkColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
+                    @if (($showClaimableRemarkColumn ?? false) && !($claimableRemarkInModal ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimableRemarkCellHtml(row) +
                     @endif
                     @if (($showClaimFiledColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
@@ -5088,7 +6088,7 @@
                     '<td class="orders-hold-col-action">' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
                         '</td>' +
                         @if ($showClaimTrackingColumn ?? false)
-                            '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
+                            '<td class="text-center">' + trackingDotCellHtml(row.tracking_number) + '</td>' +
                         @endif
                         @if ($showDetailsColumn ?? false)
                             qcDetailsCellHtml(row) +
@@ -5200,6 +6200,9 @@
                     claim_received_at_display: row?.claim_received_at_display ?? null,
                     issue_carrier: row?.issue_carrier != null && row?.issue_carrier !== '' ? String(row.issue_carrier)
                         .trim() : '',
+                    label_date: row?.label_date ?? null,
+                    label_date_display: row?.label_date_display ?? null,
+                    label_date_full: row?.label_date_full ?? null,
                 };
             }
 
@@ -5259,6 +6262,12 @@
                         listUrl += (listUrl.indexOf('?') >= 0 ? '&' : '?') +
                             'department=' + encodeURIComponent(lockedDepartment);
                     }
+                    if (autoFetchTracking) {
+                        listUrl += (listUrl.indexOf('?') >= 0 ? '&' : '?') + 'fetch_tracking=1';
+                    }
+                    if (showLabelDateColumn) {
+                        listUrl += (listUrl.indexOf('?') >= 0 ? '&' : '?') + 'label_date=1';
+                    }
                     const response = await fetch(listUrl, {
                         headers: {
                             'Accept': 'application/json',
@@ -5272,8 +6281,11 @@
                         const db = Date.parse(String(b.created_at_raw || '').replace(' ', 'T'));
                         const ta = isNaN(da) ? 0 : da;
                         const tb = isNaN(db) ? 0 : db;
-                        if (tb !== ta) return tb - ta;
-                        return (Number(b.id) || 0) - (Number(a.id) || 0);
+                        // Boards with $oldestFirst (Carrier Claims) list the oldest issue on top.
+                        if (tb !== ta) return oldestFirstOrder ? ta - tb : tb - ta;
+                        return oldestFirstOrder ?
+                            (Number(a.id) || 0) - (Number(b.id) || 0) :
+                            (Number(b.id) || 0) - (Number(a.id) || 0);
                     });
                     buildDeptFilters();
                     buildCarrierFilters();
@@ -5335,6 +6347,8 @@
                 if (action1RemarkInput) action1RemarkInput.value = '';
                 toggleAction1RemarkField();
                 if (trackingNumberInput) trackingNumberInput.value = '';
+                setModalClaimableRemark(null);
+                setModalClaimAmounts(null);
                 if (issueLinkInput) issueLinkInput.value = '';
                 replacementTrackingInput.value = '';
                 if (ctnPkgInput) {
@@ -5483,6 +6497,8 @@
                 }
                 toggleAction1RemarkField();
                 if (trackingNumberInput) trackingNumberInput.value = record.tracking_number || '';
+                setModalClaimableRemark(record);
+                setModalClaimAmounts(record);
                 if (issueLinkInput) issueLinkInput.value = record.issue_link || '';
                 replacementTrackingInput.value = record.replacement_tracking || '';
                 if (productMasterIdInput) {
@@ -5976,6 +6992,8 @@
                     await saveCtnPkgFromModal();
                     await saveInstructionPkgFromModal();
                     await saveQcEnhanceFromModal();
+                    await saveClaimableRemarkFromModal();
+                    await saveClaimAmountsFromModal();
 
                     // Reload so instruction columns reflect saved values
                     await loadHoldIssueRows();
@@ -6175,7 +7193,7 @@
                 }
             });
 
-            btnShowHistory.addEventListener('click', () => {
+            btnShowHistory?.addEventListener('click', () => {
                 historyCard.classList.remove('d-none');
                 loadHoldIssueHistoryRows();
                 historyCard.scrollIntoView({
