@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Http;
  */
 class SheinQtyCheckCommand extends Command
 {
-    protected $signature = 'shein:qty-check {sku?* : Seller SKU(s)} {--mismatch : Use the first SKUs listed under Inv SKU Mismatch instead} {--limit=3 : How many mismatch SKUs with --mismatch} {--summary : Count how many linked Shein SKUs are really on Shein (read-only)} {--push : Push the live Shopify qty to Shein, then read it back}';
+    protected $signature = 'shein:qty-check {sku?* : Seller SKU(s)} {--mismatch : Use the first SKUs listed under Inv SKU Mismatch instead} {--limit=3 : How many mismatch SKUs with --mismatch} {--live : Use SKUs that are in the Shein product list (known-good listings)} {--summary : Count how many linked Shein SKUs are really on Shein (read-only)} {--push : Push the live Shopify qty to Shein, then read it back}';
 
     protected $description = 'Compare live Shopify qty with what Shein holds for a SKU; optionally push and read back';
 
@@ -40,8 +40,20 @@ class SheinQtyCheckCommand extends Command
             $skus = array_slice(app(MarketplaceMismatchInventoryPass::class)->pageMismatchSkus('shein'), 0, max(1, (int) $this->option('limit')));
             $this->line('Mismatch SKUs picked: '.json_encode($skus));
         }
+        if ($this->option('live')) {
+            $inList = [];
+            foreach ($api->skcSkuCodeCatalog() as $list) {
+                foreach ($list as $c) {
+                    $inList[strtoupper($c)] = true;
+                }
+            }
+            $skus = SheinMmMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'product_id'])
+                ->filter(fn ($r) => isset($inList[strtoupper(trim((string) $r->product_id))]))
+                ->pluck('sku')->map(fn ($v) => trim((string) $v))->take(max(1, (int) $this->option('limit')))->values()->all();
+            $this->line('Live SKUs picked: '.json_encode($skus));
+        }
         if ($skus === []) {
-            $this->warn('Give a SKU, or use --mismatch.');
+            $this->warn('Give a SKU, or use --mismatch / --live.');
 
             return self::FAILURE;
         }
@@ -77,7 +89,7 @@ class SheinQtyCheckCommand extends Command
             if ($this->option('push')) {
                 $result = $sync->syncSkusFromShopify([$sku], null, true);
                 $this->line('Push result: '.json_encode($result));
-                sleep(3);
+                sleep(6);
                 $this->showShein($api, $code, 'AFTER');
                 $read = app(MarketplaceQtyReadBack::class)->read('shein', [$sku]);
                 $this->line('Read-back qty: '.json_encode($read));
@@ -136,30 +148,40 @@ class SheinQtyCheckCommand extends Command
     }
     private function showShein(SheinApiService $api, string $code, string $label): void
     {
-        try {
-            $rows = $api->getStock([$code]);
-            $this->line($label.' full-detail (app qty): '.json_encode($rows, JSON_UNESCAPED_SLASHES));
-        } catch (\Throwable $e) {
-            $this->warn($label.' full-detail failed: '.$e->getMessage());
-        }
-
         $endpoint = '/open-api/stock/stock-query';
-        try {
-            $response = Http::withoutVerifying()->timeout(90)
-                ->withHeaders($this->callProtected($api, 'buildSheinAuthHeaders', [$endpoint]))
-                ->post($this->callProtected($api, null, [], 'baseUrl').$endpoint, [
-                    'languageList' => ['en'],
-                    'skuCodeList' => [$code],
-                    'skcNameList' => [],
-                    'spuNameList' => [],
-                    'warehouseType' => '3',
-                ]);
-            $this->line($label.' stock-query (raw, warehouse/locked/available): '.mb_substr((string) $response->body(), 0, 2500));
-        } catch (\Throwable $e) {
-            $this->warn($label.' stock-query failed: '.$e->getMessage());
+        // warehouseType 1/2/3 are different warehouse kinds; the push goes to one seller warehouse, so look at all of them.
+        foreach (['1', '2', '3'] as $type) {
+            try {
+                $response = Http::withoutVerifying()->timeout(90)
+                    ->withHeaders($this->callProtected($api, 'buildSheinAuthHeaders', [$endpoint]))
+                    ->post($this->callProtected($api, null, [], 'baseUrl').$endpoint, [
+                        'languageList' => ['en'],
+                        'skuCodeList' => [$code],
+                        'skcNameList' => [],
+                        'spuNameList' => [],
+                        'warehouseType' => $type,
+                    ]);
+                $json = $response->json();
+                $lines = [];
+                foreach ((array) ($json['info'] ?? []) as $info) {
+                    foreach ((array) ($info['goodsInventory'] ?? []) as $goods) {
+                        foreach ((array) ($goods['skuList'] ?? []) as $sku) {
+                            foreach ((array) ($sku['warehouseInventoryList'] ?? []) as $wh) {
+                                $lines[] = 'wh='.($wh['warehouseCode'] ?? '?')
+                                    .' qty='.($wh['inventoryQuantity'] ?? '?')
+                                    .' locked='.($wh['lockedQuantity'] ?? '?')
+                                    .' usable='.($wh['usableInventory'] ?? '?')
+                                    .' spu='.($goods['spuName'] ?? '?');
+                            }
+                        }
+                    }
+                }
+                $this->line($label.' stock-query type '.$type.': '.($lines === [] ? 'no rows ('.mb_substr((string) $response->body(), 0, 120).')' : implode(' | ', $lines)));
+            } catch (\Throwable $e) {
+                $this->warn($label.' stock-query type '.$type.' failed: '.$e->getMessage());
+            }
         }
     }
-
     /**
      * Read-only access to the service's protected auth headers / base URL (keeps this diagnostic out of SheinApiService).
      */
