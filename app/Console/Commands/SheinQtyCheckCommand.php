@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\SheinListingStatus;
+use App\Models\SheinMmMetric;
 use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Services\MarketplaceManager\MarketplaceMismatchInventoryPass;
@@ -24,12 +25,16 @@ use Illuminate\Support\Facades\Http;
  */
 class SheinQtyCheckCommand extends Command
 {
-    protected $signature = 'shein:qty-check {sku?* : Seller SKU(s)} {--mismatch : Use the first SKUs listed under Inv SKU Mismatch instead} {--limit=3 : How many mismatch SKUs with --mismatch} {--push : Push the live Shopify qty to Shein, then read it back}';
+    protected $signature = 'shein:qty-check {sku?* : Seller SKU(s)} {--mismatch : Use the first SKUs listed under Inv SKU Mismatch instead} {--limit=3 : How many mismatch SKUs with --mismatch} {--summary : Count how many linked Shein SKUs are really on Shein (read-only)} {--push : Push the live Shopify qty to Shein, then read it back}';
 
     protected $description = 'Compare live Shopify qty with what Shein holds for a SKU; optionally push and read back';
 
     public function handle(SheinApiService $api, ShopifyApiService $shopify, SheinInventorySyncService $sync): int
     {
+        if ($this->option('summary')) {
+            return $this->summary($api);
+        }
+
         $skus = array_values(array_filter(array_map('trim', (array) $this->argument('sku'))));
         if ($this->option('mismatch')) {
             $skus = array_slice(app(MarketplaceMismatchInventoryPass::class)->pageMismatchSkus('shein'), 0, max(1, (int) $this->option('limit')));
@@ -82,6 +87,53 @@ class SheinQtyCheckCommand extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * Compare every linked Shein listing with Shein's own product list, so we can tell live listings from dead ones.
+     */
+    private function summary(SheinApiService $api): int
+    {
+        $catalog = $api->skcSkuCodeCatalog(true);
+        $skcs = $catalog;
+        $codes = [];
+        foreach ($catalog as $list) {
+            foreach ($list as $c) {
+                $codes[strtoupper($c)] = true;
+            }
+        }
+        $this->line('Shein product list: '.count($skcs).' SKC(s), '.count($codes).' skuCode(s).');
+
+        $stat = ['code_in_list' => 0, 'code_not_in_list' => 0, 'skc_in_list' => 0, 'skc_not_in_list' => 0, 'empty' => 0];
+        $deadExamples = [];
+        $mismatch = array_flip(array_map('strtoupper', app(MarketplaceMismatchInventoryPass::class)->pageMismatchSkus('shein')));
+        $mismatchStat = ['live' => 0, 'not_on_shein' => 0];
+        foreach (SheinMmMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'product_id']) as $row) {
+            $pid = trim((string) $row->product_id);
+            $isMismatch = isset($mismatch[strtoupper(trim((string) $row->sku))]);
+            if ($pid === '' || strcasecmp($pid, trim((string) $row->sku)) === 0) {
+                $stat['empty']++;
+
+                continue;
+            }
+            if (preg_match('/^(?!i)[a-z]{1,2}\d{10,}$/i', $pid)) {
+                $in = isset($skcs[strtoupper($pid)]);
+                $stat[$in ? 'skc_in_list' : 'skc_not_in_list']++;
+            } else {
+                $in = isset($codes[strtoupper($pid)]);
+                $stat[$in ? 'code_in_list' : 'code_not_in_list']++;
+            }
+            if ($isMismatch) {
+                $mismatchStat[$in ? 'live' : 'not_on_shein']++;
+            }
+            if (! $in && count($deadExamples) < 8) {
+                $deadExamples[] = $row->sku.' => '.$pid;
+            }
+        }
+        $this->line('Saved Shein id per listing vs the Shein list: '.json_encode($stat));
+        $this->line('Inv SKU Mismatch SKUs: '.count($mismatch).' listed on the page; of those found in shein_metric: '.json_encode($mismatchStat));
+        $this->line('Examples not on Shein: '.json_encode($deadExamples));
+
+        return self::SUCCESS;
+    }
     private function showShein(SheinApiService $api, string $code, string $label): void
     {
         try {
