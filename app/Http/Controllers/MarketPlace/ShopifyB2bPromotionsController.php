@@ -8,8 +8,7 @@ use Illuminate\Http\Request;
 
 /**
  * /promotions → Shopify B2B (business5core.com): percentage-off as a lower special price (editable %, optional end).
- * NOTHING IS PUSHED to Shopify / the store from here. preview() saves nothing; apply() and remove() (confirm=1) only change
- * the saved S PRC in the app.
+ * Nothing is saved or pushed by preview(); apply() and remove() need confirm=1.
  */
 class ShopifyB2bPromotionsController extends Controller
 {
