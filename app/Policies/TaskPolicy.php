@@ -102,6 +102,7 @@ class TaskPolicy
      */
     private const AUTOMATED_TASK_EDITOR_EMAILS = [
         'mgr-operations@5core.com', // Hritiksha
+        'pricing1@5core.com',       // Tannistha
     ];
 
     public static function userIsAutomatedTaskEditor(?User $user): bool
