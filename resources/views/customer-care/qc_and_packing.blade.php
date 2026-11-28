@@ -1233,6 +1233,14 @@
             box-shadow: 0 2px 8px rgba(224, 82, 82, .2);
         }
 
+        /* All-time loss: solid red so it stands apart from the L30 badge. Not clickable. */
+        .l30-badge.alltime-loss-badge {
+            background: #dc3545;
+            border-color: #b02a37;
+            color: #fff;
+            cursor: default;
+        }
+
         .l30-issues-badge {
             border-color: #4a9e6b;
             color: #27693e;
@@ -1365,6 +1373,13 @@
             max-width: 100%;
             /* Bootstrap .badge sets light text; force readable dark text on pastel backgrounds */
             --bs-badge-color: #212529;
+        }
+
+        .carrier-claims-summary--notfiled {
+            background: #fdecea !important;
+            color: #842029 !important;
+            border-color: #f5c2c7;
+            --bs-badge-color: #842029;
         }
 
         .carrier-claims-summary--filed {
@@ -1587,6 +1602,11 @@
                                         </button>
                                     @endif
                                     @if ($showDispatchExtras ?? false)
+                                        <div id="alltime-loss-badge" class="l30-badge alltime-loss-badge"
+                                            title="All-time loss: Amazon price × qty of every issue on this board (ignores the filters)">
+                                            <i class="bi bi-graph-down-arrow"></i>
+                                            All time: <span id="alltime-loss-total">…</span>
+                                        </div>
                                         <div id="l30-loss-badge" class="l30-badge" role="button" data-bs-toggle="modal"
                                             data-bs-target="#l30LossModal" title="Last 30 Days Loss — click for detail">
                                             <i class="bi bi-graph-down-arrow"></i>
@@ -1703,6 +1723,14 @@
                                     @if ($showClaimsSummaryBadges ?? false)
                                         <div
                                             class="d-flex flex-wrap align-items-stretch gap-2 carrier-claims-summary-wrap carrier-claims-summary--fill flex-grow-1">
+                                            <span
+                                                class="badge carrier-claims-summary-badge carrier-claims-summary--notfiled text-wrap text-start"
+                                                role="status" title="Claimable cases whose claim is not filed yet (non-claimable cases are not counted)">
+                                                <span class="d-block fw-semibold small">Not Filed</span>
+                                                <span class="d-block carrier-claims-summary-line"><span
+                                                        id="carrierClaimsNotFiledCount">0</span> · $<span
+                                                        id="carrierClaimsNotFiledAmount">0</span></span>
+                                            </span>
                                             <span
                                                 class="badge carrier-claims-summary-badge carrier-claims-summary--filed text-wrap text-start"
                                                 role="status">
@@ -3825,7 +3853,7 @@
                 });
             }
 
-            function applyClaimsSummaryNumbers(filed, pending, received) {
+            function applyClaimsSummaryNumbers(filed, pending, received, notFiled) {
                 const apply = (idCount, idAmt, bucket) => {
                     const elC = document.getElementById(idCount);
                     const elA = document.getElementById(idAmt);
@@ -3836,6 +3864,7 @@
                         elA.textContent = formatClaimsMoney(bucket?.amount ?? 0);
                     }
                 };
+                apply('carrierClaimsNotFiledCount', 'carrierClaimsNotFiledAmount', notFiled);
                 apply('carrierClaimsFiledCount', 'carrierClaimsFiledAmount', filed);
                 apply('carrierClaimsPendingCount', 'carrierClaimsPendingAmount', pending);
                 apply('carrierClaimsReceivedCount', 'carrierClaimsReceivedAmount', received);
@@ -3855,8 +3884,15 @@
                 let pendingA = 0;
                 let receivedC = 0;
                 let receivedA = 0;
+                let notFiledC = 0;
+                let notFiledA = 0;
                 (rows || []).forEach((r) => {
                     const amt = parseAmpUsdAmount(r.amp_usd);
+                    // Not Filed: claim not filed yet AND the case is claimable (non-claimable cases are not counted).
+                    if (!r.claim_filed && rowIsClaimable(r)) {
+                        notFiledC += 1;
+                        notFiledA += amt;
+                    }
                     if (r.claim_filed) {
                         filedC += 1;
                         filedA += amt;
@@ -3871,6 +3907,7 @@
                     }
                 });
                 return {
+                    notFiled: { count: notFiledC, amount: notFiledA },
                     filed: { count: filedC, amount: filedA },
                     pending: { count: pendingC, amount: pendingA },
                     received: { count: receivedC, amount: receivedA },
@@ -3882,7 +3919,7 @@
                 // (period, carrier, claimable / filed / recd, search) — same rows as the table and the count.
                 if (!showClaimsSummaryBadges || !holdIssueRows.length) return;
                 const summary = claimsSummaryFromRows(rows);
-                applyClaimsSummaryNumbers(summary.filed, summary.pending, summary.received);
+                applyClaimsSummaryNumbers(summary.filed, summary.pending, summary.received, summary.notFiled);
             }
 
             async function loadClaimsStats() {
@@ -5042,6 +5079,16 @@
                     }
                 });
                 totalCountEl.textContent = String(errorCount);
+                // "All time" loss badge: every row on this board (filters ignored), Amazon price x qty.
+                const allTimeLossEl = document.getElementById('alltime-loss-total');
+                if (allTimeLossEl && holdIssueRows.length) {
+                    let allTimeLoss = 0;
+                    holdIssueRows.forEach(r => {
+                        const v = parseFloat(r.amz_loss);
+                        if (Number.isFinite(v)) allTimeLoss += v;
+                    });
+                    allTimeLossEl.textContent = '$' + Math.round(allTimeLoss).toLocaleString('en-US');
+                }
             }
 
             function renderRows() {
