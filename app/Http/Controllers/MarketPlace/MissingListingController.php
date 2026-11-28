@@ -194,6 +194,45 @@ class MissingListingController extends Controller
     }
 
     /**
+     * Live recount of ONE marketplace with the very same numbers its listing page shows (the listing page's rows
+     * are counted, nothing else), then written into the cached table. /missing-listing calls this for every
+     * marketplace after it loads, so the table never stays behind the inner pages even when the scheduler /
+     * queue worker is not running.
+     */
+    public function recountChannel(Request $request)
+    {
+        $channel = trim((string) $request->input('channel', ''));
+        if ($channel === '') {
+            return response()->json(['success' => false, 'message' => 'Channel is required.'], 422);
+        }
+        if (! ListingChannelCounts::hasListingSource($channel) || ! ListingChannelCounts::showsComputedCounts($channel)) {
+            return response()->json(['success' => true, 'skipped' => true, 'channel' => $channel]);
+        }
+
+        @set_time_limit(180);
+
+        try {
+            // Counts cache is 10 minutes and is also refreshed whenever the listing page loads its rows.
+            $counts = ListingChannelCounts::forChannel($channel, true, ListingCountsEngine::REQUIRE_POSITIVE_INV, true);
+            ListingChannelCounts::syncChannelCounts($channel, $counts);
+        } catch (\Throwable $e) {
+            Log::warning('Missing Listing recount failed for '.$channel.': '.$e->getMessage());
+
+            return response()->json(['success' => false, 'channel' => $channel, 'message' => $e->getMessage()], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'req' => (int) ($counts['REQ'] ?? 0),
+            'nrl' => (int) ($counts['NRL'] ?? 0),
+            'listed' => (int) ($counts['Listed'] ?? 0),
+            'missing_listing' => (int) ($counts['Pending'] ?? 0),
+            'missing_listing_inv' => (int) ($counts['PendingInv'] ?? 0),
+        ]);
+    }
+
+    /**
      * Missing L history chart — listing-page snapshots, California calendar dates.
      */
     public function chartData(Request $request)

@@ -8,6 +8,7 @@ use App\Models\Temu2ListingStatus;
 use App\Services\MarketplaceManager\Temu2ListingPublishService;
 use App\Support\Marketplace\AutomatedListingPage;
 use App\Support\Marketplace\ChannelListingRegistry;
+use App\Support\Marketplace\Temu2Nroi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -38,9 +39,19 @@ class ListingTemu2Controller extends Controller
 
     public function getViewListingTemu2Data(Request $request)
     {
+        $rows = AutomatedListingPage::rows('temu2');
+        // NROI% at the Std Prc each SKU is published with. Below 30% → published with 0 inventory.
+        foreach ($rows as $row) {
+            try {
+                $row->nroi_percent = Temu2Nroi::forProduct($row, isset($row->std_price) ? (float) $row->std_price : null);
+            } catch (\Throwable $e) {
+                $row->nroi_percent = null;
+            }
+        }
+
         return response()->json([
             'status' => 200,
-            'data' => AutomatedListingPage::rows('temu2'),
+            'data' => $rows,
         ]);
     }
 

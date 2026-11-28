@@ -4618,6 +4618,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/missing-listing-c2c',          [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'indexC2c'])->name('missing.listing.c2c');
     Route::get('/missing-listing-c2c/data',     [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'getC2cData'])->name('missing.listing.c2c.data');
     Route::get('/missing-listing/chart-data',  [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'chartData'])->name('missing.listing.chart.data');
+    Route::post('/missing-listing/recount-channel', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'recountChannel'])->name('missing.listing.recount');
     Route::get('/listing-catalogue/chart-data', [\App\Http\Controllers\MarketPlace\ListingCatalogueController::class, 'chartData'])->name('listing.catalogue.chart.data');
     Route::post('/missing-listing/dar/submit',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'submitDar'])->name('missing.listing.dar.submit');
     Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
