@@ -4731,6 +4731,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/promotions/temu/activities', [\App\Http\Controllers\MarketPlace\TemuPromotionsController::class, 'activities'])->name('promotions.temu.activities');
     Route::get('/promotions/temu/preview', [\App\Http\Controllers\MarketPlace\TemuPromotionsController::class, 'preview'])->name('promotions.temu.preview');
     Route::post('/promotions/temu/enroll', [\App\Http\Controllers\MarketPlace\TemuPromotionsController::class, 'enroll'])->name('promotions.temu.enroll');
+    Route::get('/promotions/tiktok/activities', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'activities'])->name('promotions.tiktok.activities');
+    Route::post('/promotions/tiktok/preview', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'preview'])->name('promotions.tiktok.preview');
+    Route::post('/promotions/tiktok/apply', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'apply'])->name('promotions.tiktok.apply');
+    Route::post('/promotions/tiktok/update', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'update'])->name('promotions.tiktok.update');
+    Route::post('/promotions/tiktok/deactivate', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'deactivate'])->name('promotions.tiktok.deactivate');
 
     // Payments Verification — active channels with PMT RECD, bank account and link
     Route::get('/payments-verification', [\App\Http\Controllers\MarketPlace\PaymentsVerificationController::class, 'index'])->name('payments.verification');

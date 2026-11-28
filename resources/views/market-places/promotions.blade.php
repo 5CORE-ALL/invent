@@ -337,6 +337,97 @@
         </div>
     </div>
 
+    {{-- TikTok 1/2: percentage-off (DIRECT_DISCOUNT) activities, editable % --}}
+    <div class="modal fade" id="promo-tt-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6">
+                        <i class="fas fa-percent me-1"></i> TikTok percentage-off promotion
+                        <span class="badge bg-light text-dark ms-1" id="promo-tt-channel"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Creates a TikTok <strong>Product Discount</strong> (DIRECT_DISCOUNT, SKU level) with a % you choose, and you can change the % later
+                        with <strong>Update %</strong>. Coupons cannot be created through TikTok&rsquo;s API. SKUs that are out of stock, unlisted or
+                        priced below cost (LP + ship, fees not included) are skipped unless you tick &ldquo;allow below cost&rdquo;.
+                        Nothing is sent until you press a red/green action button and confirm.
+                    </p>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-5">
+                            <label class="form-label small mb-0" for="promo-tt-skus">SKUs (one per line)</label>
+                            <textarea id="promo-tt-skus" class="form-control form-control-sm" rows="6" placeholder="e.g.&#10;LS 120 CRANK&#10;CONGO 2 GRN"></textarea>
+                        </div>
+                        <div class="col-md-7">
+                            <div class="row g-2">
+                                <div class="col-4">
+                                    <label class="form-label small mb-0" for="promo-tt-pct">Discount %</label>
+                                    <input type="number" id="promo-tt-pct" class="form-control form-control-sm" min="1" max="90" step="0.5" value="10">
+                                </div>
+                                <div class="col-8">
+                                    <label class="form-label small mb-0" for="promo-tt-title">Activity name (optional)</label>
+                                    <input type="text" id="promo-tt-title" class="form-control form-control-sm" maxlength="100" placeholder="auto: Disc 10% 1128-0930">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-0" for="promo-tt-begin">Start (your local time)</label>
+                                    <input type="datetime-local" id="promo-tt-begin" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-0" for="promo-tt-end">End (your local time)</label>
+                                    <input type="datetime-local" id="promo-tt-end" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-12 form-check ms-2">
+                                    <input class="form-check-input" type="checkbox" id="promo-tt-below">
+                                    <label class="form-check-label small" for="promo-tt-below">Allow below cost</label>
+                                </div>
+                                <div class="col-12 d-flex flex-wrap gap-2">
+                                    <button type="button" class="btn btn-sm btn-primary" id="promo-tt-preview"><i class="fas fa-search me-1"></i>Preview</button>
+                                    <button type="button" class="btn btn-sm btn-success" id="promo-tt-apply" disabled><i class="fas fa-check me-1"></i>Create activity &amp; apply</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="border rounded p-2 mb-2 bg-light">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-7">
+                                <label class="form-label small mb-0" for="promo-tt-activity">Existing percentage-off activity</label>
+                                <select id="promo-tt-activity" class="form-select form-select-sm"></select>
+                            </div>
+                            <div class="col-md-5 d-flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="promo-tt-reload" title="Reload activities"><i class="fas fa-sync-alt"></i></button>
+                                <button type="button" class="btn btn-sm btn-warning" id="promo-tt-update" disabled title="Set the % above for the SKUs above in the selected activity">Update % / add SKUs</button>
+                                <button type="button" class="btn btn-sm btn-danger" id="promo-tt-deactivate" disabled>Deactivate</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small text-muted mb-1" id="promo-tt-summary"></div>
+                    <div class="table-responsive" style="max-height:34vh;">
+                        <table class="table table-sm table-bordered align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>SKU</th>
+                                    <th class="text-end">Price</th>
+                                    <th class="text-end">New price</th>
+                                    <th class="text-end">Cost</th>
+                                    <th class="text-end">Margin $</th>
+                                    <th class="text-end">Stock</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="promo-tt-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small mt-2" id="promo-tt-status"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Temu 1/2/3: join Temu promotion activities (bg.promotion.activity.*) --}}
     <div class="modal fade" id="promo-temu-modal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
@@ -719,10 +810,30 @@
             },
         };
 
+        // "TikTok Promo": percentage-off (DIRECT_DISCOUNT) activities for TikTok 1/2, % editable later.
+        const tiktokPromo = {
+            title: 'TikTok Promo',
+            field: 'tiktok_promo',
+            width: 130,
+            hozAlign: 'center',
+            headerHozAlign: 'center',
+            headerSort: false,
+            formatter: function (cell) {
+                if (!cell.getValue()) {
+                    return '<span class="promo-prmt-btn is-disabled" title="No promotion API for this channel"><i class="fas fa-percent"></i> Promo</span>';
+                }
+                return '<button type="button" class="promo-prmt-btn" title="Percentage-off promotion (editable %)"><i class="fas fa-percent"></i> Promo</button>';
+            },
+            cellClick: function (e, cell) {
+                e.stopPropagation();
+                if (cell.getValue()) openTikTokPromoModal(cell.getRow().getData());
+            },
+        };
+
         // Prmt% sits right after Status; Rule sits right after the Coupons column (or after Prmt% if none yet).
         const couponIdx = dynamicColumns.findIndex(isCouponColumn);
         const cols = startColumns.slice();
-        cols.push(prmt, temuPromo);
+        cols.push(prmt, temuPromo, tiktokPromo);
         if (couponIdx === -1) {
             cols.push(rule);
         }
@@ -1430,6 +1541,180 @@
         }).fail(function (xhr) {
             temuPromoStatus('Enroll failed: ' + escapeHtml(temuErr(xhr)), 'text-danger');
         }).always(function () { $btn.prop('disabled', false); temuPromoPicked(); });
+    });
+
+    // ---- TikTok percentage-off (DIRECT_DISCOUNT) -------------------------------------------------
+    let ttModal = null;
+    let ttChannel = null;
+    let ttReady = 0;   // rows ready in the last preview (for the current inputs)
+
+    function ttStatus(html, cls) {
+        $('#promo-tt-status').attr('class', 'small mt-2 ' + (cls || '')).html(html || '');
+    }
+
+    function ttMoney(v) {
+        return (v === null || v === undefined) ? '—' : Number(v).toFixed(2);
+    }
+
+    function ttFmt(ts) {
+        return ts ? new Date(Number(ts) * 1000).toLocaleString() : '';
+    }
+
+    function ttLocalInput(d) {
+        const p = function (n) { return String(n).padStart(2, '0'); };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    function ttEpoch(sel) {
+        const v = $(sel).val();
+        return v ? Math.floor(new Date(v).getTime() / 1000) : 0;
+    }
+
+    function ttPayload(extra) {
+        return Object.assign({
+            channel: ttChannel,
+            skus: $('#promo-tt-skus').val(),
+            pct: $('#promo-tt-pct').val(),
+            allow_below_cost: $('#promo-tt-below').is(':checked') ? 1 : 0,
+            _token: csrf,
+        }, extra || {});
+    }
+
+    function ttButtons() {
+        const hasActivity = !!$('#promo-tt-activity').val();
+        $('#promo-tt-apply').prop('disabled', ttReady < 1);
+        $('#promo-tt-update').prop('disabled', ttReady < 1 || !hasActivity);
+        $('#promo-tt-deactivate').prop('disabled', !hasActivity);
+    }
+
+    function ttInvalidate() {
+        ttReady = 0;
+        ttButtons();
+    }
+
+    function loadTikTokActivities(selectId) {
+        const $sel = $('#promo-tt-activity').empty().append('<option value="">Loading…</option>');
+        ttButtons();
+        $.getJSON('{{ route("promotions.tiktok.activities") }}', { channel: ttChannel }).done(function (res) {
+            $sel.empty();
+            const list = (res && res.activities) || [];
+            if (!list.length) {
+                $sel.append('<option value="">No percentage-off activity yet</option>');
+            }
+            list.forEach(function (a) {
+                const label = (a.title || 'Activity') + ' · ' + a.status + ' · ' + ttFmt(a.begin_time) + ' → ' + ttFmt(a.end_time) + ' · #' + a.activity_id;
+                $sel.append($('<option>').val(a.activity_id).text(label));
+            });
+            if (selectId) $sel.val(selectId);
+            ttButtons();
+        }).fail(function (xhr) {
+            $sel.empty().append('<option value="">—</option>');
+            ttStatus('Could not load activities: ' + escapeHtml(temuErr(xhr)), 'text-danger');
+            ttButtons();
+        });
+    }
+
+    function renderTikTokRows(rows) {
+        const $b = $('#promo-tt-tbody').empty();
+        (rows || []).forEach(function (r) {
+            const ok = r.status === 'ready';
+            const loss = r.margin !== null && r.margin < 0;
+            const $tr = $('<tr>').toggleClass('table-light text-muted', !ok);
+            $tr.append($('<td>').text(r.sku));
+            $tr.append($('<td class="text-end">').text(ttMoney(r.price)));
+            $tr.append($('<td class="text-end">').text(ttMoney(r.new_price)));
+            $tr.append($('<td class="text-end">').text(ttMoney(r.cost)));
+            $tr.append($('<td class="text-end">').toggleClass('text-danger', loss).text(ttMoney(r.margin)));
+            $tr.append($('<td class="text-end">').text(r.stock === null ? '—' : r.stock));
+            $tr.append($('<td>').html(ok
+                ? '<span class="badge bg-success">Ready</span>' + (loss ? ' <span class="small text-danger">below cost</span>' : '')
+                : '<span class="badge bg-secondary">Skip</span> <span class="small">' + escapeHtml(r.reason || '') + '</span>'));
+            $b.append($tr);
+        });
+    }
+
+    function openTikTokPromoModal(row) {
+        if (!ttModal) ttModal = new bootstrap.Modal(document.getElementById('promo-tt-modal'));
+        ttChannel = row.tiktok_promo;
+        $('#promo-tt-channel').text(row.channel || ttChannel);
+        const start = new Date(Date.now() + 15 * 60000);
+        const end = new Date(Date.now() + 7 * 86400000);
+        $('#promo-tt-begin').val(ttLocalInput(start));
+        $('#promo-tt-end').val(ttLocalInput(end));
+        $('#promo-tt-tbody').empty();
+        $('#promo-tt-summary').text('');
+        ttStatus('');
+        ttInvalidate();
+        ttModal.show();
+        loadTikTokActivities();
+    }
+
+    $('#promo-tt-skus, #promo-tt-pct, #promo-tt-below').on('input change', ttInvalidate);
+    $('#promo-tt-activity').on('change', ttButtons);
+    $('#promo-tt-reload').on('click', function () { ttStatus(''); loadTikTokActivities($('#promo-tt-activity').val()); });
+
+    $('#promo-tt-preview').on('click', function () {
+        const $btn = $(this).prop('disabled', true);
+        ttStatus('Checking SKUs…', 'text-muted');
+        $.ajax({ url: '{{ route("promotions.tiktok.preview") }}', method: 'POST', dataType: 'json', data: ttPayload() })
+            .done(function (res) {
+                renderTikTokRows(res.rows);
+                ttReady = res.ready || 0;
+                $('#promo-tt-summary').text(res.ready + ' ready at ' + res.pct + '% off, ' + res.skipped + ' skipped');
+                ttStatus('');
+                ttButtons();
+            })
+            .fail(function (xhr) { ttStatus('Preview failed: ' + escapeHtml(temuErr(xhr)), 'text-danger'); })
+            .always(function () { $btn.prop('disabled', false); });
+    });
+
+    function ttSend(url, data, confirmText, verb) {
+        if (!window.confirm(confirmText)) return;
+        $('#promo-tt-apply, #promo-tt-update, #promo-tt-deactivate').prop('disabled', true);
+        ttStatus(verb + '…', 'text-muted');
+        $.ajax({ url: url, method: 'POST', dataType: 'json', data: data })
+            .done(function (res) {
+                if (res.rows) renderTikTokRows(res.rows);
+                ttStatus(escapeHtml(res.message || 'Done.'), 'text-success');
+                loadTikTokActivities(res.activity_id || $('#promo-tt-activity').val());
+            })
+            .fail(function (xhr) {
+                const j = xhr.responseJSON || {};
+                if (j.rows) renderTikTokRows(j.rows);
+                ttStatus(escapeHtml(temuErr(xhr)), 'text-danger');
+                if (j.activity_id) loadTikTokActivities(j.activity_id);
+            })
+            .always(ttButtons);
+    }
+
+    $('#promo-tt-apply').on('click', function () {
+        const begin = ttEpoch('#promo-tt-begin');
+        const end = ttEpoch('#promo-tt-end');
+        if (!begin || !end) { ttStatus('Set start and end time.', 'text-danger'); return; }
+        ttSend('{{ route("promotions.tiktok.apply") }}',
+            ttPayload({ title: $('#promo-tt-title').val(), begin_time: begin, end_time: end, confirm: 1 }),
+            'Create a REAL TikTok promotion on ' + $('#promo-tt-channel').text() + '?\n\n'
+            + ttReady + ' SKU(s) at ' + $('#promo-tt-pct').val() + '% off\n'
+            + $('#promo-tt-begin').val().replace('T', ' ') + '  →  ' + $('#promo-tt-end').val().replace('T', ' '),
+            'Creating activity on TikTok');
+    });
+
+    $('#promo-tt-update').on('click', function () {
+        const id = $('#promo-tt-activity').val();
+        if (!id) return;
+        ttSend('{{ route("promotions.tiktok.update") }}',
+            ttPayload({ activity_id: id, confirm: 1 }),
+            'Set ' + ttReady + ' SKU(s) to ' + $('#promo-tt-pct').val() + '% off in:\n' + $('#promo-tt-activity option:selected').text(),
+            'Updating activity on TikTok');
+    });
+
+    $('#promo-tt-deactivate').on('click', function () {
+        const id = $('#promo-tt-activity').val();
+        if (!id) return;
+        ttSend('{{ route("promotions.tiktok.deactivate") }}',
+            { channel: ttChannel, activity_id: id, confirm: 1, _token: csrf },
+            'DEACTIVATE this activity? This ends the discount for all its SKUs and cannot be undone.\n\n' + $('#promo-tt-activity option:selected').text(),
+            'Deactivating');
     });
 
     $('#promo-search').on('keyup', applyFilters);

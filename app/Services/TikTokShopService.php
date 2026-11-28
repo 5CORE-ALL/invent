@@ -6434,9 +6434,15 @@ class TikTokShopService
             ->timeout(max(5, $timeout))
             ->connectTimeout(8);
 
-        $response = strtoupper($method) === 'GET'
-            ? $request->get($url, $query)
-            : $request->withBody($body, 'application/json')->post($url.'?'.http_build_query($query));
+        $verb = strtoupper($method);
+        if ($verb === 'GET') {
+            $response = $request->get($url, $query);
+        } elseif ($verb === 'PUT' || $verb === 'DELETE') {
+            // Promotion endpoints (Update Activity / Update Activity Product = PUT, Remove Activity Product = DELETE).
+            $response = $request->withBody($body, 'application/json')->send($verb, $url.'?'.http_build_query($query));
+        } else {
+            $response = $request->withBody($body, 'application/json')->post($url.'?'.http_build_query($query));
+        }
 
         $json = $response->json() ?? [];
         $code = (int) ($json['code'] ?? -1);
@@ -6456,6 +6462,21 @@ class TikTokShopService
         }
 
         return is_array($json['data'] ?? null) ? $json['data'] : [];
+    }
+
+    /**
+     * Signed Partner API call for the Promotion endpoints (TikTokPromotionApiService).
+     * Resolves the shop cipher first, refreshes an expired token, throws RuntimeException on a TikTok error.
+     *
+     * @param  array<string, mixed>  $query
+     * @param  array<string, mixed>|null  $body
+     * @return array<string, mixed> TikTok `data` object
+     */
+    public function promotionRequest(string $method, string $path, array $query = [], ?array $body = null): array
+    {
+        $this->ensureShopCipher();
+
+        return $this->tiktokOpenApi($method, $path, $query, $body, 60);
     }
 
     protected function isExpiredAccessTokenMessage(int $code, string $message): bool

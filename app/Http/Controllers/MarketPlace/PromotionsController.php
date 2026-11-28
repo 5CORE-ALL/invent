@@ -153,6 +153,21 @@ class PromotionsController extends Controller
         return self::TEMU_PROMO_CHANNEL[$key] ?? null;
     }
 
+    /** TikTok Shop 1 / 2 can run percentage-off (DIRECT_DISCOUNT) activities (TikTokPromotionsController). */
+    private const TIKTOK_PROMO_CHANNEL = [
+        'tiktok' => 'tiktok',
+        'tiktok1' => 'tiktok',
+        'tiktokshop' => 'tiktok',
+        'tiktok2' => 'tiktok2',
+    ];
+
+    private function tiktokPromoChannel(string $channel): ?string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', strtolower($channel));
+
+        return self::TIKTOK_PROMO_CHANNEL[$key] ?? null;
+    }
+
     /**
      * "Save & Apply" on the Prmt% modal. The rules themselves are saved by
      * POST /channel-promo-pricing/{channel}/dil-prmt; this starts the same headless job the eBay pages use
@@ -388,6 +403,7 @@ class PromotionsController extends Controller
                     'coupon_rule' => $this->couponRuleModal((string) $row->channel),
                     'prmt_rule' => $this->prmtRuleChannel((string) $row->channel),
                     'temu_promo' => $this->temuPromoChannel((string) $row->channel),
+                    'tiktok_promo' => $this->tiktokPromoChannel((string) $row->channel),
                     'notes_remarks' => $stored->notes_remarks ?? '',
                     'values' => (object) $values,
                 ];
