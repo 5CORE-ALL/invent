@@ -1268,6 +1268,26 @@
             min-width: 56px;
             max-width: 56px;
         }
+        /* Issue? column kept narrow (opt-in: $issueColumnNarrow); long text wraps onto extra lines. */
+        .orders-hold-table.orders-hold-table--issue-narrow th.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--issue-narrow td.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--issue-narrow th.dispatch-what-col,
+        .orders-hold-table.orders-hold-table--issue-narrow td.dispatch-what-cell,
+        .orders-hold-table.orders-hold-table--issue-narrow.orders-hold-table--autofit th.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--issue-narrow.orders-hold-table--autofit td.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--issue-narrow.orders-hold-table--autofit th.dispatch-what-col,
+        .orders-hold-table.orders-hold-table--issue-narrow.orders-hold-table--autofit td.dispatch-what-cell {
+            width: 150px !important;
+            min-width: 120px;
+            max-width: 150px !important;
+            white-space: normal !important;
+            word-break: break-word;
+            line-height: 1.2;
+        }
+        .orders-hold-table.orders-hold-table--issue-narrow td.dispatch-what-cell .what-cell-wrap {
+            max-width: 100%;
+            white-space: normal;
+        }
         /* SKU column at half width (opt-in: $skuColumnHalfWidth). */
         .orders-hold-table.orders-hold-table--sku-half th.orders-hold-col-sku,
         .orders-hold-table.orders-hold-table--sku-half td.orders-hold-col-sku,
@@ -2198,7 +2218,7 @@
                 @endif
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table{{ ($autofitTableColumns ?? false) ? ' orders-hold-table--autofit' : '' }}{{ ($skuColumnHalfWidth ?? false) ? ' orders-hold-table--sku-half' : '' }}">
+                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table{{ ($autofitTableColumns ?? false) ? ' orders-hold-table--autofit' : '' }}{{ ($skuColumnHalfWidth ?? false) ? ' orders-hold-table--sku-half' : '' }}{{ ($issueColumnNarrow ?? false) ? ' orders-hold-table--issue-narrow' : '' }}">
                             <thead class="table-light">
                                 <tr>
                                     @if (!($hideIdColumn ?? false)) <th class="orders-hold-col-idx">#</th> @endif
