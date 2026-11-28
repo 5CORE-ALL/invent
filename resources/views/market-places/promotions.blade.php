@@ -343,15 +343,14 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6"><i class="fas fa-tag me-1"></i> Shopify B2B percentage-off
-                        <span class="badge bg-light text-dark ms-1">business5core.com</span></h5>
+                        <span class="badge bg-light text-dark ms-1">saved in app, not pushed</span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
-                        The B2B store has no coupon API, so the discount is a <strong>lower special price</strong>: customers see the new price in red
-                        with the old price crossed out (no &ldquo;% off&rdquo; label). The % is taken from the price before the promo, so you can change
-                        it any time. Promo SKUs are held as hand-set S PRC, so the Sprc Dil auto-push does not overwrite them.
-                        SKUs that are out of stock, have no LP, or would sell below cost are skipped. Max 30 SKUs per click.
+                        <strong>Nothing is pushed to Shopify / business5core.com from here.</strong> The promotion is only saved in the app as the
+                        SKU&rsquo;s S PRC (hand-set, so the Sprc Dil auto-push rules skip it). The % is taken from the price before the promo, so you can
+                        change it any time. SKUs that are out of stock, have no LP, or would sell below cost are skipped. Max 30 SKUs per click.
                     </p>
                     <div class="row g-2 mb-2">
                         <div class="col-md-5">
@@ -374,7 +373,7 @@
                                 </div>
                                 <div class="col-12 d-flex flex-wrap gap-2">
                                     <button type="button" class="btn btn-sm btn-primary" id="promo-b2b-preview"><i class="fas fa-search me-1"></i>Preview</button>
-                                    <button type="button" class="btn btn-sm btn-success" id="promo-b2b-apply" disabled><i class="fas fa-check me-1"></i>Apply to store</button>
+                                    <button type="button" class="btn btn-sm btn-success" id="promo-b2b-apply" disabled><i class="fas fa-save me-1"></i>Save promo price (no push)</button>
                                 </div>
                             </div>
                         </div>
@@ -400,10 +399,10 @@
                     <div class="small mb-2" id="promo-b2b-status"></div>
                     <div class="border rounded p-2 bg-light">
                         <div class="d-flex align-items-center gap-2 mb-1">
-                            <strong class="small me-auto">Promotions running now</strong>
+                            <strong class="small me-auto">Saved promotions</strong>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="promo-b2b-reload" title="Reload"><i class="fas fa-sync-alt"></i></button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="promo-b2b-edit" disabled title="Copy selected SKUs into the form to change their %">Edit % of selected</button>
-                            <button type="button" class="btn btn-sm btn-danger" id="promo-b2b-remove" disabled>Remove selected (restore price)</button>
+                            <button type="button" class="btn btn-sm btn-danger" id="promo-b2b-remove" disabled>Remove selected (restore saved price)</button>
                         </div>
                         <div class="table-responsive" style="max-height:24vh;">
                             <table class="table table-sm table-bordered align-middle mb-0">
@@ -414,7 +413,7 @@
                                         <th class="text-end">%</th>
                                         <th class="text-end">Original</th>
                                         <th class="text-end">Promo price</th>
-                                        <th class="text-end">Live now</th>
+                                        <th class="text-end">On store now</th>
                                         <th>Ends</th>
                                     </tr>
                                 </thead>
@@ -1721,7 +1720,7 @@
                 $tr.append($('<td class="text-end">').text(a.pct));
                 $tr.append($('<td class="text-end">').text(b2bMoney(a.base)));
                 $tr.append($('<td class="text-end">').text(b2bMoney(a.promo_price)));
-                $tr.append($('<td class="text-end">').html(b2bMoney(a.live) + (a.changed_outside ? ' <span class="badge bg-warning text-dark" title="Price was changed after the promo">changed</span>' : '')));
+                $tr.append($('<td class="text-end">').html(b2bMoney(a.live) + (a.on_store ? ' <span class="badge bg-success" title="The store already shows the promo price">live</span>' : ' <span class="badge bg-secondary" title="Not pushed to the store">not pushed</span>')));
                 $tr.append($('<td>').text(a.end ? new Date(a.end * 1000).toLocaleString() : 'no end'));
                 $b.append($tr);
             });
@@ -1803,17 +1802,18 @@
     $('#promo-b2b-apply').on('click', function () {
         const end = $('#promo-b2b-end').val();
         b2bSend('{{ route("promotions.b2b.apply") }}', b2bPayload({ confirm: 1 }),
-            'Change the LIVE price of ' + b2bReady + ' SKU(s) on business5core.com to ' + $('#promo-b2b-pct').val() + '% off?\n\n'
-            + (end ? 'Ends ' + end.replace('T', ' ') + ' (original price is restored automatically).' : 'No end date: it stays until you remove it.'),
-            'Pushing prices to business5core.com');
+            'Save ' + b2bReady + ' SKU(s) at ' + $('#promo-b2b-pct').val() + '% off as their S PRC?\n\n'
+            + 'This is saved in the app only. NOTHING is pushed to Shopify / business5core.com.\n'
+            + (end ? 'Saved price returns to the original after ' + end.replace('T', ' ') + '.' : 'No end date: it stays until you remove it.'),
+            'Saving');
     });
 
     $('#promo-b2b-remove').on('click', function () {
         const skus = $('#promo-b2b-active .promo-b2b-pick:checked').map(function () { return this.value; }).get();
         if (!skus.length) return;
         b2bSend('{{ route("promotions.b2b.remove") }}', { skus: skus, confirm: 1, _token: csrf },
-            'End the promotion on ' + skus.length + ' SKU(s) and push the original price back to business5core.com?',
-            'Restoring prices');
+            'End the promotion on ' + skus.length + ' SKU(s) and put the original price back as their saved S PRC?\n\nNothing is pushed to Shopify / business5core.com.',
+            'Restoring saved prices');
     });
 
     // ---- TikTok percentage-off (DIRECT_DISCOUNT) -------------------------------------------------

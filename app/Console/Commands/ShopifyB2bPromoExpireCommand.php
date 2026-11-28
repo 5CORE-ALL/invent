@@ -7,13 +7,13 @@ use Illuminate\Console\Command;
 
 /**
  * Ends Shopify B2B percentage-off promotions (set on /promotions) whose end time has passed:
- * the original price is pushed back to business5core.com.
+ * the saved S PRC goes back to the original price. Nothing is pushed to the store.
  */
 class ShopifyB2bPromoExpireCommand extends Command
 {
     protected $signature = 'shopify-b2b:promo-expire';
 
-    protected $description = 'Restore the original price of Shopify B2B promotions whose end time has passed.';
+    protected $description = 'Restore the saved original S PRC of Shopify B2B promotions whose end time has passed (no store push).';
 
     public function handle(ShopifyB2bPromotionService $service): int
     {
