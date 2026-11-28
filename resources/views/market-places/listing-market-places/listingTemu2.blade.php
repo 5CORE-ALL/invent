@@ -393,6 +393,9 @@
             outline: 2px solid #fff;
             box-shadow: 0 0 0 2px #dc3545;
         }
+        .listing-stat-badge--nroi { background: #7c3aed; color: #fff; cursor: pointer; user-select: none; }
+        .listing-stat-badge--nroi:hover { filter: brightness(0.95); }
+        .listing-stat-badge--nroi.is-active { outline: 2px solid #fff; box-shadow: 0 0 0 2px #7c3aed; }
         .listing-stat-badge--rows { background: #334155; color: #fff; }
 
         /* ========== DROPDOWNS ========== */
@@ -689,6 +692,7 @@
                                 <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed), including the ones with 0 inventory. Click again to clear.">Missing L = 0:<span id="pending-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-inv-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed) that have inventory (INV above 0). Click again to clear.">Missing L > 0:<span id="pending-inv-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--nroi" id="nroi-low-badge" role="button" tabindex="0" title="SKUs with NROI% below 30% (at their Std Prc). These are published to Temu 2 with 0 inventory. Click to show them, click again to clear.">NROI% &lt; 30:<span id="nroi-low-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
 
@@ -947,10 +951,12 @@
                     withoutLinkTotal: 0,
                     listedTotal: 0,
                     pendingTotal: 0,
-                    pendingInvTotal: 0
+                    pendingInvTotal: 0,
+                    nroiLowTotal: 0
                 };
 
                 rows.forEach(item => {
+                    if (isNroiLow(item)) metrics.nroiLowTotal++;
                     // Missing L counts do not follow the INV dropdown: "with 0 Inv" counts every missing SKU, "without 0 Inv" only those with INV above 0.
                     if (!(item.is_parent || isParentSku(item.sku))) {
                         const parkedRow = item.listed === 'Created' || item.listed === 'Incomplete' || !!item.page_created;
@@ -984,6 +990,7 @@
                 $('#listed-total').text(metrics.listedTotal);
                 $('#pending-total').text(metrics.pendingTotal);
                 $('#pending-inv-total').text(metrics.pendingInvTotal);
+                $('#nroi-low-total').text(metrics.nroiLowTotal);
                 $('#rows-total').text(visible.length.toLocaleString());
             } catch (error) {
                 console.error('Error in calculateTotals:', error);
@@ -998,7 +1005,18 @@
             $('#listed-total').text('0');
             $('#pending-total').text('0');
             $('#pending-inv-total').text('0');
+            $('#nroi-low-total').text('0');
             $('#rows-total').text('0');
+        }
+
+        // Temu 2 rule: NROI% below 30 at the Std Prc → published with 0 inventory.
+        const NROI_LOW_BELOW = 30;
+        let nroiLowFilterActive = false;
+        function isNroiLow(item) {
+            if (!item || item.is_parent || isParentSku(item.sku) || item.nr_req === 'NR') return false;
+            if (item.nroi_percent === null || item.nroi_percent === undefined || item.nroi_percent === '') return false;
+            const v = parseFloat(item.nroi_percent);
+            return isFinite(v) && v < NROI_LOW_BELOW;
         }
 
         function applyListingFilters() {
@@ -1013,6 +1031,7 @@
             temu2ListingTable.setFilter(function (data) {
                 if (dataType === 'parent' && !data.is_parent) return false;
                 if (dataType === 'sku' && data.is_parent) return false;
+                if (nroiLowFilterActive && !isNroiLow(data)) return false;
 
                 if (invFilter === 'inv-only') {
                     if (!data.is_parent && !(parseFloat(data.INV) > 0)) return false;
@@ -1252,6 +1271,24 @@
 
                     },
                     {
+                        title: 'NROI%',
+                        field: 'nroi_percent',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        sorter: 'number',
+                        width: 90,
+                        headerTooltip: 'NROI% at the Std Prc (same formula as Temu 2 Analytics). Below 30% = published with 0 inventory.',
+                        formatter: function (cell) {
+                            const data = cell.getRow().getData();
+                            if (data.is_parent) return '';
+                            const raw = cell.getValue();
+                            const v = parseFloat(raw);
+                            if (raw === null || raw === undefined || raw === '' || !isFinite(v)) return '\u2014';
+                            const low = v < NROI_LOW_BELOW;
+                            return '<span style="font-weight:600;color:' + (low ? '#dc3545' : '#198754') + ';"' + (low ? ' title="Below 30% - published with 0 inventory"' : '') + '>' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
                         title: 'NRL/REQ',
                         field: 'nr_req',
                         hozAlign: 'center',
@@ -1363,6 +1400,20 @@
                     }
                 });
             });
+            // NROI% < 30 badge → filter table to the SKUs that publish with 0 inventory (toggle).
+            function toggleNroiLowFilter() {
+                nroiLowFilterActive = !nroiLowFilterActive;
+                $('#nroi-low-badge').toggleClass('is-active', nroiLowFilterActive);
+                applyListingFilters();
+            }
+            $(document).on('click', '#nroi-low-badge', toggleNroiLowFilter);
+            $(document).on('keydown', '#nroi-low-badge', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleNroiLowFilter();
+                }
+            });
+
             $('#listed-filter, #nr-req-filter, #inv-filter, #row-data-type').on('change.missingLBadge', function () {
                 if (!missingLFilterActive) return;
                 const stillMissing =
@@ -1622,7 +1673,11 @@
                         html += '<tr>';
                         html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${checked ? 'checked' : ''} ${publishable ? '' : 'disabled'}></td>`;
                         html += `<td><span class="sku-cell"><span class="sku-cell-text">${escapeHtml(sku)}</span><button type="button" class="copy-sku-btn" data-sku="${escapeHtml(sku)}" title="Copy SKU"><i class="fas fa-copy"></i></button></span></td>`;
-                        html += `<td>${escapeHtml(String(child.inv ?? 0))}</td>`;
+                        const nroiRow = (allListingData || []).find(function (r) { return skuKey(r.sku) === skuKey(sku); });
+                        const zeroNote = (nroiRow && isNroiLow(nroiRow) && (parseFloat(child.inv) || 0) > 0)
+                            ? ` <span class="badge bg-warning text-dark" title="NROI ${Math.round(parseFloat(nroiRow.nroi_percent))}% is below 30%, so this SKU is published with 0 inventory">sends 0</span>`
+                            : '';
+                        html += `<td>${escapeHtml(String(child.inv ?? 0))}${zeroNote}</td>`;
                         html += `<td>${role}</td>`;
                         html += `<td>${publishStatusLabel(child.status, child.reason)}</td>`;
                         html += '</tr>';

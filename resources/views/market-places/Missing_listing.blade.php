@@ -315,6 +315,7 @@
                         </button>
                         <button type="button" class="btn btn-sm btn-link p-0" id="ml-refresh-all-details" data-bs-toggle="modal" data-bs-target="#mlRefreshAllModal">Details</button>
                         <span class="small text-muted" id="ml-refresh-all-status"></span>
+                        <span class="small text-primary" id="ml-live-sync"></span>
                     @endunless
                 </div>
             </div>
@@ -498,6 +499,35 @@
                 return Number(cell.getValue() || 0).toLocaleString('en-US');
             },
         }, filterProps);
+    }
+
+    // After the table loads, every marketplace is recounted live with its own listing page numbers (one by one), so this table
+    // always shows exactly what the inner pages show — it no longer depends on the scheduler / queue worker having run.
+    const ML_RECOUNT_URL = @json(route('missing.listing.recount'));
+    const ML_CSRF = @json(csrf_token());
+    let mlRecountStarted = false;
+    function mlLiveRecount() {
+        if (mlRecountStarted || typeof table === 'undefined' || !table) return;
+        mlRecountStarted = true;
+        const rows = table.getData().filter(function(r) {
+            return ['API', 'CSV'].indexOf(listingSource(r)) !== -1 && r.req !== null && r.req !== undefined;
+        });
+        const $s = $('#ml-live-sync');
+        let i = 0;
+        (function next() {
+            if (i >= rows.length) { $s.text(''); return; }
+            const r = rows[i++];
+            $s.text('Syncing counts with the listing pages ' + i + ' / ' + rows.length + '…');
+            $.ajax({ url: ML_RECOUNT_URL, method: 'POST', dataType: 'json', timeout: 180000, data: { channel: r.channel, _token: ML_CSRF } })
+                .done(function(res) {
+                    if (!res || !res.success || res.skipped) return;
+                    const upd = { id: r.id, req: res.req, nrl: res.nrl, missing_listing: res.missing_listing, missing_listing_inv: res.missing_listing_inv };
+                    if (listingSource(r) !== 'CSV') upd.listed = res.listed;   // no-API channels keep their CSV / manual Listed count
+                    table.updateData([upd]);
+                    updateStats(table.getData());
+                })
+                .always(next);
+        })();
     }
 
     function updateStats(rows, totalMissingL, totalMissingLInv) {
@@ -948,6 +978,9 @@
             },
             dataProcessed: function() {
                 paintColumnHeadCounts(table ? table.getData() : []);
+            },
+            dataLoaded: function() {
+                setTimeout(mlLiveRecount, 300);
             },
             layout: "fitColumns",
             pagination: true,

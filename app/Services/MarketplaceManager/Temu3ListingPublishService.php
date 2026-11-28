@@ -39,6 +39,12 @@ class Temu3ListingPublishService
     /** @var list<string> */
     private array $attributeHintCorpus = [];
 
+    /** @var array<string, list<string>> normalized field name => values found for it (Product Master, item specifics, ...) */
+    private array $attributeFacts = [];
+
+    /** @var list<string> required attributes buildGoodsProperty could not fill from the SKU's own data */
+    private array $unfilledRequired = [];
+
     /** @var array<string, float>|null */
     private ?array $priceByLookupKey = null;
 
@@ -427,6 +433,20 @@ class Temu3ListingPublishService
         }
 
         $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId, $primary, $primarySku);
+        // Power / battery / wireless / certification attributes are never guessed. When Temu requires one and the
+        // SKU has no data stored for it, stop here with a clear message instead of publishing a wrong claim.
+        $missingAttributes = array_values(array_unique(array_filter(array_map('trim', $this->unfilledRequired), static fn ($n) => $n !== '')));
+        $missingSensitive = array_values(array_filter($missingAttributes, fn ($n) => $this->isSensitiveAttribute($n)));
+        if ($missingSensitive !== []) {
+            return [
+                'success' => false,
+                'message' => 'Not published: '.$this->shopLabel().' requires '.implode(', ', $missingSensitive).' for this category, and no data is stored for it on '.$primarySku.'. '
+                    .'Add it to the SKU in Product Master (a field named exactly like the attribute, or inside "temu_attributes") and publish again. It is not guessed, to avoid a wrong compliance claim.',
+            ];
+        }
+        if ($missingAttributes !== []) {
+            Log::warning($this->shopLabel().' publish: required attributes left blank (no data for them)', ['sku' => $primarySku, 'attributes' => $missingAttributes]);
+        }
         $shipmentLimitDay = max(1, (int) $this->shopConfig('shipment_limit_day', 2));
         $goodsOriginInfo = $this->buildGoodsOriginInfo();
 
@@ -2628,9 +2648,11 @@ class Temu3ListingPublishService
      */
     private function buildGoodsProperty(int $catId, string $costTemplateId = '', ?ProductMaster $product = null, string $sku = ''): array
     {
+        $this->unfilledRequired = [];
         if ($product && $sku !== '') {
             $this->loadAttributeHintCorpus($product, $sku);
         } else {
+            $this->attributeFacts = [];
             $this->attributeHintCorpus = [self::BRAND_NAME];
         }
 
@@ -2737,6 +2759,9 @@ class Temu3ListingPublishService
         }
 
         if ($showType === 1) {
+            if ($required) {
+                $this->unfilledRequired[] = $name;
+            }
             Log::info('Temu3 publish: skipped child attribute with no value matching parent', [
                 'name' => $name,
                 'refPid' => $refPid,
@@ -2749,6 +2774,9 @@ class Temu3ListingPublishService
         if (in_array($controlType, [0, 16, 19], true)) {
             $typed = $this->inputValueFromHints($name);
             if ($typed === '') {
+                if ($required) {
+                    $this->unfilledRequired[] = $name;
+                }
                 Log::info('Temu3 publish: left input attribute for manual fill', [
                     'name' => $name,
                     'refPid' => $refPid,
@@ -2768,6 +2796,9 @@ class Temu3ListingPublishService
             return $entry;
         }
 
+        if ($required) {
+            $this->unfilledRequired[] = $name;
+        }
         Log::warning('Temu3 publish: could not fill required attribute', [
             'name' => $name,
             'refPid' => $refPid,
@@ -2991,13 +3022,11 @@ class Temu3ListingPublishService
             return self::BRAND_NAME;
         }
 
-        foreach ($this->attributeHintCorpus as $hint) {
-            $hint = trim($hint);
-            if ($hint === '' || $this->isGenericHint($hint)) {
-                continue;
-            }
-            if ($this->hintRelatesToAttribute($hint, $lower)) {
-                return mb_substr($hint, 0, 200);
+        // Only a value stored for this exact field. Never a title / bullet sentence that merely shares a word.
+        foreach ($this->factsForAttribute($name) as $fact) {
+            $fact = trim($fact);
+            if ($fact !== '' && ! $this->isGenericHint($fact)) {
+                return mb_substr($fact, 0, 200);
             }
         }
 
@@ -3052,10 +3081,10 @@ class Temu3ListingPublishService
             if (str_contains($name, 'brand') && $this->isFiveCoreBrand($value)) {
                 return ['vid' => $vid, 'value' => $value];
             }
-            if ($this->valueMatchesHints($value)) {
+            if ($this->valueMatchesAttribute($value, $attributeName)) {
                 return ['vid' => $vid, 'value' => $value];
             }
-            if ($hintMatch === null && $preferVids !== [] && in_array($vid, $preferVids, true) && $this->valueMatchesHints($value)) {
+            if ($hintMatch === null && $preferVids !== [] && in_array($vid, $preferVids, true) && $this->valueMatchesAttribute($value, $attributeName)) {
                 $hintMatch = ['vid' => $vid, 'value' => $value];
             }
         }
@@ -3070,23 +3099,37 @@ class Temu3ListingPublishService
         return in_array($norm, ['5COREINC', '5CORE', 'FIVECOREINC', 'FIVECORE'], true);
     }
 
-    private function valueMatchesHints(string $value): bool
+    /**
+     * A dropdown value is chosen only when the SKU's own data supports it for THIS attribute:
+     *  1. a value stored for the same field name matches the option, or
+     *  2. (non-sensitive attributes only) the option appears as a whole phrase in the SKU's title / bullets / specs.
+     * An option is never picked because a hint is a substring of it.
+     */
+    private function valueMatchesAttribute(string $value, string $attributeName): bool
     {
         $value = trim($value);
         if ($value === '' || $this->isGenericHint($value)) {
             return false;
         }
+        $v = $this->normAttr($value);
+        if ($v === '' || strlen($v) < 3) {
+            return false;
+        }
 
-        $needle = strtolower($value);
-        foreach ($this->attributeHintCorpus as $hint) {
-            $hay = strtolower(trim($hint));
-            if ($hay === '') {
-                continue;
-            }
-            if ($hay === $needle) {
+        foreach ($this->factsForAttribute($attributeName) as $fact) {
+            $f = $this->normAttr($fact);
+            if ($f !== '' && ($f === $v || $this->phraseIn($v, $f))) {
                 return true;
             }
-            if (mb_strlen($needle) >= 3 && (str_contains($hay, $needle) || str_contains($needle, $hay))) {
+        }
+
+        if ($this->isSensitiveAttribute($attributeName)) {
+            return false;
+        }
+
+        foreach ($this->attributeHintCorpus as $hint) {
+            $h = $this->normAttr((string) $hint);
+            if ($h !== '' && $this->phraseIn($v, $h)) {
                 return true;
             }
         }
@@ -3100,22 +3143,6 @@ class Temu3ListingPublishService
             'yes', 'no', 'other', 'generic', 'none', 'n/a', 'na', 'unbranded',
             'does not apply', 'unknown',
         ], true);
-    }
-
-    private function hintRelatesToAttribute(string $hint, string $attributeName): bool
-    {
-        $hintLower = strtolower($hint);
-        foreach (preg_split('/[\s\/,-]+/', $attributeName) ?: [] as $token) {
-            $token = trim($token);
-            if (mb_strlen($token) < 4) {
-                continue;
-            }
-            if (str_contains($hintLower, $token)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -3337,6 +3364,7 @@ class Temu3ListingPublishService
 
     private function loadAttributeHintCorpus(ProductMaster $product, string $sku): void
     {
+        $this->attributeFacts = [];
         $hints = [self::BRAND_NAME, '5Core', '5 Core'];
         $push = function (mixed $value) use (&$hints): void {
             if (is_array($value)) {
@@ -3423,14 +3451,22 @@ class Temu3ListingPublishService
     /**
      * @param  list<string>  $hints
      */
-    private function flattenHintValues(mixed $value, array &$hints): void
+    private function flattenHintValues(mixed $value, array &$hints, string $factKey = ''): void
     {
         if (is_array($value)) {
+            // {name: ..., value: ...} pairs (item specifics) are facts about that exact field.
+            $pairName = $value['name'] ?? $value['key'] ?? $value['attributeName'] ?? $value['label'] ?? null;
+            $pairValue = $value['value'] ?? $value['attributeValue'] ?? null;
+            if (is_string($pairName) && (is_string($pairValue) || is_numeric($pairValue))) {
+                $this->rememberAttributeFact($pairName, (string) $pairValue);
+            }
             foreach ($value as $key => $item) {
                 if (is_string($key) && ! is_numeric($key) && mb_strlen($key) <= 80) {
                     $hints[] = trim($key);
+                    $this->flattenHintValues($item, $hints, $key);
+                } else {
+                    $this->flattenHintValues($item, $hints, $factKey);
                 }
-                $this->flattenHintValues($item, $hints);
             }
 
             return;
@@ -3439,7 +3475,79 @@ class Temu3ListingPublishService
         $text = trim(strip_tags((string) $value));
         if ($text !== '' && mb_strlen($text) <= 240) {
             $hints[] = $text;
+            if ($factKey !== '') {
+                $this->rememberAttributeFact($factKey, $text);
+            }
         }
+    }
+
+    private function rememberAttributeFact(string $field, string $text): void
+    {
+        $key = $this->normAttr($field);
+        $text = trim(strip_tags($text));
+        if ($key === '' || is_numeric($key) || $text === '' || mb_strlen($text) > 240) {
+            return;
+        }
+        $this->attributeFacts[$key][] = $text;
+    }
+
+    private function normAttr(string $text): string
+    {
+        return trim(preg_replace('/[^a-z0-9]+/', ' ', strtolower($text)) ?? '');
+    }
+
+    private function phraseIn(string $needleNorm, string $hayNorm): bool
+    {
+        return $needleNorm !== '' && str_contains(' '.$hayNorm.' ', ' '.$needleNorm.' ');
+    }
+
+    /**
+     * Values stored for a field that is the same as (or contains / is contained by, on whole words) the attribute name.
+     *
+     * @return list<string>
+     */
+    private function factsForAttribute(string $attributeName): array
+    {
+        $attr = $this->normAttr($attributeName);
+        if ($attr === '') {
+            return [];
+        }
+        $out = [];
+        foreach ($this->attributeFacts as $key => $values) {
+            $key = (string) $key;
+            $related = $key === $attr
+                || (strlen($key) >= 4 && strlen($attr) >= 4
+                    && (str_contains(' '.$attr.' ', ' '.$key.' ') || str_contains(' '.$key.' ', ' '.$attr.' ')));
+            if ($related) {
+                foreach ($values as $v) {
+                    $out[] = $v;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Power / battery / wireless / plug / certification attributes make safety and compliance claims.
+     * They are only filled from data stored for that exact field - never guessed from product text.
+     */
+    private function isSensitiveAttribute(string $attributeName): bool
+    {
+        $lower = strtolower($attributeName);
+        foreach (['battery', 'wireless', 'wi-fi', 'wifi', 'bluetooth', 'power', 'voltage', 'plug', 'rechargeable', 'charg',
+            'certif', 'warning', 'prop 65', 'safety', 'flammab', 'hazard', 'age group', 'target age'] as $needle) {
+            if (str_contains($lower, $needle)) {
+                return true;
+            }
+        }
+        foreach (preg_split('/[^a-z0-9]+/', $lower) ?: [] as $token) {
+            if (in_array($token, ['ul', 'ce', 'fcc', 'rohs', 'cpsia', 'cpc', 'ip'], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
