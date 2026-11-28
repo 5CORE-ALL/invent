@@ -11,25 +11,29 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Shopify B2B (business5core.com) percentage-off promotion — SAVED IN THE APP ONLY, NOTHING IS PUSHED.
+ * Shopify B2B (business5core.com) percentage-off promotion.
  *
- * The B2B store has no coupon API, so a promotion is a lower S PRC. This service never calls the store:
+ * The store has no coupon / discount API (GET /api lists listings, inventory, prices, orders only). A "promotion" is
+ * therefore a lower special_price on the listing: the storefront shows the new price in red and the old one crossed out.
  *
- * Apply  : promo price = BASE × (1 − pct/100), saved as a hand-set S PRC (SPRICE + SPRICE_MANUAL) in
- *          shopifyb2b_data_view, so the Sprc Dil auto-push / blue-price catch-up skip the SKU. BASE is the live
- *          selling price before the promo; editing the % later recomputes from the same BASE.
- * Remove : puts BASE back as the saved S PRC, clears the PROMO_* keys and, if the SKU was not hand-set before, the
- *          manual flag so the rule jobs price it again.
- * Expire : an optional end date; `shopify-b2b:promo-expire` removes due promos (saved values only).
- *
- * Getting a price onto business5core.com stays a separate, manual step (the pricing page push).
+ * Apply  : promo price = BASE × (1 − pct/100), saved as a HAND-SET S PRC (SPRICE_MANUAL) in shopifyb2b_data_view so the
+ *          Sprc Dil auto-push / blue-price catch-up leave it alone, then pushed with StorePricePushService.
+ *          BASE is the live selling price before the promo; editing the % later recomputes from the same BASE.
+ * Remove : pushes BASE back (unless somebody changed the live price after the promo — then it is left as it is),
+ *          clears the PROMO_* keys and, if the SKU was not hand-set before, the manual flag so the rule jobs resume.
+ * Expire : an optional end date; `shopify-b2b:promo-expire` removes due promos.
  *
  * Keys kept on shopifyb2b_data_view.value: PROMO_PCT, PROMO_BASE, PROMO_PRICE, PROMO_WAS_MANUAL, PROMO_END (unix|null),
  * PROMO_APPLIED_AT (unix).
  */
 class ShopifyB2bPromotionService
 {
+    /** Pushes are rate limited by the store, so a request is kept small. */
     public const MAX_SKUS = 30;
+
+    public function __construct(protected StorePricePushService $pusher)
+    {
+    }
 
     private function takeHome(): float
     {
@@ -49,7 +53,7 @@ class ShopifyB2bPromotionService
     }
 
     /**
-     * Metrics at a price, same maths as Shopifyb2bController::calculateAndSaveSprice (no ship, no ads).
+     * Cost and metrics at a price, same maths as Shopifyb2bController::calculateAndSaveSprice (no ship, no ads).
      *
      * @return array<string, float>
      */
@@ -114,7 +118,7 @@ class ShopifyB2bPromotionService
     }
 
     /**
-     * Dry run: what pct% would do to each SKU. Nothing is saved.
+     * Dry run: what pct% would do to each SKU. Nothing is saved or pushed.
      *
      * @param  list<string>  $skus
      * @return list<array<string, mixed>>
@@ -132,7 +136,7 @@ class ShopifyB2bPromotionService
         foreach ($skus as $input) {
             $row = [
                 'sku' => $input, 'status' => 'skip', 'reason' => null, 'live' => null, 'base' => null,
-                'new_price' => null, 'cost' => null, 'margin' => null, 'margin_pct' => null, 'inv' => null,
+                'new_price' => null, 'reg' => null, 'cost' => null, 'margin' => null, 'margin_pct' => null, 'inv' => null,
                 'in_promo' => false, 'promo_pct' => null,
             ];
             $p = $pm[strtoupper($input)] ?? null;
@@ -155,6 +159,7 @@ class ShopifyB2bPromotionService
             $new = round($base * (1 - $pct / 100), 2);
             $margin = $lp > 0 ? round($new * $takeHome - $lp, 2) : null;
 
+            $row['reg'] = ($listing && (float) $listing->price > 0) ? round((float) $listing->price, 2) : null;
             $row['live'] = $live ?: null;
             $row['base'] = $base ?: null;
             $row['new_price'] = $base > 0 ? $new : null;
@@ -187,18 +192,19 @@ class ShopifyB2bPromotionService
     }
 
     /**
-     * Save the promo price for the ready SKUs. Nothing is sent to the store.
-     *
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, applied: int, failed: int, results: list<array<string, mixed>>}
      */
     public function apply(array $skus, float $pct, ?int $endTs, bool $allowBelowCost, ?string $user = null): array
     {
+        @set_time_limit(0);
         $takeHome = $this->takeHome();
+        $plan = $this->plan($skus, $pct, $allowBelowCost);
         $results = [];
         $applied = 0;
+        $failed = 0;
 
-        foreach ($this->plan($skus, $pct, $allowBelowCost) as $r) {
+        foreach ($plan as $r) {
             if ($r['status'] !== 'ready') {
                 $results[] = ['sku' => $r['sku'], 'status' => 'skipped', 'message' => $r['reason']];
 
@@ -211,38 +217,52 @@ class ShopifyB2bPromotionService
             $inPromo = isset($before['PROMO_PCT'], $before['PROMO_BASE']);
             $new = (float) $r['new_price'];
 
-            $dv->value = array_merge($before, [
+            $after = array_merge($before, [
                 'SPRICE' => $new,
                 'calc_price' => $new,
                 'SPRICE_MANUAL' => true,
                 'PROMO_PCT' => $pct,
                 'PROMO_BASE' => (float) $r['base'],
                 'PROMO_PRICE' => $new,
+                // The store's regular (crossed-out) price before the promo. During the promo it is set to BASE so the page shows
+                // "new price, old price crossed out"; Remove puts this value back.
+                'PROMO_REG_PRICE' => ($inPromo && isset($before['PROMO_REG_PRICE'])) ? (float) $before['PROMO_REG_PRICE'] : (float) ($r['reg'] ?? 0),
                 'PROMO_WAS_MANUAL' => $inPromo ? (bool) ($before['PROMO_WAS_MANUAL'] ?? false) : ! empty($before['SPRICE_MANUAL']),
                 'PROMO_END' => $endTs,
                 'PROMO_APPLIED_AT' => time(),
             ], $this->metrics($new, (float) $r['cost'], $takeHome));
+            $dv->value = $after;
             $dv->save();
 
-            $applied++;
-            $results[] = [
-                'sku' => $sku, 'status' => 'ok', 'price' => $new, 'base' => (float) $r['base'],
-                'message' => 'Saved '.number_format($new, 2).' (original '.number_format((float) $r['base'], 2).')',
-            ];
-            Log::info('Promotions B2B saved (not pushed)', ['sku' => $sku, 'pct' => $pct, 'base' => $r['base'], 'price' => $new, 'end' => $endTs, 'user' => $user]);
+            $push = $this->pusher->pushSprice($sku, $new, (float) $r['base']);
+            if (! $push['success']) {
+                $dv->value = $before;     // nothing changed on the store, put the saved values back
+                $dv->save();
+                $failed++;
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $push['message']];
+                Log::warning('Promotions B2B apply failed', ['sku' => $sku, 'pct' => $pct, 'error' => $push['message']]);
+            } else {
+                $applied++;
+                $results[] = [
+                    'sku' => $sku, 'status' => 'ok', 'price' => $new, 'base' => (float) $r['base'],
+                    'message' => 'Price '.number_format((float) $r['base'], 2).' → '.number_format($new, 2),
+                ];
+                Log::info('Promotions B2B apply', ['sku' => $sku, 'pct' => $pct, 'base' => $r['base'], 'price' => $new, 'end' => $endTs, 'user' => $user]);
+            }
+            usleep(1_000_000); // the store API is rate limited
         }
 
         return [
             'success' => $applied > 0,
-            'message' => $applied.' SKU(s) saved at '.rtrim(rtrim(number_format($pct, 2), '0'), '.').'% off. Not pushed to Shopify / business5core.com.',
+            'message' => $applied.' SKU(s) at '.rtrim(rtrim(number_format($pct, 2), '0'), '.').'% off'.($failed ? ', '.$failed.' failed' : '').'.',
             'applied' => $applied,
-            'failed' => 0,
+            'failed' => $failed,
             'results' => $results,
         ];
     }
 
     /**
-     * Promotions currently saved (any SKU with PROMO_PCT).
+     * Promotions currently on (any SKU with PROMO_PCT).
      *
      * @return list<array<string, mixed>>
      */
@@ -262,7 +282,7 @@ class ShopifyB2bPromotionService
                 'base' => (float) $v['PROMO_BASE'],
                 'promo_price' => $promoPrice,
                 'live' => $live ?: null,
-                'on_store' => $live > 0 && abs($live - $promoPrice) <= 0.011,
+                'changed_outside' => $live > 0 && abs($live - $promoPrice) > 0.011,
                 'end' => isset($v['PROMO_END']) ? (int) $v['PROMO_END'] : null,
                 'applied_at' => (int) ($v['PROMO_APPLIED_AT'] ?? 0),
             ];
@@ -273,16 +293,18 @@ class ShopifyB2bPromotionService
     }
 
     /**
-     * End the promotion: the original price becomes the saved S PRC again. Nothing is sent to the store.
+     * Put the original price back for these SKUs.
      *
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, removed: int, failed: int, results: list<array<string, mixed>>}
      */
     public function remove(array $skus, ?string $user = null): array
     {
+        @set_time_limit(0);
         $takeHome = $this->takeHome();
         $results = [];
         $removed = 0;
+        $failed = 0;
 
         foreach ($skus as $input) {
             $dv = ShopifyB2BDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($input))])->first();
@@ -296,37 +318,55 @@ class ShopifyB2bPromotionService
             $base = round((float) $v['PROMO_BASE'], 2);
             $promoPrice = round((float) ($v['PROMO_PRICE'] ?? 0), 2);
             $live = $this->livePrice($this->findListing($sku));
-            $stillOnStore = $live > 0 && abs($live - $promoPrice) <= 0.011;
+
+            $note = 'Original price '.number_format($base, 2).' restored';
+            $push = true;
+            if ($live > 0 && abs($live - $promoPrice) > 0.011) {
+                // Somebody changed the price after the promo; do not overwrite their price.
+                $push = false;
+                $note = 'Price was changed after the promo ('.number_format($live, 2).'), left as it is';
+            }
 
             $after = $v;
-            foreach (['PROMO_PCT', 'PROMO_BASE', 'PROMO_PRICE', 'PROMO_WAS_MANUAL', 'PROMO_END', 'PROMO_APPLIED_AT'] as $k) {
+            foreach (['PROMO_PCT', 'PROMO_BASE', 'PROMO_PRICE', 'PROMO_REG_PRICE', 'PROMO_WAS_MANUAL', 'PROMO_END', 'PROMO_APPLIED_AT'] as $k) {
                 unset($after[$k]);
             }
             if (empty($v['PROMO_WAS_MANUAL'])) {
                 unset($after['SPRICE_MANUAL']);   // rule jobs price this SKU again
             }
-            $dv->value = array_merge($after, ['SPRICE' => $base, 'calc_price' => $base], $this->metrics($base, $this->lpFor($sku), $takeHome));
-            $dv->save();
+            if ($push) {
+                $lp = $this->lpFor($sku);
+                $after = array_merge($after, ['SPRICE' => $base, 'calc_price' => $base], $this->metrics($base, $lp, $takeHome));
+                $regOrig = (float) ($v['PROMO_REG_PRICE'] ?? 0);
+                $res = $this->pusher->pushSprice($sku, $base, $regOrig > 0 ? $regOrig : null);
+                if (! $res['success']) {
+                    $failed++;
+                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $res['message']];
+                    Log::warning('Promotions B2B remove failed', ['sku' => $sku, 'error' => $res['message']]);
+                    usleep(1_000_000);
 
+                    continue;
+                }
+                usleep(1_000_000);
+            }
+            $dv->value = $after;
+            $dv->save();
             $removed++;
-            $results[] = [
-                'sku' => $sku, 'status' => 'ok',
-                'message' => 'Saved price back to '.number_format($base, 2).($stillOnStore ? ' (the store still shows '.number_format($live, 2).' until you push)' : ''),
-            ];
-            Log::info('Promotions B2B removed (not pushed)', ['sku' => $sku, 'base' => $base, 'store_shows_promo' => $stillOnStore, 'user' => $user]);
+            $results[] = ['sku' => $sku, 'status' => 'ok', 'message' => $note];
+            Log::info('Promotions B2B remove', ['sku' => $sku, 'base' => $base, 'pushed' => $push, 'user' => $user]);
         }
 
         return [
             'success' => $removed > 0,
-            'message' => $removed.' promotion(s) removed. Nothing was pushed to Shopify / business5core.com.',
+            'message' => $removed.' promotion(s) removed'.($failed ? ', '.$failed.' failed' : '').'.',
             'removed' => $removed,
-            'failed' => 0,
+            'failed' => $failed,
             'results' => $results,
         ];
     }
 
     /**
-     * Remove every promotion whose end time has passed (saved values only).
+     * Remove every promotion whose end time has passed.
      *
      * @return array{removed: int, failed: int}
      */
@@ -344,6 +384,6 @@ class ShopifyB2bPromotionService
         }
         $res = $this->remove($due, 'scheduler');
 
-        return ['removed' => $res['removed'], 'failed' => 0];
+        return ['removed' => $res['removed'], 'failed' => $res['failed']];
     }
 }

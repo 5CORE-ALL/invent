@@ -98,6 +98,10 @@ class StoreListingApiClient
             'selling_price' => $specialPrice,
             'special_price_type' => (string) ($extra['special_price_type'] ?? 'fixed'),
         ];
+        // Optional: also set the regular (crossed-out) price. Only the Promotions page uses this.
+        if (isset($extra['regular_price']) && (float) $extra['regular_price'] > 0) {
+            $payload['price'] = round((float) $extra['regular_price'], 2);
+        }
         if (! empty($extra['variant_id'])) {
             $payload['variant_id'] = (int) $extra['variant_id'];
         }

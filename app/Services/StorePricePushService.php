@@ -20,7 +20,7 @@ class StorePricePushService
     /**
      * @return array{success:bool,message:string,sku:string,price?:float,store_product_id?:int}
      */
-    public function pushSprice(string $sku, float $sprice): array
+    public function pushSprice(string $sku, float $sprice, ?float $regularPrice = null): array
     {
         $sku = trim($sku);
         $sprice = round($sprice, 2);
@@ -52,6 +52,7 @@ class StorePricePushService
                     'variant_id' => $row->store_variant_id,
                     'slug' => $row->slug,
                     'special_price_type' => $row->special_price_type ?: 'fixed',
+                    'regular_price' => $regularPrice,
                 ]
             );
         } catch (RuntimeException $e) {
@@ -73,6 +74,9 @@ class StorePricePushService
         $live = $this->extractLivePrice($result['json'] ?? null, $sprice);
         $row->special_price = $live;
         $row->selling_price = $live;
+        if ($regularPrice !== null && $regularPrice > 0) {
+            $row->price = $this->extractRegularPrice($result['json'] ?? null, round($regularPrice, 2));
+        }
         $row->special_price_type = $row->special_price_type ?: 'fixed';
         $row->synced_at = now();
         $row->save();
@@ -168,6 +172,20 @@ class StorePricePushService
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $json
+     */
+    protected function extractRegularPrice(?array $json, float $fallback): float
+    {
+        $data = is_array($json['data'] ?? null) ? $json['data'] : (is_array($json) ? $json : []);
+        $raw = $data['price'] ?? null;
+        if (is_array($raw)) {
+            $raw = $raw['amount'] ?? null;
+        }
+
+        return is_numeric($raw) && (float) $raw > 0 ? round((float) $raw, 2) : $fallback;
     }
 
     /**
