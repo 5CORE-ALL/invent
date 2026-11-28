@@ -2684,6 +2684,10 @@ class SheinApiService
             }
             // The row whose seller SKU matches, else the only skuCode that SKC has.
             $pick = $exact ?? (count($codes) === 1 ? reset($codes) : null);
+            if ($pick === null && $rows === []) {
+                // stock-query by SKC answers [] for many listings. The product list still carries every SKC with its skuCode(s).
+                $pick = $this->pickSkuCodeFromCatalogSkc($sku, $skc, $norm);
+            }
             if ($pick === null) {
                 continue;
             }
@@ -2696,6 +2700,107 @@ class SheinApiService
         }
     }
 
+    /**
+     * Resolve a seller SKU's skuCode from its SKC name using the Seller Hub product list (SKC => skuCodeList).
+     *
+     * @return array{sku_code: string}|null
+     */
+    protected function pickSkuCodeFromCatalogSkc(string $sellerSku, string $skc, string $norm): ?array
+    {
+        $codes = array_values(array_filter(
+            $this->skcSkuCodeCatalog()[strtoupper(trim($skc))] ?? [],
+            fn ($c) => $this->isPlatformSkuCode((string) $c, $sellerSku)
+        ));
+        if ($codes === []) {
+            return null;
+        }
+        if (count($codes) === 1) {
+            return ['sku_code' => $codes[0]];
+        }
+
+        // Several sizes under one SKC: ask Shein which of them carries this seller SKU.
+        foreach ($this->safeGetStock($codes) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $code = trim((string) ($row['shein_sku_code'] ?? $row['sku_code'] ?? ''));
+            $seller = ShopifySku::normalizeSkuForShopifyLookup((string) ($row['seller_sku'] ?? $row['sku'] ?? ''));
+            if ($code !== '' && $seller !== '' && $seller === $norm && $this->isPlatformSkuCode($code, $sellerSku)) {
+                return ['sku_code' => $code];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every product on Shein as SKC name (upper case) => skuCode list, read page by page from product/query.
+     * Cached for 6 hours (a full read is a handful of calls).
+     *
+     * @return array<string, list<string>>
+     */
+    public function skcSkuCodeCatalog(bool $refresh = false): array
+    {
+        $cacheKey = 'shein:skc-skucode-catalog:v1';
+        if (! $refresh) {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && $cached !== []) {
+                return $cached;
+            }
+        }
+
+        $endpoint = '/open-api/openapi-business-backend/product/query';
+        $map = [];
+        $firstSkcPrev = null;
+        for ($page = 1; $page <= 150; $page++) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->timeout(90)
+                    ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                    ->post($this->baseUrl.$endpoint, [
+                        'pageNum' => $page,
+                        'pageSize' => 200,
+                        'insertTimeEnd' => '',
+                        'insertTimeStart' => '',
+                        'updateTimeEnd' => '',
+                        'updateTimeStart' => '',
+                    ]);
+                $json = is_array($response->json()) ? $response->json() : null;
+            } catch (\Throwable $e) {
+                Log::warning('Shein skcSkuCodeCatalog page failed', ['page' => $page, 'error' => $e->getMessage()]);
+                break;
+            }
+            $rows = $json['info']['data'] ?? [];
+            if (! is_array($rows) || $rows === []) {
+                break;
+            }
+            $firstSkc = strtoupper(trim((string) ($rows[0]['skcName'] ?? '')));
+            if ($firstSkc !== '' && $firstSkc === $firstSkcPrev) {
+                break; // the API repeated a page
+            }
+            $firstSkcPrev = $firstSkc;
+            foreach ($rows as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $skc = strtoupper(trim((string) ($item['skcName'] ?? '')));
+                $codes = array_values(array_filter(array_map(
+                    static fn ($c) => trim((string) $c),
+                    (array) ($item['skuCodeList'] ?? [])
+                ), static fn ($c) => $c !== ''));
+                if ($skc !== '' && $codes !== []) {
+                    $map[$skc] = $codes;
+                }
+            }
+            usleep(250000);
+        }
+
+        if ($map !== []) {
+            Cache::put($cacheKey, $map, now()->addHours(6));
+        }
+
+        return $map;
+    }
     /**
      * @param  list<string>  $sellerSkus
      * @return array<string, string> seller SKU => the SKC name saved as its "skuCode" in shein_metrics / shein_metric
