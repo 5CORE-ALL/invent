@@ -3167,6 +3167,8 @@
             const showCarrierColumn = @json((bool) ($showCarrierColumn ?? false));
             const showClaimTrackingColumn = @json((bool) ($showClaimTrackingColumn ?? false));
             const showLabelDateColumn = @json((bool) ($showLabelDateColumn ?? false));
+            // Missing tracking numbers are filled in automatically from the Order Fulfillment page.
+            const autoFetchTracking = @json((bool) ($autoFetchTracking ?? false));
             const hideReplacementTrackingOnBoard = @json((bool) ($hideReplacementTrackingOnBoard ?? false));
             const claimsStatsUrl = @json($claimsStatsUrl ?? null);
             const showClaimsSummaryBadges = @json((bool) ($showClaimsSummaryBadges ?? false));
@@ -6239,6 +6241,9 @@
                     if (lockedDepartment) {
                         listUrl += (listUrl.indexOf('?') >= 0 ? '&' : '?') +
                             'department=' + encodeURIComponent(lockedDepartment);
+                    }
+                    if (autoFetchTracking) {
+                        listUrl += (listUrl.indexOf('?') >= 0 ? '&' : '?') + 'fetch_tracking=1';
                     }
                     if (showLabelDateColumn) {
                         listUrl += (listUrl.indexOf('?') >= 0 ? '&' : '?') + 'label_date=1';

@@ -79,6 +79,8 @@
     'showClaimTrackingColumn' => true,
     // Label Date column: when the shipping label was created (Veeqo shipment).
     'showLabelDateColumn' => true,
+    // Missing Tracking IDs are filled in automatically from /order-fulfillment (matched by order number).
+    'autoFetchTracking' => true,
     'hideReplacementTrackingOnBoard' => true,
     // Merge the standalone "Created At" date column into the "Created By"
     // cell (name on top, short "21 JUN" date underneath, full timestamp

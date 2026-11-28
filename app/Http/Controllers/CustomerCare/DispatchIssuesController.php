@@ -1367,6 +1367,11 @@ class DispatchIssuesController extends IssueBoardControllerBase
             $data = collect($this->attachAllIssuesLinkFields($data->all()))->values();
         }
 
+        // Carrier Claims board: rows without a tracking number pick it up from /order-fulfillment (saved automatically).
+        if (request()->boolean('fetch_tracking')) {
+            $data = collect($this->attachFulfillmentTracking($data->all()))->values();
+        }
+
         // Carrier Claims board: label created date (Veeqo shipment created) per tracking / order number.
         if (request()->boolean('label_date')) {
             $data = collect($this->attachLabelDates($data->all()))->values();
@@ -1375,6 +1380,82 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return response()->json(['data' => $data]);
     }
 
+    /**
+     * Fills a missing `tracking_number` from the Order Fulfillment page (`order_fulfillment_trackings`),
+     * matched by order number (same SKU preferred, newest saved number otherwise), and saves it on the
+     * issue so the next load already has it. A tracking number already on the issue is never touched.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function attachFulfillmentTracking(array $rows): array
+    {
+        $table = $this->issuesTable();
+        if ($rows === []
+            || ! Schema::hasTable('order_fulfillment_trackings')
+            || ! Schema::hasColumn($table, 'tracking_number')) {
+            return $rows;
+        }
+
+        $key = static fn ($v): string => mb_strtolower(trim((string) $v));
+        $orders = [];
+        foreach ($rows as $row) {
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $k = $key($row['order_number'] ?? '');
+            if ($k !== '') {
+                $orders[$k] = trim((string) $row['order_number']);
+            }
+        }
+        if ($orders === []) {
+            return $rows;
+        }
+
+        $map = [];
+        foreach (array_chunk(array_values($orders), 500) as $chunk) {
+            $found = DB::table('order_fulfillment_trackings')
+                ->whereIn('order_id', $chunk)
+                ->whereNotNull('tracking_number')
+                ->where('tracking_number', '!=', '')
+                ->orderByDesc('id')
+                ->get(['order_id', 'sku', 'tracking_number']);
+            foreach ($found as $rec) {
+                $ok = $key($rec->order_id);
+                $tn = trim((string) $rec->tracking_number);
+                $map[$ok]['any'] ??= $tn;
+                $sk = $key($rec->sku ?? '');
+                if ($sk !== '') {
+                    $map[$ok]['sku'][$sk] ??= $tn;
+                }
+            }
+        }
+
+        foreach ($rows as $i => $row) {
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $ok = $key($row['order_number'] ?? '');
+            if ($ok === '' || ! isset($map[$ok])) {
+                continue;
+            }
+            $tn = $map[$ok]['sku'][$key($row['sku'] ?? '')] ?? $map[$ok]['any'] ?? null;
+            if ($tn === null || $tn === '') {
+                continue;
+            }
+            $rows[$i]['tracking_number'] = $tn;
+            if (! empty($row['id'])) {
+                DB::table($table)
+                    ->where('id', (int) $row['id'])
+                    ->where(function ($q) {
+                        $q->whereNull('tracking_number')->orWhere('tracking_number', '');
+                    })
+                    ->update(['tracking_number' => mb_substr($tn, 0, 50)]);
+            }
+        }
+
+        return $rows;
+    }
     /**
      * Adds `label_date` (raw) and `label_date_display` to each row: when the shipping label was created.
      * Source: Veeqo billing shipments (`shipment_created_at`), matched by tracking number first, then by order number;
