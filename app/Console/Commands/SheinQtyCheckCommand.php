@@ -2,8 +2,10 @@
 
 namespace App\Console\Commands;
 
-use App\Models\ShopifySku;
-use App\Services\MarketplaceManager\MarketplaceMismatchInventoryPass;
+use App\Models\SheinListingStatus;
+
+use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
+
 
 use App\Services\MarketplaceManager\SheinInventorySyncService;
 use App\Services\SheinApiService;
@@ -44,19 +46,21 @@ class SheinQtyCheckCommand extends Command
             $this->info('=== '.$sku.' ===');
 
             try {
-                $live = $shopify->getInventoryQuantitiesBySku([$sku]);
+                // Same source the push uses: live Admin API merged with the listings page's Shopify qty.
+                $live = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush([], [$sku], true);
             } catch (\Throwable $e) {
                 $live = ['error' => $e->getMessage()];
             }
-            $this->line('Shopify live qty: '.json_encode($live));
+            $this->line('Shopify qty (as pushed): '.json_encode($live));
 
-            $resolved = $api->resolvePlatformSkuCodesForSellerSkus([$sku], [], true);
+            $resolved = $api->resolvePlatformSkuCodesForSellerSkus([$sku], SheinListingStatus::spuNamesForSellerSkus([$sku]), true);
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             $hit = ($norm !== '' && isset($resolved[$norm])) ? $resolved[$norm] : ($resolved[$sku] ?? null);
             $this->line('Shein skuCode lookup: '.json_encode($hit));
             $code = trim((string) ($hit['sku_code'] ?? ''));
             if ($code === '') {
-                $this->warn('No skuCode: Shein cannot be pushed for this SKU. Run: php artisan shein:probe-sku "'.$sku.'"');
+                $this->warn('No skuCode: Shein cannot be pushed for this SKU. Shein probe:');
+                $this->line(json_encode($api->probeSku($sku), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
                 continue;
             }
