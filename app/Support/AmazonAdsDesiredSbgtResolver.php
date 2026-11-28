@@ -22,9 +22,10 @@ final class AmazonAdsDesiredSbgtResolver
      * @param  array<string, float|array{rating?: mixed}>|null  $reviewRatingByCid  test/override map; null loads the campaign SKU rating used by the SBGT column
      * @param  array<string, float|null>|null  $dilOut  filled with each campaign's Inv Dil% (campaign id => Dil%)
      * @param  array<string, float|null>|null  $ratingOut  filled with each campaign's review rating (campaign id => rating)
+     * @param  array<string, float|null>|null  $priceOut  filled with each campaign's price used by the Price cap rule (campaign id => price)
      * @return array<string, int|null>
      */
-    public static function sbgtForCampaigns(iterable $campaigns, ?string $channel = null, ?array $lifetimeAcosByCid = null, ?array $reviewRatingByCid = null, bool $applyCap = true, ?array &$dilOut = null, ?array &$ratingOut = null): array
+    public static function sbgtForCampaigns(iterable $campaigns, ?string $channel = null, ?array $lifetimeAcosByCid = null, ?array $reviewRatingByCid = null, bool $applyCap = true, ?array &$dilOut = null, ?array &$ratingOut = null, ?array &$priceOut = null): array
     {
         $rows = [];
         $names = [];
@@ -138,6 +139,7 @@ final class AmazonAdsDesiredSbgtResolver
                 $bgtAcos = is_numeric($acos) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $acos) : null;
             }
 
+            $priceVal = isset($gm['price']) && is_numeric($gm['price']) ? (float) $gm['price'] : null;
             $bgtPrc = AmazonAdsBgtPrcRule::apply($gm['price'] ?? null)['bgt'] ?? null;
             $bgtReviews = AmazonAdsBgtReviewsRule::apply($rating)['bgt'] ?? null;
             $bgtDil = AmazonAdsBgtDilRule::apply($dilVal)['bgt'] ?? null;
@@ -158,9 +160,12 @@ final class AmazonAdsDesiredSbgtResolver
             if (is_array($ratingOut)) {
                 $ratingOut[$cid] = $rating;
             }
+            if (is_array($priceOut)) {
+                $priceOut[$cid] = $priceVal;
+            }
             // BGT CAP rules: yellow / red ad types and high Inv Dil% campaigns are capped at their $ amount.
             if ($applyCap) {
-                $sum = AmazonAdsBgtCapRule::apply($sum, $name, $dilVal, $rating);
+                $sum = AmazonAdsBgtCapRule::apply($sum, $name, $dilVal, $rating, $priceVal);
             }
             $out[$cid] = $sum;
         }

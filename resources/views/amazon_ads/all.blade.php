@@ -2280,6 +2280,38 @@
                         </div>
                         <div class="small text-muted mt-1">If a campaign's review rating is from the first value up to (not including) the second, its SBGT is capped at the amount. Where several caps apply, the lowest one wins.</div>
                     </div>
+                    <div class="border rounded p-2 mb-2 bg-light" id="amazonAdsBgtCapPriceCard">
+                        <div class="fw-semibold small mb-1">Price</div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 small mb-1">
+                            <span>Up to $</span>
+                            <input type="number" min="0" max="100000" step="any" value="20" class="form-control form-control-sm" style="max-width: 80px;" id="amazonAdsBgtCapPriceLowUpto" aria-label="Price low limit">
+                            <span>&rarr; cap ads BGT at</span>
+                            <div class="input-group input-group-sm" style="max-width: 100px;">
+                                <span class="input-group-text">$</span>
+                                <input type="number" min="0" max="9999" step="1" value="1" class="form-control" id="amazonAdsBgtCapPriceLowCap" aria-label="Price low cap">
+                            </div>
+                            <span class="text-muted ms-auto"><strong id="amazonAdsBgtCapPriceLowCount">0 of 0</strong></span>
+                        </div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 small mb-1">
+                            <span>Above the first, up to $</span>
+                            <input type="number" min="0" max="100000" step="any" value="50" class="form-control form-control-sm" style="max-width: 80px;" id="amazonAdsBgtCapPriceMidUpto" aria-label="Price mid limit">
+                            <span>&rarr; cap ads BGT at</span>
+                            <div class="input-group input-group-sm" style="max-width: 100px;">
+                                <span class="input-group-text">$</span>
+                                <input type="number" min="0" max="9999" step="1" value="2" class="form-control" id="amazonAdsBgtCapPriceMidCap" aria-label="Price mid cap">
+                            </div>
+                            <span class="text-muted ms-auto"><strong id="amazonAdsBgtCapPriceMidCount">0 of 0</strong></span>
+                        </div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 small">
+                            <span>Above the second &rarr; cap ads BGT at</span>
+                            <div class="input-group input-group-sm" style="max-width: 100px;">
+                                <span class="input-group-text">$</span>
+                                <input type="number" min="0" max="9999" step="1" value="3" class="form-control" id="amazonAdsBgtCapPriceHighCap" aria-label="Price high cap">
+                            </div>
+                            <span class="text-muted ms-auto"><strong id="amazonAdsBgtCapPriceHighCount">0 of 0</strong></span>
+                        </div>
+                        <div class="small text-muted mt-1">Caps SBGT by the campaign's price (all ad types, any ACOS color). Defaults: up to $20 = $1, $20&ndash;$50 = $2, more than $50 = $3. Campaigns with no price are skipped. Where several caps apply, the lowest one wins.</div>
+                    </div>
                     <div class="small text-muted mb-1">Count = budgets lowered by the cap of all campaigns in that color.</div>
                     <div class="small">Total capped BGTs: <strong id="amazonAdsBgtCapTotal">0</strong> <span class="text-muted" id="amazonAdsBgtCapNote"></span></div>
                     <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtCapError" role="alert"></p>
@@ -10817,6 +10849,17 @@
                     var rc = counts && counts[pair[1]] ? counts[pair[1]] : {};
                     if (el) el.textContent = (Number(rc.capped) || 0) + ' of ' + (Number(rc.matched) || 0);
                 });
+                var pr = rule.price || {};
+                setVal('amazonAdsBgtCapPriceLowUpto', pr.low_upto, 20);
+                setVal('amazonAdsBgtCapPriceLowCap', pr.low_cap, 1);
+                setVal('amazonAdsBgtCapPriceMidUpto', pr.mid_upto, 50);
+                setVal('amazonAdsBgtCapPriceMidCap', pr.mid_cap, 2);
+                setVal('amazonAdsBgtCapPriceHighCap', pr.high_cap, 3);
+                [['amazonAdsBgtCapPriceLowCount', 'price_low'], ['amazonAdsBgtCapPriceMidCount', 'price_mid'], ['amazonAdsBgtCapPriceHighCount', 'price_high']].forEach(function (pair) {
+                    var el = amzCapEl(pair[0]);
+                    var pc = counts && counts[pair[1]] ? counts[pair[1]] : {};
+                    if (el) el.textContent = (Number(pc.capped) || 0) + ' of ' + (Number(pc.matched) || 0);
+                });
                 var tot = amzCapEl('amazonAdsBgtCapTotal');
                 if (tot) tot.textContent = String(counts && counts.total ? counts.total : 0);
                 amzCapSyncLabel();
@@ -10868,6 +10911,14 @@
                 else if (!isFinite(revMidFrom) || !isFinite(revMidTo) || revMidFrom < 0 || revMidTo > 5) revMsg = 'Reviews range must be between 0 and 5.';
                 else if (revMidFrom >= revMidTo) revMsg = 'Reviews range: the first value must be lower than the second.';
                 else if (!isFinite(revMidCap) || revMidCap < 0) revMsg = 'Reviews range cap must be $0 or more.';
+                var priceLowUpto = numOf('amazonAdsBgtCapPriceLowUpto'), priceLowCap = numOf('amazonAdsBgtCapPriceLowCap');
+                var priceMidUpto = numOf('amazonAdsBgtCapPriceMidUpto'), priceMidCap = numOf('amazonAdsBgtCapPriceMidCap');
+                var priceHighCap = numOf('amazonAdsBgtCapPriceHighCap');
+                if (!revMsg) {
+                    if (!isFinite(priceLowUpto) || !isFinite(priceMidUpto) || priceLowUpto < 0 || priceMidUpto < 0) revMsg = 'Price limits must be $0 or more.';
+                    else if (priceLowUpto >= priceMidUpto) revMsg = 'Price: the first limit must be lower than the second.';
+                    else if (!isFinite(priceLowCap) || !isFinite(priceMidCap) || !isFinite(priceHighCap) || priceLowCap < 0 || priceMidCap < 0 || priceHighCap < 0) revMsg = 'Price caps must be $0 or more.';
+                }
                 if (revMsg) {
                     if (err) { err.textContent = revMsg; err.classList.remove('d-none'); }
                     return;
@@ -10879,7 +10930,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ enabled: !!(en && en.checked), caps: caps, dil: { above: dilAbove, cap: dilCap }, rev_low: { below: revLowBelow, cap: revLowCap }, rev_mid: { from: revMidFrom, to: revMidTo, cap: revMidCap } })
+                    body: JSON.stringify({ enabled: !!(en && en.checked), caps: caps, dil: { above: dilAbove, cap: dilCap }, rev_low: { below: revLowBelow, cap: revLowCap }, rev_mid: { from: revMidFrom, to: revMidTo, cap: revMidCap }, price: { low_upto: priceLowUpto, low_cap: priceLowCap, mid_upto: priceMidUpto, mid_cap: priceMidCap, high_cap: priceHighCap } })
                 })
                     .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
                     .then(function (out) {

@@ -6633,6 +6633,7 @@ class AmazonAdsController extends Controller
                 'dil' => (array) $request->input('dil', []),
                 'rev_low' => (array) $request->input('rev_low', []),
                 'rev_mid' => (array) $request->input('rev_mid', []),
+                'price' => (array) $request->input('price', []),
             ]);
             self::forgetRawDataCache();
         } catch (\InvalidArgumentException $e) {
@@ -8153,7 +8154,8 @@ class AmazonAdsController extends Controller
                     $arr['sbgt'],
                     (string) ($rowArr['campaignName'] ?? ''),
                     isset($arr['bgt_dil_value']) && is_numeric($arr['bgt_dil_value']) ? (float) $arr['bgt_dil_value'] : null,
-                    isset($arr['bgt_reviews_rating']) && is_numeric($arr['bgt_reviews_rating']) ? (float) $arr['bgt_reviews_rating'] : null
+                    isset($arr['bgt_reviews_rating']) && is_numeric($arr['bgt_reviews_rating']) ? (float) $arr['bgt_reviews_rating'] : null,
+                    isset($arr['bgt_prc_price']) && is_numeric($arr['bgt_prc_price']) ? (float) $arr['bgt_prc_price'] : null
                 );
                 if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
                     $wantSbgt = AmazonAdsSbgt::storageValue($arr['sbgt'] ?? null);
@@ -9076,7 +9078,7 @@ class AmazonAdsController extends Controller
                     AmazonAdsBgtDilRule::apply($dil)['bgt'],
                     AmazonAdsBgtGpftRule::apply(isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null)['bgt'],
                     AmazonAdsBgtFlagRule::apply(self::flagGapForSortRow($r, $dbColumns, $l30FlagMap, $lk, isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null))['bgt']
-                ), $cn, is_numeric($dil) ? (float) $dil : null, $rating);
+                ), $cn, is_numeric($dil) ? (float) $dil : null, $rating, $pricePrc !== null && is_numeric($pricePrc) ? (float) $pricePrc : null);
             } elseif ($column === 'ruleStatus') {
                 $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
                 $decision = AmazonAdsPauseRule::decide($pauseRule, [

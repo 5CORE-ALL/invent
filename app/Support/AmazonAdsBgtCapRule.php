@@ -48,9 +48,24 @@ final class AmazonAdsBgtCapRule
     /** ... is capped at this $ amount. */
     public const DEFAULT_REV_MID_CAP = 1;
 
+    /** Price rule: price up to this ($) is capped at DEFAULT_PRICE_LOW_CAP ... */
+    public const DEFAULT_PRICE_LOW_UPTO = 20;
+
+    public const DEFAULT_PRICE_LOW_CAP = 1;
+
+    /** ... above LOW_UPTO and up to this ($) at DEFAULT_PRICE_MID_CAP ... */
+    public const DEFAULT_PRICE_MID_UPTO = 50;
+
+    public const DEFAULT_PRICE_MID_CAP = 2;
+
+    /** ... and above MID_UPTO at DEFAULT_PRICE_HIGH_CAP. */
+    public const DEFAULT_PRICE_HIGH_CAP = 3;
+
+    public const MAX_PRICE = 100000;
+
     private const TIER_CACHE_KEY = 'amazon_ads_bgt_cap_tiers_v2';
 
-    private const COUNT_CACHE_KEY = 'amazon_ads_bgt_cap_counts_v4';
+    private const COUNT_CACHE_KEY = 'amazon_ads_bgt_cap_counts_v5';
 
     /** missing-page ACOS tier => colour name used by this rule */
     private const COLOURS = ['mid' => 'yellow', 'high' => 'red'];
@@ -81,6 +96,21 @@ final class AmazonAdsBgtCapRule
                 'to' => (float) self::DEFAULT_REV_MID_TO,
                 'cap' => self::DEFAULT_REV_MID_CAP,
             ],
+            'price' => self::defaultPrice(),
+        ];
+    }
+
+    /**
+     * @return array{low_upto: float, low_cap: int, mid_upto: float, mid_cap: int, high_cap: int}
+     */
+    private static function defaultPrice(): array
+    {
+        return [
+            'low_upto' => (float) self::DEFAULT_PRICE_LOW_UPTO,
+            'low_cap' => self::DEFAULT_PRICE_LOW_CAP,
+            'mid_upto' => (float) self::DEFAULT_PRICE_MID_UPTO,
+            'mid_cap' => self::DEFAULT_PRICE_MID_CAP,
+            'high_cap' => self::DEFAULT_PRICE_HIGH_CAP,
         ];
     }
 
@@ -134,6 +164,20 @@ final class AmazonAdsBgtCapRule
             'from' => $from,
             'to' => $to,
             'cap' => self::normalizeDollarCap($mid['cap'] ?? self::DEFAULT_REV_MID_CAP, 'Reviews (mid) cap'),
+        ];
+
+        $price = is_array($input['price'] ?? null) ? $input['price'] : [];
+        $lowUpto = self::normalizeThreshold($price['low_upto'] ?? self::DEFAULT_PRICE_LOW_UPTO, 'Price (low) up to', self::MAX_PRICE);
+        $midUpto = self::normalizeThreshold($price['mid_upto'] ?? self::DEFAULT_PRICE_MID_UPTO, 'Price (mid) up to', self::MAX_PRICE);
+        if ($lowUpto >= $midUpto) {
+            throw new \InvalidArgumentException('Price: the first limit must be lower than the second.');
+        }
+        $base['price'] = [
+            'low_upto' => $lowUpto,
+            'low_cap' => self::normalizeDollarCap($price['low_cap'] ?? self::DEFAULT_PRICE_LOW_CAP, 'Price (low) cap'),
+            'mid_upto' => $midUpto,
+            'mid_cap' => self::normalizeDollarCap($price['mid_cap'] ?? self::DEFAULT_PRICE_MID_CAP, 'Price (mid) cap'),
+            'high_cap' => self::normalizeDollarCap($price['high_cap'] ?? self::DEFAULT_PRICE_HIGH_CAP, 'Price (high) cap'),
         ];
 
         return $base;
@@ -219,14 +263,45 @@ final class AmazonAdsBgtCapRule
      * - its review rating falls in a Reviews rule range.
      * Where several apply the lowest cap wins. Only lowers a positive budget.
      */
-    public static function apply(?int $sbgt, ?string $campaignName, ?float $dil = null, ?float $rating = null): ?int
+    public static function apply(?int $sbgt, ?string $campaignName, ?float $dil = null, ?float $rating = null, ?float $price = null): ?int
     {
         if ($sbgt === null || $sbgt <= 0 || ! self::enabled()) {
             return $sbgt;
         }
-        $cap = self::lowestCap([self::capForCampaign($campaignName), self::dilCap($dil), self::reviewsCap($rating)]);
+        $cap = self::lowestCap([self::capForCampaign($campaignName), self::dilCap($dil), self::reviewsCap($rating), self::priceCap($price)]);
 
         return ($cap !== null && $sbgt > $cap) ? $cap : $sbgt;
+    }
+
+    /**
+     * Cap from the Price rule: up to $20 = $1, above $20 up to $50 = $2, above $50 = $3 (editable).
+     * Unknown prices (none / 0 or less) are never capped.
+     */
+    public static function priceCap(?float $price): ?int
+    {
+        if ($price === null || ! is_finite($price) || $price <= 0) {
+            return null;
+        }
+        $rule = self::resolvedRule()['price'];
+        if ($price <= $rule['low_upto']) {
+            return $rule['low_cap'];
+        }
+
+        return $price <= $rule['mid_upto'] ? $rule['mid_cap'] : $rule['high_cap'];
+    }
+
+    /** Price slab of a price: low, mid or high (null when unknown). */
+    public static function priceSlab(?float $price): ?string
+    {
+        if ($price === null || ! is_finite($price) || $price <= 0) {
+            return null;
+        }
+        $rule = self::resolvedRule()['price'];
+        if ($price <= $rule['low_upto']) {
+            return 'low';
+        }
+
+        return $price <= $rule['mid_upto'] ? 'mid' : 'high';
     }
 
     /**
@@ -366,7 +441,7 @@ final class AmazonAdsBgtCapRule
         foreach (AmazonAdsAcosPauseRules::keys() as $key) {
             $zero[$key] = ['yellow' => 0, 'red' => 0];
         }
-        $out = ['total' => 0, 'counts' => $zero, 'matched' => $zero, 'dil' => ['capped' => 0, 'matched' => 0], 'rev_low' => ['capped' => 0, 'matched' => 0], 'rev_mid' => ['capped' => 0, 'matched' => 0]];
+        $out = ['total' => 0, 'counts' => $zero, 'matched' => $zero, 'dil' => ['capped' => 0, 'matched' => 0], 'rev_low' => ['capped' => 0, 'matched' => 0], 'rev_mid' => ['capped' => 0, 'matched' => 0], 'price_low' => ['capped' => 0, 'matched' => 0], 'price_mid' => ['capped' => 0, 'matched' => 0], 'price_high' => ['capped' => 0, 'matched' => 0]];
 
         try {
             $map = self::tierMap();
@@ -376,6 +451,7 @@ final class AmazonAdsBgtCapRule
                 foreach (array_chunk($campaigns, 500) as $chunk) {
                     $dilByCid = [];
                     $ratingByCid = [];
+                    $priceByCid = [];
                     $uncapped = AmazonAdsDesiredSbgtResolver::sbgtForCampaigns(
                         array_map(static fn (array $c): array => [
                             'campaign_id' => $c['campaign_id'],
@@ -386,7 +462,8 @@ final class AmazonAdsBgtCapRule
                         null,
                         false,
                         $dilByCid,
-                        $ratingByCid
+                        $ratingByCid,
+                        $priceByCid
                     );
                     foreach ($chunk as $c) {
                         $hit = $map[$c['norm']] ?? null;
@@ -418,7 +495,16 @@ final class AmazonAdsBgtCapRule
                                 $out[$revKey]['capped']++;
                             }
                         }
-                        $cap = self::lowestCap(array_merge([$tierCap, $dilCap], $revCaps));
+                        $price = $priceByCid[$c['campaign_id']] ?? null;
+                        $priceCap = self::priceCap($price);
+                        $priceSlab = self::priceSlab($price);
+                        if ($priceCap !== null && $priceSlab !== null) {
+                            $out['price_'.$priceSlab]['matched']++;
+                            if ($sbgt !== null && $sbgt > $priceCap) {
+                                $out['price_'.$priceSlab]['capped']++;
+                            }
+                        }
+                        $cap = self::lowestCap(array_merge([$tierCap, $dilCap, $priceCap], $revCaps));
                         if ($sbgt !== null && $cap !== null && $sbgt > $cap) {
                             $out['total']++;
                         }
