@@ -1,5 +1,7 @@
 {!! view('customer-care.qc_and_packing', [
     'pageTitle' => 'Carrier Claims',
+    // SOP icon beside the page title, opens the Google Doc in a new tab.
+    'sopUrl' => 'https://docs.google.com/document/d/1w1cE0w5QDZzMeV2-p1Tj2A3EfloB418Pvxh0HUdr_Vs/edit?tab=t.0',
     'addIssueButtonText' => 'Carrier Claims',
     'hideIntroBanner' => true,
     'recordsTitle' => '',
@@ -30,6 +32,8 @@
     'showClaimableColumn' => true,
     // Notes beside Claimable: why the case is not claimable (50 words max).
     'showClaimableRemarkColumn' => true,
+    // Notes live in the edit modal instead of a table column.
+    'claimableRemarkInModal' => true,
     'showClaimFiledColumn' => true,
     'showAmpUsdColumn' => true,
     // "Amt Rec" (Amount Received) — inline-editable text input that mirrors
@@ -37,6 +41,8 @@
     'showAmtRecColumn' => true,
     'showClaimReceivedColumn' => true,
     'showCarrierColumn' => true,
+    // Carrier column shows logo + name only (read-only); change it from the edit modal.
+    'carrierLogoReadOnly' => true,
     // Show Carrier immediately after Action so it is visible on the homepage
     // without scrolling past Details / History.
     'carrierColumnAfterAction' => true,
@@ -46,6 +52,8 @@
     // Per-row edit history button (clock icon) opens audit trail modal.
     'showRowHistoryColumn' => true,
     'hideCloseColumn' => true,
+    // History (clock) column sits right before Created By; both are frozen at the right edge.
+    'historyBeforeCreatedBy' => true,
     // Oldest issue first (Created By date ascending).
     'oldestFirst' => true,
     'rowHistoryBaseUrl' => url('/customer-care/all-issues/issues'),

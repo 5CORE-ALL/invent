@@ -701,6 +701,23 @@
             vertical-align: middle;
         }
 
+        .orders-hold-table .carrier-logo-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .orders-hold-table .carrier-logo-img {
+            height: 22px;
+            width: 40px;
+            object-fit: contain;
+            flex: 0 0 auto;
+        }
+        .orders-hold-table .carrier-logo-name {
+            font-weight: 600;
+            font-size: 0.8125rem;
+        }
         .orders-hold-table .carrier-issue-carrier-select {
             width: 100%;
             font-size: 0.8125rem;
@@ -708,6 +725,33 @@
             padding-bottom: 0.15rem;
         }
 
+        /* Frozen right-hand columns (History + Created By): stay visible while the table scrolls sideways. */
+        .orders-hold-table .qc-frozen-right {
+            position: sticky;
+            background-color: #fff;
+            z-index: 2;
+            box-sizing: border-box;
+        }
+        .orders-hold-table thead .qc-frozen-right {
+            background-color: #f8f9fa;
+            z-index: 3;
+        }
+        .orders-hold-table .qc-frozen-created-by {
+            right: 0;
+            width: 96px;
+            min-width: 96px;
+            max-width: 96px;
+        }
+        .orders-hold-table .qc-frozen-history {
+            right: 96px;
+            width: 56px;
+            min-width: 56px;
+            max-width: 56px;
+            box-shadow: -3px 0 4px -2px rgba(0, 0, 0, 0.18);
+        }
+        .orders-hold-table tbody tr:hover .qc-frozen-right {
+            background-color: #eef2f7;
+        }
         .orders-hold-col-created-by {
             width: 8%;
             min-width: 90px;
@@ -1544,6 +1588,14 @@
 @endsection
 
 @section('content')
+    @if (!empty($sopUrl ?? null))
+        @push('page-title-after')
+            <a href="{{ $sopUrl }}" target="_blank" rel="noopener noreferrer" title="Open SOP" aria-label="Open SOP"
+                style="display:inline-flex;align-items:center;justify-content:center;line-height:1;text-decoration:none;">
+                <img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" style="width:36px;height:36px;display:block;">
+            </a>
+        @endpush
+    @endif
     @include('layouts.shared.page-title', [
         'page_title' => $pageTitle ?? 'QC PKG issues',
         'sub_title' => 'Customer Care',
@@ -1804,7 +1856,7 @@
                                     @if ($showDetailsColumn ?? false)
                                         <th class="orders-hold-col-action text-center">Details</th>
                                     @endif
-                                    @if ($showRowHistoryColumn ?? false)
+                                    @if (($showRowHistoryColumn ?? false) && !($historyBeforeCreatedBy ?? false))
                                         <th class="orders-hold-col-action text-center">History</th>
                                     @endif
                                     {{-- Carrier column stays visible when $showCarrierColumn is set.
@@ -1834,7 +1886,7 @@
                                                 title="Click to filter green or red">Claim<br>able<span
                                                     class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
-                                        @if ($showClaimableRemarkColumn ?? false)
+                                        @if (($showClaimableRemarkColumn ?? false) && !($claimableRemarkInModal ?? false))
                                             <th class="orders-hold-col-claimable-remark text-center"
                                                 title="Why this case is not claimable (50 words max)">Notes</th>
                                         @endif
@@ -1870,7 +1922,10 @@
                                     @if (!($hideCloseColumn ?? false))
                                         <th class="orders-hold-col-close">Close</th>
                                     @endif
-                                    <th class="orders-hold-col-created-by">Created By</th>
+                                    @if (($showRowHistoryColumn ?? false) && ($historyBeforeCreatedBy ?? false))
+                                        <th class="orders-hold-col-action text-center qc-frozen-right qc-frozen-history">History</th>
+                                    @endif
+                                    <th class="orders-hold-col-created-by{{ ($historyBeforeCreatedBy ?? false) ? ' qc-frozen-right qc-frozen-created-by' : '' }}">Created By</th>
                                     {{-- Optional Dept column rendered AFTER Created By
                                          (used by /customer-care/carrier-and-claim where
                                          the original Dept column is hidden). --}}
@@ -1887,7 +1942,7 @@
                                                 title="Click to filter green or red">Claim<br>able<span
                                                     class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
-                                        @if ($showClaimableRemarkColumn ?? false)
+                                        @if (($showClaimableRemarkColumn ?? false) && !($claimableRemarkInModal ?? false))
                                             <th class="orders-hold-col-claimable-remark text-center"
                                                 title="Why this case is not claimable (50 words max)">Notes</th>
                                         @endif
@@ -2368,6 +2423,16 @@
                                 </div>
                             @endif
 
+                            @if (($showClaimableRemarkColumn ?? false) && ($claimableRemarkInModal ?? false))
+                                {{-- Notes: why this case is not claimable (50 words max). Shown when editing an existing issue. --}}
+                                <div class="col-12 d-none" id="hold_issue_claimable_remark_wrap">
+                                    <label for="hold_issue_claimable_remark" class="form-label">Notes
+                                        <span class="text-muted small fw-normal">(why not claimable, 50 words max)</span></label>
+                                    <textarea class="form-control" id="hold_issue_claimable_remark" rows="2"
+                                        placeholder="Why not claimable?" aria-label="Not claimable reason"></textarea>
+                                    <div class="text-end small text-muted" id="hold_issue_claimable_remark_count">0/50</div>
+                                </div>
+                            @endif
                             <div class="col-md-6">
                                 <label for="hold_issue_text" class="form-label">Root Cause Found
                                     @if ($requireRootCauseFound ?? true)
@@ -2628,6 +2693,7 @@
             const hideActionRemark = @json((bool) ($hideActionRemark ?? false));
             const requireRootCauseFound = @json((bool) ($requireRootCauseFound ?? true));
             const showRowHistoryColumn = @json((bool) ($showRowHistoryColumn ?? false));
+            const historyBeforeCreatedBy = @json((bool) ($historyBeforeCreatedBy ?? false));
             const hideCloseColumn = @json((bool) ($hideCloseColumn ?? false));
             const oldestFirstOrder = @json((bool) ($oldestFirst ?? false));
             const hideGroupBadge = @json((bool) ($hideGroupBadge ?? false));
@@ -2693,6 +2759,7 @@
             const showClaimFiledColumn = @json((bool) ($showClaimFiledColumn ?? false));
             const showClaimableColumn = @json((bool) ($showClaimableColumn ?? false));
             const showClaimableRemarkColumn = @json((bool) ($showClaimableRemarkColumn ?? false));
+            const claimableRemarkInModal = @json((bool) (($showClaimableRemarkColumn ?? false) && ($claimableRemarkInModal ?? false)));
             const showAmpUsdColumn = @json((bool) ($showAmpUsdColumn ?? false));
             const showAmtRecColumn = @json((bool) ($showAmtRecColumn ?? false));
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
@@ -3518,7 +3585,7 @@
                     ? ' title="' + escAttr(titleParts.join(' · ')) + '"'
                     : '';
 
-                return '<td class="orders-hold-col-created-by"' + titleAttr + '>' +
+                return '<td class="orders-hold-col-created-by' + (historyBeforeCreatedBy ? ' qc-frozen-right qc-frozen-created-by' : '') + '"' + titleAttr + '>' +
                     '<div class="created-by-combo">' +
                     '<div class="created-by-name">' + escapeHtml(name) + '</div>' +
                     dateHtml +
@@ -3579,7 +3646,27 @@
                     '</td>';
             }
 
+            // Carrier logos are saved locally in public/images/carriers (fetched once from the internet).
+            const CARRIER_LOGOS = {
+                USPS: @json(asset('images/carriers/usps.png')),
+                FEDEX: @json(asset('images/carriers/fedex.png')),
+                UPS: @json(asset('images/carriers/ups.png')),
+                GOFO: @json(asset('images/carriers/gofo.png')),
+            };
+            const carrierLogoReadOnly = @json((bool) ($carrierLogoReadOnly ?? false));
+
+            function carrierLogoCellHtml(row) {
+                const v = String(row.issue_carrier ?? '').trim();
+                if (!v) return '<td class="orders-hold-col-carrier text-center"><span class="text-muted">—</span></td>';
+                const logo = CARRIER_LOGOS[v.toUpperCase()];
+                return '<td class="orders-hold-col-carrier text-center" title="' + escAttr(v) + '">' +
+                    '<span class="carrier-logo-cell">' +
+                    (logo ? '<img src="' + escAttr(logo) + '" alt="' + escAttr(v) + '" class="carrier-logo-img">' : '') +
+                    '<span class="carrier-logo-name">' + escapeHtml(v) + '</span></span></td>';
+            }
+
             function carrierSelectCellHtml(row) {
+                if (carrierLogoReadOnly) return carrierLogoCellHtml(row);
                 const v = String(row.issue_carrier ?? '').trim();
                 let html = '<td class="orders-hold-col-carrier">' +
                     '<select class="form-select form-select-sm carrier-issue-carrier-select" data-issue-id="' + escAttr(
@@ -4156,6 +4243,64 @@
                 return '<td class="qc-enhance-cell text-center">' + iconHtml + '</td>';
             }
 
+            function syncModalClaimableRemarkCount() {
+                const ta = document.getElementById('hold_issue_claimable_remark');
+                const cnt = document.getElementById('hold_issue_claimable_remark_count');
+                if (ta && cnt) cnt.textContent = countWords(ta.value) + '/' + CLAIMABLE_REMARK_MAX_WORDS;
+            }
+
+            function setModalClaimableRemark(record) {
+                if (!claimableRemarkInModal) return;
+                const wrap = document.getElementById('hold_issue_claimable_remark_wrap');
+                const ta = document.getElementById('hold_issue_claimable_remark');
+                if (!wrap || !ta) return;
+                if (record) {
+                    ta.value = clampWords(String(record.claimable_remark ?? ''), CLAIMABLE_REMARK_MAX_WORDS);
+                    wrap.classList.remove('d-none');
+                } else {
+                    ta.value = '';
+                    wrap.classList.add('d-none');
+                }
+                syncModalClaimableRemarkCount();
+            }
+
+            async function saveClaimableRemarkFromModal() {
+                if (!claimableRemarkInModal || editingIssueId === null) return;
+                const ta = document.getElementById('hold_issue_claimable_remark');
+                if (!ta) return;
+                const newV = clampWords(ta.value, CLAIMABLE_REMARK_MAX_WORDS);
+                const r = holdIssueRows.find(x => String(x.id) === String(editingIssueId));
+                const prev = r ? clampWords(String(r.claimable_remark ?? ''), CLAIMABLE_REMARK_MAX_WORDS) : '';
+                if (newV === prev) return;
+                try {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(editingIssueId) +
+                        '/claimable-remark', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({ claimable_remark: newV.length ? newV : null }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.message || 'Save failed');
+                    if (r) r.claimable_remark = data.claimable_remark ?? newV;
+                } catch (e) {
+                    showAlert(e.message || 'Could not save notes');
+                }
+            }
+
+            document.addEventListener('input', (event) => {
+                if (!claimableRemarkInModal) return;
+                const ta = event.target.closest('#hold_issue_claimable_remark');
+                if (!ta) return;
+                if (countWords(ta.value) > CLAIMABLE_REMARK_MAX_WORDS) {
+                    ta.value = clampWords(ta.value, CLAIMABLE_REMARK_MAX_WORDS);
+                }
+                syncModalClaimableRemarkCount();
+            });
             async function saveCtnPkgFromModal() {
                 if (!ctnPkgInput) return;
                 const productId = productMasterIdInput ? parseInt(productMasterIdInput.value, 10) : NaN;
@@ -4548,7 +4693,7 @@
 
             function qcRowHistoryCellHtml(row) {
                 const id = row?.id != null ? String(row.id) : '';
-                return '<td class="orders-hold-col-action text-center qc-row-history-cell">' +
+                return '<td class="orders-hold-col-action text-center qc-row-history-cell' + (historyBeforeCreatedBy ? ' qc-frozen-right qc-frozen-history' : '') + '">' +
                     '<button type="button" class="qc-row-history-btn" data-id="' + escAttr(id) +
                     '" title="View this issue\'s edit history" aria-label="View history">' +
                     '<i class="bi bi-clock-history"></i></button>' +
@@ -5180,7 +5325,7 @@
                     @if ($showDetailsColumn ?? false)
                         qcDetailsCellHtml(row) +
                     @endif
-                    @if ($showRowHistoryColumn ?? false)
+                    @if (($showRowHistoryColumn ?? false) && !($historyBeforeCreatedBy ?? false))
                         qcRowHistoryCellHtml(row) +
                     @endif
                     @if (($showCarrierColumn ?? false) && !($carrierColumnAfterAction ?? false))
@@ -5204,7 +5349,7 @@
                     @if (($showClaimableColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimableCellHtml(row) +
                     @endif
-                    @if (($showClaimableRemarkColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
+                    @if (($showClaimableRemarkColumn ?? false) && !($claimableRemarkInModal ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimableRemarkCellHtml(row) +
                     @endif
                     @if (($showClaimFiledColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
@@ -5232,10 +5377,13 @@
                         '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
                     @endif
                     (hideCloseColumn ? '' : '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>') +
+                        @if (($showRowHistoryColumn ?? false) && ($historyBeforeCreatedBy ?? false))
+                            qcRowHistoryCellHtml(row) +
+                        @endif
                         @if ($mergeCreatedAtIntoCreatedBy ?? false)
                             combinedCreatedByCellHtml(row, 'created_at') +
                         @else
-                            '<td>' + escapeHtml(row.created_by) + '</td>' +
+                            '<td' + (historyBeforeCreatedBy ? ' class="qc-frozen-right qc-frozen-created-by"' : '') + '>' + escapeHtml(row.created_by) + '</td>' +
                         @endif
                         @if ($showDepartmentColumnAfterCreatedBy ?? false)
                             '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
@@ -5246,7 +5394,7 @@
                     @if (($showClaimableColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimableCellHtml(row) +
                     @endif
-                    @if (($showClaimableRemarkColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
+                    @if (($showClaimableRemarkColumn ?? false) && !($claimableRemarkInModal ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimableRemarkCellHtml(row) +
                     @endif
                     @if (($showClaimFiledColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
@@ -5566,6 +5714,7 @@
                 if (action1RemarkInput) action1RemarkInput.value = '';
                 toggleAction1RemarkField();
                 if (trackingNumberInput) trackingNumberInput.value = '';
+                setModalClaimableRemark(null);
                 if (issueLinkInput) issueLinkInput.value = '';
                 replacementTrackingInput.value = '';
                 if (ctnPkgInput) {
@@ -5714,6 +5863,7 @@
                 }
                 toggleAction1RemarkField();
                 if (trackingNumberInput) trackingNumberInput.value = record.tracking_number || '';
+                setModalClaimableRemark(record);
                 if (issueLinkInput) issueLinkInput.value = record.issue_link || '';
                 replacementTrackingInput.value = record.replacement_tracking || '';
                 if (productMasterIdInput) {
@@ -6207,6 +6357,7 @@
                     await saveCtnPkgFromModal();
                     await saveInstructionPkgFromModal();
                     await saveQcEnhanceFromModal();
+                    await saveClaimableRemarkFromModal();
 
                     // Reload so instruction columns reflect saved values
                     await loadHoldIssueRows();
