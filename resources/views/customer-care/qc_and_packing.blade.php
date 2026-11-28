@@ -2423,6 +2423,20 @@
                                 </div>
                             @endif
 
+                            @if (($claimAmountsInModal ?? false) && ($showAmpUsdColumn ?? false))
+                                <div class="col-md-6 d-none" id="hold_issue_amp_usd_wrap">
+                                    <label for="hold_issue_amp_usd" class="form-label">AMT $</label>
+                                    <input type="text" class="form-control" id="hold_issue_amp_usd" maxlength="6"
+                                        inputmode="text" autocomplete="off" placeholder="Claim amount">
+                                </div>
+                            @endif
+                            @if (($claimAmountsInModal ?? false) && ($showAmtRecColumn ?? false))
+                                <div class="col-md-6 d-none" id="hold_issue_amt_rec_wrap">
+                                    <label for="hold_issue_amt_rec" class="form-label">Amt Rec</label>
+                                    <input type="text" class="form-control" id="hold_issue_amt_rec" maxlength="6"
+                                        inputmode="text" autocomplete="off" placeholder="Amount received">
+                                </div>
+                            @endif
                             @if (($showClaimableRemarkColumn ?? false) && ($claimableRemarkInModal ?? false))
                                 {{-- Notes: why this case is not claimable (50 words max). Shown when editing an existing issue. --}}
                                 <div class="col-12 d-none" id="hold_issue_claimable_remark_wrap">
@@ -2762,6 +2776,8 @@
             const claimableRemarkInModal = @json((bool) (($showClaimableRemarkColumn ?? false) && ($claimableRemarkInModal ?? false)));
             const showAmpUsdColumn = @json((bool) ($showAmpUsdColumn ?? false));
             const showAmtRecColumn = @json((bool) ($showAmtRecColumn ?? false));
+            // AMT $ / Amt Rec are read-only in the table and edited from the edit modal.
+            const claimAmountsInModal = @json((bool) (($claimAmountsInModal ?? false) && (($showAmpUsdColumn ?? false) || ($showAmtRecColumn ?? false))));
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
             const showCarrierColumn = @json((bool) ($showCarrierColumn ?? false));
             const showClaimTrackingColumn = @json((bool) ($showClaimTrackingColumn ?? false));
@@ -3837,6 +3853,9 @@
 
             function ampUsdCellHtml(row) {
                 const v = String(row.amp_usd ?? '').slice(0, 6);
+                if (claimAmountsInModal) {
+                    return '<td class="orders-hold-col-amp-usd text-center">' + (v ? escapeHtml(v) : '<span class="text-muted">—</span>') + '</td>';
+                }
                 return '<td class="orders-hold-col-amp-usd">' +
                     '<input type="text" class="form-control form-control-sm carrier-amp-usd-input" maxlength="6" ' +
                     'value="' + escAttr(v) + '" data-issue-id="' + escAttr(String(row.id)) + '" ' +
@@ -3885,6 +3904,9 @@
             // ── "Amt Rec" (Amount Received): mirrors AMT $ ─────────────────────
             function amtRecCellHtml(row) {
                 const v = String(row.amt_rec ?? '').slice(0, 6);
+                if (claimAmountsInModal) {
+                    return '<td class="orders-hold-col-amt-rec text-center">' + (v ? escapeHtml(v) : '<span class="text-muted">—</span>') + '</td>';
+                }
                 return '<td class="orders-hold-col-amt-rec">' +
                     '<input type="text" class="form-control form-control-sm carrier-amt-rec-input" maxlength="6" ' +
                     'value="' + escAttr(v) + '" data-issue-id="' + escAttr(String(row.id)) + '" ' +
@@ -4264,6 +4286,49 @@
                 syncModalClaimableRemarkCount();
             }
 
+            function setModalClaimAmounts(record) {
+                if (!claimAmountsInModal) return;
+                [['hold_issue_amp_usd', 'amp_usd'], ['hold_issue_amt_rec', 'amt_rec']].forEach(([id, key]) => {
+                    const inp = document.getElementById(id);
+                    const wrap = document.getElementById(id + '_wrap');
+                    if (!inp || !wrap) return;
+                    inp.value = record ? String(record[key] ?? '').slice(0, 6) : '';
+                    wrap.classList.toggle('d-none', !record);
+                });
+            }
+
+            async function saveClaimAmountsFromModal() {
+                if (!claimAmountsInModal || editingIssueId === null) return;
+                const r = holdIssueRows.find(x => String(x.id) === String(editingIssueId));
+                const fields = [['hold_issue_amp_usd', 'amp_usd', '/amp-usd'], ['hold_issue_amt_rec', 'amt_rec', '/amt-rec']];
+                let changed = false;
+                for (const [id, key, path] of fields) {
+                    const inp = document.getElementById(id);
+                    if (!inp) continue;
+                    const newV = String(inp.value || '').trim().slice(0, 6);
+                    const prev = r ? String(r[key] ?? '').trim().slice(0, 6) : '';
+                    if (newV === prev) continue;
+                    try {
+                        const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(editingIssueId) + path, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            body: JSON.stringify({ [key]: newV.length ? newV : null }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(data.message || 'Save failed');
+                        if (r) r[key] = newV;
+                        changed = true;
+                    } catch (e) {
+                        showAlert(e.message || 'Could not save claim amount');
+                    }
+                }
+                if (changed) loadClaimsStats();
+            }
             async function saveClaimableRemarkFromModal() {
                 if (!claimableRemarkInModal || editingIssueId === null) return;
                 const ta = document.getElementById('hold_issue_claimable_remark');
@@ -5715,6 +5780,7 @@
                 toggleAction1RemarkField();
                 if (trackingNumberInput) trackingNumberInput.value = '';
                 setModalClaimableRemark(null);
+                setModalClaimAmounts(null);
                 if (issueLinkInput) issueLinkInput.value = '';
                 replacementTrackingInput.value = '';
                 if (ctnPkgInput) {
@@ -5864,6 +5930,7 @@
                 toggleAction1RemarkField();
                 if (trackingNumberInput) trackingNumberInput.value = record.tracking_number || '';
                 setModalClaimableRemark(record);
+                setModalClaimAmounts(record);
                 if (issueLinkInput) issueLinkInput.value = record.issue_link || '';
                 replacementTrackingInput.value = record.replacement_tracking || '';
                 if (productMasterIdInput) {
@@ -6358,6 +6425,7 @@
                     await saveInstructionPkgFromModal();
                     await saveQcEnhanceFromModal();
                     await saveClaimableRemarkFromModal();
+                    await saveClaimAmountsFromModal();
 
                     // Reload so instruction columns reflect saved values
                     await loadHoldIssueRows();

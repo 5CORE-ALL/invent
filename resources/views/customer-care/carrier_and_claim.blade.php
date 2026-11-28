@@ -39,6 +39,8 @@
     // "Amt Rec" (Amount Received) — inline-editable text input that mirrors
     // AMT $; rendered immediately after the AMT $ column.
     'showAmtRecColumn' => true,
+    // AMT $ and Amt Rec: read-only in the table, edited from the edit modal.
+    'claimAmountsInModal' => true,
     'showClaimReceivedColumn' => true,
     'showCarrierColumn' => true,
     // Carrier column shows logo + name only (read-only); change it from the edit modal.
