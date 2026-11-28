@@ -1532,6 +1532,10 @@
             });
         }
     </script>
+    {{-- Image Master background uploads: hands files to the service worker and shows progress on every page. --}}
+    @auth
+        <script src="{{ asset('js/im-bg-upload.js') }}?v={{ @filemtime(public_path('js/im-bg-upload.js')) ?: 1 }}"></script>
+    @endauth
     @include('partials.clear-browser-cache-on-login')
     @auth
         @include('partials.user-incentives')

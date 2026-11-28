@@ -3078,9 +3078,8 @@ document.addEventListener('DOMContentLoaded', () => {
         updatePendingFileUi();
     });
 
-    async function uploadPendingFiles() {
-        const sku = document.getElementById('modalSku').value;
-        if (!pendingFiles.length) return true;
+    // How many more images may be added. Returns false (after telling the user) when the selection is not allowed.
+    function pendingUploadAllowance() {
         if (modalUrls.length >= PM_MAX_IMAGES) {
             toast(`You already have the maximum of ${PM_MAX_IMAGES} images. Remove some before adding more.`, false);
             return false;
@@ -3093,6 +3092,42 @@ document.addEventListener('DOMContentLoaded', () => {
             toast(`Image limit is ${PM_MAX_IMAGES}. You already have ${modalUrls.length}, so only ${allowed} more can be added. You selected ${pendingFiles.length} — please remove ${pendingFiles.length - allowed} and try again.`, false);
             return false;
         }
+        return allowed;
+    }
+
+    /**
+     * Save Images with files still pending: hand the upload + save to the background uploader (service
+     * worker) so it keeps running when the user leaves this page.
+     * Returns 'handled' (started or rejected by validation) or 'fallback' (no background support).
+     */
+    async function saveWithBackgroundUpload(sku) {
+        const allowed = pendingUploadAllowance();
+        if (allowed === false) return 'handled';
+
+        // Images seen this session but no longer in the list = removed by the user (same rule as the normal Save).
+        const removedUrls = knownImageUrls.filter(u => !modalUrls.includes(u));
+        const started = await window.ImBgUpload.start({
+            sku,
+            files: pendingFiles.slice(0, allowed),
+            base_urls: [...modalUrls],
+            removed_urls: removedUrls,
+            main_by_marketplace: mainByMarketplacePayload(),
+            auto_push: autoPushOn,
+        });
+        if (!started) return 'fallback';
+
+        pendingFiles = [];
+        updatePendingFileUi();
+        toast('Uploading in the background. You can leave this page; progress is shown at the bottom-left.');
+        if (editModal) editModal.hide();
+        return 'handled';
+    }
+
+    async function uploadPendingFiles() {
+        const sku = document.getElementById('modalSku').value;
+        if (!pendingFiles.length) return true;
+        const allowed = pendingUploadAllowance();
+        if (allowed === false) return false;
 
         const btn     = document.getElementById('uploadImagesBtn');
         const spinner = document.getElementById('uploadSpinner');
@@ -3189,6 +3224,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 modalUrls = modalUrls.concat(modalSandbox);
                 modalSandbox = [];
                 renderSlots();
+            }
+            // New files: upload + save run in the background so navigating away cannot interrupt them.
+            if (pendingFiles.length && window.ImBgUpload && window.ImBgUpload.supported()) {
+                if (await saveWithBackgroundUpload(sku) === 'handled') return;
             }
             const uploaded = await uploadPendingFiles();
             if (!uploaded) return;
@@ -3995,6 +4034,25 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         document.querySelectorAll('#editImModal .im-mp-chk').forEach(c => { c.checked = false; });
     });
+    // Background uploads (service worker) keep running while this page is closed. When one finishes,
+    // refresh the table and fire the Auto Push that was requested when the upload started.
+    const imPageStartedAt = Date.now();
+    const imHandledUploadJobs = new Set();
+    window.ImBgUpload?.onUpdate((jobs) => {
+        jobs.forEach(j => {
+            if (j.status !== 'done' || imHandledUploadJobs.has(j.id)) return;
+            imHandledUploadJobs.add(j.id);
+            const finishedWhileOpen = (j.updated_at || 0) > imPageStartedAt;
+            if (j.auto_push) {
+                // Done while this page was closed or open: either way push now, then clear the job.
+                loadData().then(() => queueAutoPush(j.sku, 'images uploaded')).finally(() => window.ImBgUpload.dismiss(j.id));
+            } else if (finishedWhileOpen) {
+                loadData();
+            }
+            toast(`${j.sku}: ${j.message || 'images uploaded and saved'}`);
+        });
+    });
+
     loadData();
     pollShopifyPullStatus();
     resumeImagePushProgress();
