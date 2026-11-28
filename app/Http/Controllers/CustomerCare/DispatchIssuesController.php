@@ -768,6 +768,17 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ]);
     }
 
+    /** Incentive badge history dot: L30 claims-received snapshots saved on the 1st of every month. */
+    public function incentiveHistory(Request $request): JsonResponse
+    {
+        $department = trim((string) $request->query('department', 'Carrier')) ?: 'Carrier';
+
+        return response()->json([
+            'rate' => \App\Services\CustomerCare\CarrierClaimIncentive::RATE,
+            'history' => \App\Services\CustomerCare\CarrierClaimIncentive::history($department),
+        ]);
+    }
+
     public function updateClaimFiled(Request $request, int $id): JsonResponse
     {
         if (! Schema::hasColumn($this->issuesTable(), 'claim_filed')) {

@@ -1268,6 +1268,17 @@
             min-width: 56px;
             max-width: 56px;
         }
+        /* SKU column at half width (opt-in: $skuColumnHalfWidth). */
+        .orders-hold-table.orders-hold-table--sku-half th.orders-hold-col-sku,
+        .orders-hold-table.orders-hold-table--sku-half td.orders-hold-col-sku,
+        .orders-hold-table.orders-hold-table--sku-half.orders-hold-table--autofit th.orders-hold-col-sku,
+        .orders-hold-table.orders-hold-table--sku-half.orders-hold-table--autofit td.orders-hold-col-sku {
+            width: 100px !important;
+            min-width: 100px;
+            max-width: 100px;
+            white-space: normal;
+            word-break: break-word;
+        }
         .sku-image-preview {
             width: 88px;
             height: 88px;
@@ -1473,6 +1484,56 @@
             --bs-badge-color: #842029;
         }
 
+        .carrier-claims-summary--incentive {
+            background: #fff3d6 !important;
+            color: #7a4d00 !important;
+            border-color: #ffd98a;
+            --bs-badge-color: #7a4d00;
+        }
+        .missing-mark {
+            display: inline-block;
+            min-width: 22px;
+            padding: 0 8px;
+            border-radius: 8px;
+            background: #ffe3e8;
+            color: #dc3545;
+            font-weight: 800;
+            line-height: 1.5;
+        }
+        .incentive-history-dot {
+            display: inline-block;
+            width: 11px;
+            height: 11px;
+            padding: 0;
+            margin-left: 4px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            background: #adb5bd;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        .incentive-history-dot.has-history { background: #7c5cff; }
+        .incentive-history-dot:hover { transform: scale(1.25); }
+        .incentive-history-panel {
+            position: fixed;
+            z-index: 2000;
+            width: 280px;
+            max-height: 320px;
+            overflow: auto;
+            padding: 10px 12px;
+            background: #fff;
+            border: 1px solid #e5e0ff;
+            border-radius: 16px;
+            box-shadow: 0 18px 40px -16px rgba(60, 40, 140, 0.45);
+            font-size: 12.5px;
+            color: #1d1b3a;
+        }
+        .incentive-history-panel .ihp-title { font-weight: 800; margin-bottom: 2px; }
+        .incentive-history-panel .ihp-sub { color: #6f6b8d; font-size: 11px; margin-bottom: 8px; }
+        .incentive-history-panel .ihp-row { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-top: 1px dashed #ece7ff; }
+        .incentive-history-panel .ihp-row b { color: #05694b; }
+        .incentive-history-panel .ihp-empty { color: #6f6b8d; padding: 6px 0; }
         .carrier-claims-summary--filed {
             background: #e7f5ff !important;
             color: #0c5460 !important;
@@ -1775,6 +1836,8 @@
         }
         body.genz-ui .carrier-claims-summary-badge:hover { transform: translateY(-2px); }
         body.genz-ui .carrier-claims-summary--notfiled { background: linear-gradient(135deg, #ffe0e8, #ffd0dc) !important; color: #b3123f !important; }
+        body.genz-ui .carrier-claims-summary--incentive { background: linear-gradient(135deg, #ffe9b8, #ffd0a0) !important; color: #7a3d00 !important; }
+        body.genz-ui .incentive-history-panel { border-radius: 20px; border: 1px solid rgba(255,255,255,.9); box-shadow: 0 24px 50px -20px rgba(124,92,255,.55); }
         body.genz-ui .carrier-claims-summary--filed { background: linear-gradient(135deg, #dcd4ff, #e9e4ff) !important; color: #4a2fc9 !important; }
         body.genz-ui .carrier-claims-summary--pending { background: linear-gradient(135deg, #fff1c4, #ffe29a) !important; color: #7a4d00 !important; }
         body.genz-ui .carrier-claims-summary--received { background: linear-gradient(135deg, #c9f7e6, #a6f0d0) !important; color: #05694b !important; }
@@ -2092,7 +2155,19 @@
                                                         id="carrierClaimsReceivedCount">0</span> · $<span
                                                         id="carrierClaimsReceivedAmount">0</span></span>
                                             </span>
-                                        </div>
+                                            @if (!empty($incentiveHistoryUrl ?? null))
+                                                <span
+                                                    class="badge carrier-claims-summary-badge carrier-claims-summary--incentive text-wrap text-start"
+                                                    role="status" id="carrierIncentiveBadge"
+                                                    title="Incentive = claim received amount x 1 (follows the filters)">
+                                                    <span class="d-block fw-semibold small">Incentive
+                                                        <button type="button" class="incentive-history-dot" id="incentiveHistoryDot"
+                                                            title="History: L30 received amount saved on the 1st of every month"
+                                                            aria-label="Incentive history"></button></span>
+                                                    <span class="d-block carrier-claims-summary-line">&#8377;<span
+                                                            id="carrierIncentiveAmount">0</span></span>
+                                                </span>
+                                            @endif                                        </div>
                                     @endif
                                     @if (!($rowCountLeft ?? false))
                                         <span class="badge bg-light text-dark align-self-center flex-shrink-0"
@@ -2108,7 +2183,7 @@
                 @endif
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table{{ ($autofitTableColumns ?? false) ? ' orders-hold-table--autofit' : '' }}">
+                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table{{ ($autofitTableColumns ?? false) ? ' orders-hold-table--autofit' : '' }}{{ ($skuColumnHalfWidth ?? false) ? ' orders-hold-table--sku-half' : '' }}">
                             <thead class="table-light">
                                 <tr>
                                     @if (!($hideIdColumn ?? false)) <th class="orders-hold-col-idx">#</th> @endif
@@ -2127,9 +2202,11 @@
                                     <th
                                         class="orders-hold-col-what @if ($showDispatchExtras ?? false) dispatch-what-col @endif">
                                         Issue?</th>
+                                    @if (!($hideActionColumn ?? false))
                                     <th
                                         class="orders-hold-col-action @if ($showDispatchExtras ?? false) dispatch-action-col @endif">
                                         Action</th>
+                                    @endif
                                     @if (($showCarrierColumn ?? false) && ($carrierColumnAfterAction ?? false))
                                         <th class="orders-hold-col-carrier">Carrier</th>
                                     @endif
@@ -3062,6 +3139,11 @@
             const showAmpUsdColumn = @json((bool) ($showAmpUsdColumn ?? false));
             const showAmtRecColumn = @json((bool) ($showAmtRecColumn ?? false));
             // AMT $ / Amt Rec are read-only in the table and edited from the edit modal.
+            // Empty data shows as a red dash on boards that opt in ($highlightMissing).
+            const highlightMissing = @json((bool) ($highlightMissing ?? false));
+            function missingMark() {
+                return highlightMissing ? '<span class="missing-mark" title="Data missing">—</span>' : '—';
+            }
             const claimAmountsInModal = @json((bool) (($claimAmountsInModal ?? false) && (($showAmpUsdColumn ?? false) || ($showAmtRecColumn ?? false))));
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
             const showCarrierColumn = @json((bool) ($showCarrierColumn ?? false));
@@ -3775,7 +3857,7 @@
                     const shown = lossCellDisplay(row);
                     return '<td class="orders-hold-loss-cell text-center" title="' +
                         escAttr(lossCellTooltip(row).replace('Click to enter Loss $', 'No Amazon price on file')) + '">' +
-                        escapeHtml(shown) + '</td>';
+                        (shown === '—' ? missingMark() : escapeHtml(shown)) + '</td>';
                 }
                 const v = lossInputDisplayValue(row);
                 return '<td class="orders-hold-loss-cell" title="' + escAttr(lossCellTooltip(row)) + '">' +
@@ -3953,12 +4035,84 @@
 
             function marketplaceLogoCellHtml(row) {
                 const name = String(row.marketplace_1 ?? '').trim();
-                if (!name) return '<td><span class="text-muted">—</span></td>';
+                if (!name) return '<td class="text-center">' + missingMark() + '</td>';
                 const logo = MARKETPLACE_LOGOS[name.toLowerCase().replace(/[^a-z0-9]+/g, '')];
                 if (!logo) return '<td title="' + escAttr(name) + '">' + escapeHtml(name) + '</td>';
                 return '<td class="text-center" title="' + escAttr(name) + '">' +
                     '<img src="' + escAttr(logo) + '" alt="' + escAttr(name) + '" class="mkt-logo-img"></td>';
             }
+            // Incentive history dot: L30 received amount saved on the 1st of every month (server snapshot).
+            const incentiveHistoryUrl = @json($incentiveHistoryUrl ?? null);
+            (function() {
+                const dot = document.getElementById('incentiveHistoryDot');
+                if (!dot || !incentiveHistoryUrl) return;
+                let history = [];
+                let panel = null;
+                const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+                function dateLabel(ymd) {
+                    const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+                    return m ? (parseInt(m[3], 10) + ' ' + MONTHS[parseInt(m[2], 10) - 1] + ' ' + m[1]) : String(ymd || '');
+                }
+                const rupees = (n) => '\u20B9' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+
+                function closePanel() {
+                    if (panel) {
+                        panel.remove();
+                        panel = null;
+                    }
+                }
+
+                function openPanel() {
+                    closePanel();
+                    panel = document.createElement('div');
+                    panel.className = 'incentive-history-panel';
+                    let html = '<div class="ihp-title">Incentive history</div>' +
+                        '<div class="ihp-sub">L30 claims received, saved automatically on the 1st of every month.</div>';
+                    if (!history.length) {
+                        html += '<div class="ihp-empty">No snapshot saved yet.</div>';
+                    } else {
+                        history.forEach((h) => {
+                            html += '<div class="ihp-row"><span>' + escapeHtml(dateLabel(h.date)) + ' <span class="text-muted">(' +
+                                Number(h.count || 0) + ' claims)</span></span><b>' + rupees(h.incentive) + '</b></div>';
+                        });
+                    }
+                    panel.innerHTML = html;
+                    document.body.appendChild(panel);
+                    const r = dot.getBoundingClientRect();
+                    const w = panel.offsetWidth || 280;
+                    panel.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left - 20)) + 'px';
+                    panel.style.top = (r.bottom + 8) + 'px';
+                }
+
+                async function loadHistory() {
+                    try {
+                        const res = await fetch(incentiveHistoryUrl, {
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        const data = await res.json().catch(() => null);
+                        history = res.ok && data && Array.isArray(data.history) ? data.history : [];
+                    } catch (e) {
+                        history = [];
+                    }
+                    dot.classList.toggle('has-history', history.length > 0);
+                    if (history.length) {
+                        dot.title = 'History - last: ' + dateLabel(history[0].date) + ' ' + rupees(history[0].incentive);
+                    }
+                }
+
+                dot.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    if (panel) closePanel(); else openPanel();
+                });
+                document.addEventListener('click', (ev) => {
+                    if (panel && !panel.contains(ev.target)) closePanel();
+                });
+                document.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Escape') closePanel();
+                });
+                loadHistory();
+            })();
             // Carrier logos are saved locally in public/images/carriers (fetched once from the internet).
             const CARRIER_LOGOS = {
                 USPS: @json(asset('images/carriers/usps.png')),
@@ -3970,7 +4124,7 @@
 
             function carrierLogoCellHtml(row) {
                 const v = String(row.issue_carrier ?? '').trim();
-                if (!v) return '<td class="orders-hold-col-carrier text-center"><span class="text-muted">—</span></td>';
+                if (!v) return '<td class="orders-hold-col-carrier text-center">' + missingMark() + '</td>';
                 const logo = CARRIER_LOGOS[v.toUpperCase()];
                 return '<td class="orders-hold-col-carrier text-center" title="' + escAttr(v) + '">' +
                     '<span class="carrier-logo-cell">' +
@@ -4152,7 +4306,7 @@
             function ampUsdCellHtml(row) {
                 const v = String(row.amp_usd ?? '').slice(0, 6);
                 if (claimAmountsInModal) {
-                    return '<td class="orders-hold-col-amp-usd text-center">' + (v ? escapeHtml(v) : '<span class="text-muted">—</span>') + '</td>';
+                    return '<td class="orders-hold-col-amp-usd text-center">' + (v ? escapeHtml(v) : missingMark()) + '</td>';
                 }
                 return '<td class="orders-hold-col-amp-usd">' +
                     '<input type="text" class="form-control form-control-sm carrier-amp-usd-input" maxlength="6" ' +
@@ -4203,7 +4357,7 @@
             function amtRecCellHtml(row) {
                 const v = String(row.amt_rec ?? '').slice(0, 6);
                 if (claimAmountsInModal) {
-                    return '<td class="orders-hold-col-amt-rec text-center">' + (v ? escapeHtml(v) : '<span class="text-muted">—</span>') + '</td>';
+                    return '<td class="orders-hold-col-amt-rec text-center">' + (v ? escapeHtml(v) : (row.claim_received ? missingMark() : '<span class="text-muted">—</span>')) + '</td>';
                 }
                 return '<td class="orders-hold-col-amt-rec">' +
                     '<input type="text" class="form-control form-control-sm carrier-amt-rec-input" maxlength="6" ' +
@@ -4260,6 +4414,9 @@
                 });
             }
 
+            // Incentive (rupees) = claim received amount x INCENTIVE_RATE; follows whatever filters are active.
+            const INCENTIVE_RATE = 1;
+
             function applyClaimsSummaryNumbers(filed, pending, received, notFiled) {
                 const apply = (idCount, idAmt, bucket) => {
                     const elC = document.getElementById(idCount);
@@ -4275,6 +4432,10 @@
                 apply('carrierClaimsFiledCount', 'carrierClaimsFiledAmount', filed);
                 apply('carrierClaimsPendingCount', 'carrierClaimsPendingAmount', pending);
                 apply('carrierClaimsReceivedCount', 'carrierClaimsReceivedAmount', received);
+                const incEl = document.getElementById('carrierIncentiveAmount');
+                if (incEl) {
+                    incEl.textContent = Math.round((Number(received?.amount) || 0) * INCENTIVE_RATE).toLocaleString('en-IN');
+                }
             }
 
             function parseAmpUsdAmount(raw) {
@@ -5013,7 +5174,7 @@
 
             function whatHappenedDotHtml(value) {
                 const text = String(value || '').trim();
-                if (!text) return '—';
+                if (!text) return missingMark();
                 if (text.toLowerCase() === '0 stock') {
                     return '<span class="what-happened-dot" title="0 Stock"></span>';
                 }
@@ -5643,7 +5804,7 @@
                                 @else
                                 '<span class="order-num-short">' + escapeHtml(row.order_number) + '</span>'
                                 @endif
-                                : '—') + '</td>' +
+                                : missingMark()) + '</td>' +
                             @if ($showLossColumn)
                             lossCellHtml(row) +
                             @endif
@@ -5657,23 +5818,25 @@
                                 @else
                                 '<span class="order-num-short">' + escapeHtml(row.order_number) + '</span>'
                                 @endif
-                                : '—') + '</td>' +
+                                : missingMark()) + '</td>' +
                             @if ($showLossColumn)
                             lossCellHtml(row) +
                             @endif
                         @elseif ($showLossColumn)
                             lossCellHtml(row) +
                         @endif
-                    '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') +
+                    '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : missingMark()) +
                     '</td>' +
-                    (marketplaceLogoOnly ? marketplaceLogoCellHtml(row) : '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>') +
+                    (marketplaceLogoOnly ? marketplaceLogoCellHtml(row) : '<td>' + (row.marketplace_1 ? escapeHtml(row.marketplace_1) : missingMark()) + '</td>') +
                         @if ($showDispatchExtras ?? false)
                             '<td class="dispatch-what-cell"><span class="what-cell-wrap">' + whatHappenedDotHtml
                                 (row.what_happened) + '</span></td>' +
                         @else
                             '<td class="orders-hold-col-what">' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         @endif
-                    @if ($showDispatchExtras ?? false)
+                    @if ($hideActionColumn ?? false)
+                        ''  +
+                    @elseif ($showDispatchExtras ?? false)
                         '<td class="dispatch-action-cell"><span class="action-cell-wrap">' + action1DisplayHtml(
                                 row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</span></td>' +
                     @else

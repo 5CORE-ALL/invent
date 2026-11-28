@@ -222,6 +222,13 @@ class Kernel extends ConsoleKernel
 
     protected function schedule(Schedule $schedule)
     {
+        // Carrier Claims Incentive badge: save the L30 claims-received amount as a history dot on the 1st of every month.
+        $schedule->command('carrier-claims:snapshot-incentive')
+            ->monthlyOn(1, '00:10')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->name('carrier-claims-snapshot-incentive');
+
         // Payroll: Current INR Rate (USD + CNY) for the month sheet — 1st of every month.
         $schedule->command('payroll:fetch-fx-rates')
             ->monthlyOn(1, '00:15')

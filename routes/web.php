@@ -2504,6 +2504,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.issue.carrier');
     Route::get('/customer-care/all-issues/claims-stats', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'claimsStats'])
         ->name('customer.care.dispatch.issues.claims.stats');
+    Route::get('/customer-care/all-issues/incentive-history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'incentiveHistory'])
+        ->name('customer.care.dispatch.issues.incentive.history');
     Route::post('/customer-care/all-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'archive'])
         ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.archive');
     // Permanent delete (row + history). Server-side restricted to the

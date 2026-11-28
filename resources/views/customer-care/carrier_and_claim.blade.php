@@ -31,6 +31,8 @@
     'requireRootCauseFound' => false,
     'createdAtColumnAfterTrack' => true,
     'showClaimsSummaryBadges' => true,
+    // Incentive badge (rupees = claim received amount x 1) with a monthly L30 history dot.
+    'incentiveHistoryUrl' => route('customer.care.dispatch.issues.incentive.history', ['department' => 'Carrier']),
     'showClaimableColumn' => true,
     // Notes beside Claimable: why the case is not claimable (50 words max).
     'showClaimableRemarkColumn' => true,
@@ -57,8 +59,14 @@
     // Per-row edit history button (clock icon) opens audit trail modal.
     'showRowHistoryColumn' => true,
     'hideCloseColumn' => true,
+    // No Action (Replacement / Refund) column on this board.
+    'hideActionColumn' => true,
     // Columns hug their content; SKU and Issue absorb the leftover width.
     'autofitTableColumns' => true,
+    // Empty cells show as a red dash so missing data stands out.
+    'highlightMissing' => true,
+    // SKU column at half its previous width.
+    'skuColumnHalfWidth' => true,
     // History (clock) column sits right before Created By; both are frozen at the right edge.
     'historyBeforeCreatedBy' => true,
     // Oldest issue first (Created By date ascending).
