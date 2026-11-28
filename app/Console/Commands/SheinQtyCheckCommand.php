@@ -59,8 +59,10 @@ class SheinQtyCheckCommand extends Command
             $this->line('Shein skuCode lookup: '.json_encode($hit));
             $code = trim((string) ($hit['sku_code'] ?? ''));
             if ($code === '') {
-                $this->warn('No skuCode: Shein cannot be pushed for this SKU. Shein probe:');
-                $this->line(json_encode($api->probeSku($sku), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                $this->warn('No skuCode: Shein cannot be pushed for this SKU.');
+                $catalog = $api->skcSkuCodeCatalog();
+                $this->line('Shein product list holds '.count($catalog).' SKC(s). (0 = the product list call failed.)');
+                $this->line('Local SKC/code saved for this SKU: '.json_encode($api->probeSku($sku)['local'] ?? []));
 
                 continue;
             }
