@@ -3,7 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\ShopifySku;
-use App\Services\MarketplaceManager\MarketplaceQtyReadBack;
+use App\Services\MarketplaceManager\MarketplaceMismatchInventoryPass;
+
 use App\Services\MarketplaceManager\SheinInventorySyncService;
 use App\Services\SheinApiService;
 use App\Services\ShopifyApiService;
@@ -17,16 +18,28 @@ use Illuminate\Support\Facades\Http;
  *
  *   php artisan shein:qty-check "SC 026"
  *   php artisan shein:qty-check "SC 026" --push
+ *   php artisan shein:qty-check --mismatch --limit=3 --push
  */
 class SheinQtyCheckCommand extends Command
 {
-    protected $signature = 'shein:qty-check {sku* : Seller SKU(s)} {--push : Push the live Shopify qty to Shein, then read it back}';
+    protected $signature = 'shein:qty-check {sku?* : Seller SKU(s)} {--mismatch : Use the first SKUs listed under Inv SKU Mismatch instead} {--limit=3 : How many mismatch SKUs with --mismatch} {--push : Push the live Shopify qty to Shein, then read it back}';
 
     protected $description = 'Compare live Shopify qty with what Shein holds for a SKU; optionally push and read back';
 
     public function handle(SheinApiService $api, ShopifyApiService $shopify, SheinInventorySyncService $sync): int
     {
-        foreach ((array) $this->argument('sku') as $sku) {
+        $skus = array_values(array_filter(array_map('trim', (array) $this->argument('sku'))));
+        if ($this->option('mismatch')) {
+            $skus = array_slice(app(MarketplaceMismatchInventoryPass::class)->pageMismatchSkus('shein'), 0, max(1, (int) $this->option('limit')));
+            $this->line('Mismatch SKUs picked: '.json_encode($skus));
+        }
+        if ($skus === []) {
+            $this->warn('Give a SKU, or use --mismatch.');
+
+            return self::FAILURE;
+        }
+
+        foreach ($skus as $sku) {
             $sku = trim((string) $sku);
             $this->info('=== '.$sku.' ===');
 
