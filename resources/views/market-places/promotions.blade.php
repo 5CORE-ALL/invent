@@ -348,9 +348,10 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
-                        Creates a real Shopify <strong>automatic discount</strong> for the listed SKUs. The product price is not changed: Shopify takes the % off
-                        in the cart / checkout between the start and end time. Change the % later with <strong>Update %</strong>, or end it with <strong>Deactivate</strong>.
-                        SKUs that are out of stock, have no LP, or would sell below cost (LP + ship) are skipped unless you tick &ldquo;allow below cost&rdquo;. Max 100 SKUs.
+                        <strong>Show on product page</strong> (default): lowers the Shopify price and puts the old price in &ldquo;compare at&rdquo;, so customers see
+                        the new price with the old one crossed out. It starts immediately; the SKU is held as a hand-set price so the auto-push does not undo it.
+                        <strong>Cart discount only</strong>: a Shopify automatic discount that takes the % off in the cart / checkout; the product price is not changed.
+                        SKUs that are out of stock, have no LP, or would sell below cost (LP + ship) are skipped unless you tick &ldquo;allow below cost&rdquo;.
                     </p>
                     <div class="row g-2 mb-2">
                         <div class="col-md-5">
@@ -375,13 +376,23 @@
                                     <label class="form-label small mb-0" for="promo-b2c-end">End (optional)</label>
                                     <input type="datetime-local" id="promo-b2c-end" class="form-control form-control-sm">
                                 </div>
+                                <div class="col-12">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="promo-b2c-mode" id="promo-b2c-mode-price" value="price" checked>
+                                        <label class="form-check-label small" for="promo-b2c-mode-price">Show on product page (crossed-out old price)</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="promo-b2c-mode" id="promo-b2c-mode-discount" value="discount">
+                                        <label class="form-check-label small" for="promo-b2c-mode-discount">Cart discount only</label>
+                                    </div>
+                                </div>
                                 <div class="col-12 form-check ms-2">
                                     <input class="form-check-input" type="checkbox" id="promo-b2c-below">
                                     <label class="form-check-label small" for="promo-b2c-below">Allow below cost</label>
                                 </div>
                                 <div class="col-12 d-flex flex-wrap gap-2">
                                     <button type="button" class="btn btn-sm btn-primary" id="promo-b2c-preview"><i class="fas fa-search me-1"></i>Preview</button>
-                                    <button type="button" class="btn btn-sm btn-success" id="promo-b2c-apply" disabled><i class="fas fa-check me-1"></i>Create discount on Shopify</button>
+                                    <button type="button" class="btn btn-sm btn-success" id="promo-b2c-apply" disabled><i class="fas fa-check me-1"></i>Apply to Shopify</button>
                                 </div>
                             </div>
                         </div>
@@ -397,10 +408,26 @@
                         </table>
                     </div>
                     <div class="small mb-2" id="promo-b2c-status"></div>
+                    <div class="border rounded p-2 bg-light mb-2">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <strong class="small me-auto">Product-page promotions running now</strong>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="promo-b2c-edit" disabled title="Copy selected SKUs into the form to change their %">Edit % of selected</button>
+                            <button type="button" class="btn btn-sm btn-danger" id="promo-b2c-remove" disabled>Remove selected (restore price)</button>
+                        </div>
+                        <div class="table-responsive" style="max-height:20vh;">
+                            <table class="table table-sm table-bordered align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:34px;"><input type="checkbox" id="promo-b2c-all"></th><th>SKU</th><th class="text-end">%</th>
+                                        <th class="text-end">Original</th><th class="text-end">Promo price</th><th class="text-end">Live now</th><th>Ends</th></tr>
+                                </thead>
+                                <tbody id="promo-b2c-active"></tbody>
+                            </table>
+                        </div>
+                    </div>
                     <div class="border rounded p-2 bg-light">
                         <div class="row g-2 align-items-end">
                             <div class="col-md-7">
-                                <label class="form-label small mb-0" for="promo-b2c-discount">Existing discount</label>
+                                <label class="form-label small mb-0" for="promo-b2c-discount">Existing cart discount</label>
                                 <select id="promo-b2c-discount" class="form-select form-select-sm"></select>
                             </div>
                             <div class="col-md-5 d-flex flex-wrap gap-2">
@@ -1778,13 +1805,39 @@
             skus: $('#promo-b2c-skus').val(),
             pct: $('#promo-b2c-pct').val(),
             allow_below_cost: $('#promo-b2c-below').is(':checked') ? 1 : 0,
+            mode: $('input[name="promo-b2c-mode"]:checked').val() || 'price',
             _token: csrf,
         }, extra || {});
     }
     function b2cButtons() {
         const has = !!$('#promo-b2c-discount').val();
+        const n = $('#promo-b2c-active .promo-b2c-pick:checked').length;
         $('#promo-b2c-apply').prop('disabled', b2cReady < 1);
         $('#promo-b2c-update, #promo-b2c-deactivate').prop('disabled', !has);
+        $('#promo-b2c-remove, #promo-b2c-edit').prop('disabled', n < 1);
+    }
+
+    function loadB2cActive() {
+        $.getJSON('{{ route("promotions.b2c.price.active") }}').done(function (res) {
+            const $b = $('#promo-b2c-active').empty();
+            const list = (res && res.promotions) || [];
+            if (!list.length) $b.append('<tr><td colspan="7" class="text-muted text-center">No product-page promotion running</td></tr>');
+            list.forEach(function (a) {
+                const $tr = $('<tr>');
+                $tr.append($('<td>').html('<input type="checkbox" class="promo-b2c-pick" value="' + escapeHtml(a.sku) + '">'));
+                $tr.append($('<td>').text(a.sku));
+                $tr.append($('<td class="text-end">').text(a.pct));
+                $tr.append($('<td class="text-end">').text(b2cMoney(a.base)));
+                $tr.append($('<td class="text-end">').text(b2cMoney(a.promo_price)));
+                $tr.append($('<td class="text-end">').html(b2cMoney(a.live) + (a.changed_outside ? ' <span class="badge bg-warning text-dark" title="Price was changed after the promo">changed</span>' : '')));
+                $tr.append($('<td>').text(a.end ? new Date(a.end * 1000).toLocaleString() : 'no end'));
+                $b.append($tr);
+            });
+            $('#promo-b2c-all').prop('checked', false);
+            b2cButtons();
+        }).fail(function (xhr) {
+            b2cStatus('Could not load promotions: ' + escapeHtml(temuErr(xhr)), 'text-danger');
+        });
     }
     function b2cInvalidate() { b2cReady = 0; b2cButtons(); }
 
@@ -1838,9 +1891,27 @@
         b2cInvalidate();
         b2cModal.show();
         loadB2cDiscounts();
+        loadB2cActive();
     }
 
-    $('#promo-b2c-skus, #promo-b2c-pct, #promo-b2c-below').on('input change', b2cInvalidate);
+    $('#promo-b2c-skus, #promo-b2c-pct, #promo-b2c-below, input[name="promo-b2c-mode"]').on('input change', b2cInvalidate);
+    $('#promo-b2c-all').on('change', function () {
+        $('#promo-b2c-active .promo-b2c-pick').prop('checked', this.checked);
+        b2cButtons();
+    });
+    $('#promo-b2c-active').on('change', '.promo-b2c-pick', b2cButtons);
+    $('#promo-b2c-edit').on('click', function () {
+        const skus = $('#promo-b2c-active .promo-b2c-pick:checked').map(function () { return this.value; }).get();
+        $('#promo-b2c-skus').val(skus.join('\n'));
+        b2cInvalidate();
+        b2cStatus('Set the new % and press Preview, then Apply.', 'text-muted');
+    });
+    $('#promo-b2c-remove').on('click', function () {
+        const skus = $('#promo-b2c-active .promo-b2c-pick:checked').map(function () { return this.value; }).get();
+        if (!skus.length) return;
+        b2cSend('{{ route("promotions.b2c.price.remove") }}', { skus: skus, confirm: 1, _token: csrf },
+            'End the promotion on ' + skus.length + ' SKU(s) and put the original price back on Shopify?', 'Restoring prices');
+    });
     $('#promo-b2c-discount').on('change', b2cButtons);
     $('#promo-b2c-reload').on('click', function () { b2cStatus(''); loadB2cDiscounts($('#promo-b2c-discount').val()); });
 
@@ -1859,6 +1930,17 @@
             .always(function () { $btn.prop('disabled', false); });
     });
 
+    function b2cResultHtml(res) {
+        let html = escapeHtml(res.message || 'Done.');
+        const bad = (res.results || []).filter(function (r) { return r.status !== 'ok'; });
+        if (bad.length) {
+            html += '<ul class="mb-0">' + bad.slice(0, 10).map(function (r) {
+                return '<li>' + escapeHtml(r.sku + ': ' + r.message) + '</li>';
+            }).join('') + '</ul>';
+        }
+        return html;
+    }
+
     function b2cSend(url, data, confirmText, verb) {
         if (!window.confirm(confirmText)) return;
         $('#promo-b2c-apply, #promo-b2c-update, #promo-b2c-deactivate').prop('disabled', true);
@@ -1866,13 +1948,15 @@
         $.ajax({ url: url, method: 'POST', dataType: 'json', data: data })
             .done(function (res) {
                 if (res.rows) renderB2cRows(res.rows);
-                b2cStatus(escapeHtml(res.message || 'Done.'), 'text-success');
+                b2cStatus(b2cResultHtml(res), res.failed ? 'text-warning' : 'text-success');
                 loadB2cDiscounts(res.discount_id || $('#promo-b2c-discount').val());
+                loadB2cActive();
             })
             .fail(function (xhr) {
                 const j = xhr.responseJSON || {};
                 if (j.rows) renderB2cRows(j.rows);
-                b2cStatus(escapeHtml(temuErr(xhr)), 'text-danger');
+                b2cStatus(j.results ? b2cResultHtml(j) : escapeHtml(temuErr(xhr)), 'text-danger');
+                loadB2cActive();
             })
             .always(b2cButtons);
     }
@@ -1880,11 +1964,13 @@
     $('#promo-b2c-apply').on('click', function () {
         const begin = b2cEpoch('#promo-b2c-begin');
         const end = b2cEpoch('#promo-b2c-end');
+        const page = (b2cPayload().mode !== 'discount');
         b2cSend('{{ route("promotions.b2c.apply") }}',
             b2cPayload({ title: $('#promo-b2c-title').val(), begin_time: begin, end_time: end, confirm: 1 }),
-            'Create a REAL discount on the Shopify store?\n\n' + b2cReady + ' SKU(s) at ' + $('#promo-b2c-pct').val() + '% off\n'
-            + ($('#promo-b2c-begin').val() || 'now').replace('T', ' ') + '  →  ' + ($('#promo-b2c-end').val() ? $('#promo-b2c-end').val().replace('T', ' ') : 'no end date'),
-            'Creating discount on Shopify');
+            (page ? 'Change the LIVE price of ' + b2cReady + ' SKU(s) on Shopify to ' + $('#promo-b2c-pct').val() + '% off (old price crossed out)?\n\nStarts immediately.\n'
+                  : 'Create a REAL cart discount on the Shopify store?\n\n' + b2cReady + ' SKU(s) at ' + $('#promo-b2c-pct').val() + '% off\n' + ($('#promo-b2c-begin').val() || 'now').replace('T', ' ') + '  →  ')
+            + ($('#promo-b2c-end').val() ? 'Ends ' + $('#promo-b2c-end').val().replace('T', ' ') + (page ? ' (original price is restored automatically).' : '') : 'No end date.'),
+            page ? 'Pushing price to Shopify' : 'Creating discount on Shopify');
     });
     $('#promo-b2c-update').on('click', function () {
         const id = $('#promo-b2c-discount').val();

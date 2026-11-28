@@ -4736,6 +4736,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/promotions/tiktok/apply', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'apply'])->name('promotions.tiktok.apply');
     Route::post('/promotions/tiktok/update', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'update'])->name('promotions.tiktok.update');
     Route::get('/promotions/b2c/discounts', [\App\Http\Controllers\MarketPlace\ShopifyB2cPromotionsController::class, 'activities'])->name('promotions.b2c.discounts');
+    Route::get('/promotions/b2c/price-active', [\App\Http\Controllers\MarketPlace\ShopifyB2cPromotionsController::class, 'priceActive'])->name('promotions.b2c.price.active');
+    Route::post('/promotions/b2c/price-remove', [\App\Http\Controllers\MarketPlace\ShopifyB2cPromotionsController::class, 'priceRemove'])->name('promotions.b2c.price.remove');
     Route::post('/promotions/b2c/preview', [\App\Http\Controllers\MarketPlace\ShopifyB2cPromotionsController::class, 'preview'])->name('promotions.b2c.preview');
     Route::post('/promotions/b2c/apply', [\App\Http\Controllers\MarketPlace\ShopifyB2cPromotionsController::class, 'apply'])->name('promotions.b2c.apply');
     Route::post('/promotions/b2c/update', [\App\Http\Controllers\MarketPlace\ShopifyB2cPromotionsController::class, 'update'])->name('promotions.b2c.update');

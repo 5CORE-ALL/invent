@@ -1632,6 +1632,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Shopify B2C product-page promotions from /promotions: put the original price + compare-at back once the end time has passed.
+        $schedule->command('shopify-b2c:promo-expire')
+            ->cron('9-59/15 * * * *')
+            ->name('shopify-b2c-promo-expire')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Shopify B2B percentage-off promotions from /promotions: put the original price back once the end time has passed.
         $schedule->command('shopify-b2b:promo-expire')
             ->cron('4-59/15 * * * *')

@@ -67,6 +67,25 @@ class ShopifyB2cPromotionsController extends Controller
         }
     }
 
+    public function priceActive()
+    {
+        return response()->json(['success' => true, 'promotions' => $this->service->activePrice()]);
+    }
+
+    public function priceRemove(Request $request)
+    {
+        if (! $request->boolean('confirm')) {
+            return $this->bad('Confirmation required.');
+        }
+        $skus = $this->skuList($request);
+        if ($skus === [] || count($skus) > 30) {
+            return $this->bad('Select 1 to 30 SKUs');
+        }
+        $res = $this->service->removePrice($skus, optional($request->user())->email);
+
+        return response()->json($res, $res['success'] ? 200 : 422);
+    }
+
     public function preview(Request $request)
     {
         $pct = $this->pct($request);
@@ -106,6 +125,20 @@ class ShopifyB2cPromotionsController extends Controller
         if ($ready === []) {
             return response()->json(['success' => false, 'message' => 'No SKU is ready to discount.', 'rows' => $rows], 422);
         }
+        // mode=price (default): lowered price with the old price crossed out on the product page.
+        // mode=discount: Shopify automatic discount, applied only in the cart / checkout.
+        if ($request->input('mode', 'price') !== 'discount') {
+            if (count($ready) > 30) {
+                return $this->bad('At most 30 SKUs per click for a product-page promotion.');
+            }
+            if ($end > 0 && $end < time() + 600) {
+                return $this->bad('End time must be at least 10 minutes from now (or leave it empty for no end).');
+            }
+            $res = $this->service->applyPrice($ready, $pct, $end > 0 ? $end : null, optional($request->user())->email);
+
+            return response()->json($res + ['rows' => $rows], $res['success'] ? 200 : 422);
+        }
+
         $res = $this->service->create($ready, $pct, $begin, $end > 0 ? $end : null, (string) $request->input('title', ''));
         Log::info('Promotions Shopify B2C apply', [
             'pct' => $pct, 'skus' => count($ready), 'ok' => $res['success'], 'msg' => $res['message'],
