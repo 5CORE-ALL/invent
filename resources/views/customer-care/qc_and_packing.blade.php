@@ -1,7 +1,32 @@
 @extends('layouts.vertical', ['title' => $pageTitle ?? 'QC PKG issues', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @php
-    $woOrderId = (bool) ($showOrderIdField ?? false);
+    // Marketplace name -> logo URL (MKT column logo mode). Keys are lowercase letters/digits only.
+    $marketplaceLogoMap = [];
+    if ($marketplaceLogoOnly ?? false) {
+        $mkNorm = fn (string $v) => preg_replace('/[^a-z0-9]+/', '', strtolower($v));
+        foreach (\App\Services\MarketplaceManager\MarketplaceManagerRegistry::channels() as $mkCh) {
+            if (empty($mkCh['logo'])) { continue; }
+            $mkUrl = asset($mkCh['logo']);
+            foreach (array_merge([$mkCh['label'] ?? '', $mkCh['slug'] ?? '', $mkCh['short'] ?? ''], $mkCh['mp_channel_keys'] ?? []) as $mkName) {
+                $mkKey = $mkNorm((string) $mkName);
+                if ($mkKey !== '' && !isset($marketplaceLogoMap[$mkKey])) { $marketplaceLogoMap[$mkKey] = $mkUrl; }
+            }
+        }
+        // Names used on issue boards that the registry does not carry (or carries with a number).
+        foreach ([
+            'ebay' => 'images/marketplaces/ebay.png',
+            'walmart' => 'uploads/walmart.png',
+            'shopify' => 'uploads/shopify.png',
+            'tiktok' => 'uploads/tiktok.png',
+            'wayfair' => 'uploads/wayfair.png',
+            'macys' => 'uploads/macy.png',
+            'macy' => 'uploads/macy.png',
+            'bestbuy' => 'uploads/bestbuy.jpeg',
+        ] as $mkName => $mkPath) {
+            $marketplaceLogoMap[$mkName] = asset($mkPath);
+        }
+    }    $woOrderId = (bool) ($showOrderIdField ?? false);
     $hideActionRemarkFlag = (bool) ($hideActionRemark ?? false);
     $showLossColumn = (bool) ($showLossColumn ?? (($showDispatchExtras ?? false) || ($showOrderIdField ?? false)));
     $lossColspanExtra = ($showLossColumn && !($showDispatchExtras ?? false)) ? 1 : 0;
@@ -701,6 +726,14 @@
             vertical-align: middle;
         }
 
+        .orders-hold-table .mkt-logo-img {
+            height: 26px;
+            width: auto;
+            max-width: 64px;
+            object-fit: contain;
+            display: inline-block;
+            vertical-align: middle;
+        }
         .orders-hold-table .carrier-logo-cell {
             display: inline-flex;
             align-items: center;
@@ -709,8 +742,9 @@
             white-space: nowrap;
         }
         .orders-hold-table .carrier-logo-img {
-            height: 22px;
-            width: 40px;
+            height: 28px;
+            width: auto;
+            max-width: 84px;
             object-fit: contain;
             flex: 0 0 auto;
         }
@@ -1221,6 +1255,19 @@
             width: 100%;
         }
 
+        /* Autofit must not resize the frozen right-hand columns (sticky offsets depend on these widths). */
+        .orders-hold-table.orders-hold-table--autofit th.qc-frozen-created-by,
+        .orders-hold-table.orders-hold-table--autofit td.qc-frozen-created-by {
+            width: 96px !important;
+            min-width: 96px;
+            max-width: 96px;
+        }
+        .orders-hold-table.orders-hold-table--autofit th.qc-frozen-history,
+        .orders-hold-table.orders-hold-table--autofit td.qc-frozen-history {
+            width: 56px !important;
+            min-width: 56px;
+            max-width: 56px;
+        }
         .sku-image-preview {
             width: 88px;
             height: 88px;
@@ -1581,13 +1628,251 @@
             width: 100%;
             max-width: 100%;
         }
-        @if (!empty($showMonthlyReport))
+        @if ($genzUi ?? false)
+        /* ====================================================================
+           GEN-Z UI (opt-in via $genzUi). Everything is scoped to body.genz-ui
+           so other boards are untouched. Soft gradients, glass cards, big
+           radii, pill buttons, pastel chips, bouncy hovers.
+           ==================================================================== */
+        body.genz-ui {
+            --gz-violet: #7c5cff;
+            --gz-violet-2: #a78bfa;
+            --gz-pink: #ff5fa2;
+            --gz-mint: #1fd3a0;
+            --gz-sun: #ffc94d;
+            --gz-sky: #4cc9f0;
+            --gz-ink: #1d1b3a;
+            --gz-muted: #6f6b8d;
+            --gz-line: #ece7ff;
+            --gz-glass: rgba(255, 255, 255, 0.82);
+            --gz-shadow: 0 10px 30px -12px rgba(124, 92, 255, 0.35);
+            font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            color: var(--gz-ink);
+            background: linear-gradient(135deg, #f1ecff 0%, #ffeef6 48%, #e6fbf3 100%) fixed !important;
+        }
+        body.genz-ui .content-page,
+        body.genz-ui .content,
+        body.genz-ui #wrapper,
+        body.genz-ui .wrapper {
+            background: transparent !important;
+        }
+
+        /* page title */
+        body.genz-ui .page-title-box .page-title {
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            background: linear-gradient(90deg, var(--gz-violet), var(--gz-pink));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        body.genz-ui .page-title-box .breadcrumb-item a { color: var(--gz-muted); }
+        body.genz-ui .page-title-box .breadcrumb-item.active { color: var(--gz-violet); font-weight: 700; }
+
+        /* cards */
+        body.genz-ui .card {
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            border-radius: 24px;
+            background: var(--gz-glass);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+            box-shadow: var(--gz-shadow);
+            overflow: hidden;
+        }
+        body.genz-ui .card-header {
+            background: transparent;
+            border-bottom: 1px dashed var(--gz-line) !important;
+        }
+
+        /* buttons (toolbar + modals) */
+        body.genz-ui .issues-toolbar-header .btn,
+        body.genz-ui .modal .btn {
+            border-radius: 999px;
+            font-weight: 700;
+            border-width: 0;
+            transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+        }
+        body.genz-ui .issues-toolbar-header .btn:hover,
+        body.genz-ui .modal .btn:hover {
+            transform: translateY(-2px) scale(1.04);
+            filter: saturate(1.15);
+        }
+        body.genz-ui .issues-toolbar-header .btn:active,
+        body.genz-ui .modal .btn:active { transform: scale(.96); }
+        body.genz-ui .issues-toolbar-header .btn-primary,
+        body.genz-ui .modal .btn-primary {
+            background: linear-gradient(135deg, var(--gz-violet), var(--gz-pink));
+            color: #fff;
+            box-shadow: 0 8px 18px -8px rgba(255, 95, 162, 0.7);
+        }
+        body.genz-ui .issues-toolbar-header .btn-success,
+        body.genz-ui .modal .btn-success {
+            background: linear-gradient(135deg, var(--gz-mint), #7be495);
+            color: #053b2c;
+            box-shadow: 0 8px 18px -8px rgba(31, 211, 160, 0.7);
+        }
+        body.genz-ui .issues-toolbar-header .btn-warning {
+            background: linear-gradient(135deg, var(--gz-sun), #ff9f6b);
+            color: #4a2a00;
+        }
+        body.genz-ui .issues-toolbar-header .btn-outline-secondary,
+        body.genz-ui .issues-toolbar-header .btn-outline-info,
+        body.genz-ui .modal .btn-secondary,
+        body.genz-ui .modal .btn-light,
+        body.genz-ui .modal .btn-outline-secondary {
+            background: #f3efff;
+            color: var(--gz-violet);
+            box-shadow: inset 0 0 0 1.5px var(--gz-line);
+        }
+        body.genz-ui .modal .btn-danger,
+        body.genz-ui .modal .btn-outline-danger {
+            background: #ffe6ee;
+            color: #d61f5a;
+        }
+
+        /* inputs */
+        body.genz-ui .form-control,
+        body.genz-ui .form-select,
+        body.genz-ui .input-group-text {
+            border: 1.5px solid var(--gz-line);
+            border-radius: 14px;
+            background-color: #fff;
+            color: var(--gz-ink);
+            transition: box-shadow .15s ease, border-color .15s ease;
+        }
+        body.genz-ui .form-control:focus,
+        body.genz-ui .form-select:focus {
+            border-color: var(--gz-violet-2);
+            box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.16);
+        }
+        body.genz-ui .issues-toolbar-search .input-group { border-radius: 999px; overflow: hidden; }
+        body.genz-ui .issues-toolbar-search .input-group-text { border-radius: 999px 0 0 999px; background: #f3efff; color: var(--gz-violet); }
+        body.genz-ui .issues-toolbar-search .form-control { border-radius: 0 999px 999px 0; }
+        body.genz-ui .issues-toolbar-header .form-select { border-radius: 999px; font-weight: 600; }
+        body.genz-ui .form-label { font-weight: 700; font-size: 0.8rem; color: var(--gz-ink); letter-spacing: .01em; }
+
+        /* chips: loss badges + claims summary */
+        body.genz-ui .l30-badge,
+        body.genz-ui .l30-issues-badge {
+            border: 0 !important;
+            border-radius: 999px !important;
+            font-weight: 800;
+            box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.35);
+            transition: transform .15s ease;
+        }
+        body.genz-ui .l30-badge:hover,
+        body.genz-ui .l30-issues-badge:hover { transform: translateY(-2px) scale(1.04); }
+        body.genz-ui .l30-badge.alltime-loss-badge {
+            background: linear-gradient(135deg, #ff4d6d, #ff8fa3) !important;
+            color: #fff !important;
+        }
+        body.genz-ui .carrier-claims-summary-badge {
+            border: 0 !important;
+            border-radius: 18px !important;
+            padding: 0.4rem 0.8rem !important;
+            box-shadow: 0 8px 18px -12px rgba(29, 27, 58, 0.45);
+            transition: transform .15s ease;
+        }
+        body.genz-ui .carrier-claims-summary-badge:hover { transform: translateY(-2px); }
+        body.genz-ui .carrier-claims-summary--notfiled { background: linear-gradient(135deg, #ffe0e8, #ffd0dc) !important; color: #b3123f !important; }
+        body.genz-ui .carrier-claims-summary--filed { background: linear-gradient(135deg, #dcd4ff, #e9e4ff) !important; color: #4a2fc9 !important; }
+        body.genz-ui .carrier-claims-summary--pending { background: linear-gradient(135deg, #fff1c4, #ffe29a) !important; color: #7a4d00 !important; }
+        body.genz-ui .carrier-claims-summary--received { background: linear-gradient(135deg, #c9f7e6, #a6f0d0) !important; color: #05694b !important; }
+        body.genz-ui .carrier-claims-summary-badge .fw-semibold.small {
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            font-size: .62rem !important;
+        }
+        body.genz-ui #hold_issue_total_count { border-radius: 999px; background: #f3efff !important; color: var(--gz-violet) !important; font-weight: 800; }
+
+        /* table */
+        body.genz-ui .table-responsive { border-radius: 0 0 24px 24px; }
+        body.genz-ui .orders-hold-table {
+            --bs-table-striped-bg: rgba(124, 92, 255, 0.035);
+            --bs-table-hover-bg: rgba(124, 92, 255, 0.09);
+            border: 0;
+            font-size: 12.5px;
+        }
+        body.genz-ui .orders-hold-table th,
+        body.genz-ui .orders-hold-table td {
+            border: 0;
+            border-bottom: 1px solid var(--gz-line);
+        }
+        body.genz-ui .orders-hold-table thead th {
+            background: linear-gradient(180deg, #f5f1ff, #ece6ff) !important;
+            color: var(--gz-violet);
+            font-size: 0.68rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            border-bottom: 2px solid #ddd3ff;
+        }
+        body.genz-ui .orders-hold-table tbody tr { transition: background-color .12s ease; }
+        body.genz-ui .orders-hold-table tbody td { color: var(--gz-ink); }
+        body.genz-ui .orders-hold-table .qc-frozen-right { background-color: #fff; }
+        body.genz-ui .orders-hold-table thead .qc-frozen-right { background: #ece6ff !important; }
+        body.genz-ui .orders-hold-table tbody tr:hover .qc-frozen-right { background-color: #f1ecff; }
+        body.genz-ui .sku-thumb,
+        body.genz-ui .sku-thumb-placeholder { border-radius: 12px; border: 2px solid #fff; box-shadow: 0 6px 14px -8px rgba(29, 27, 58, 0.5); }
+        body.genz-ui .mkt-logo-img,
+        body.genz-ui .carrier-logo-img { filter: drop-shadow(0 2px 3px rgba(29, 27, 58, 0.12)); transition: transform .15s ease; }
+        body.genz-ui .orders-hold-table tbody tr:hover .mkt-logo-img,
+        body.genz-ui .orders-hold-table tbody tr:hover .carrier-logo-img { transform: scale(1.12); }
+        body.genz-ui .claimable-dot,
+        body.genz-ui .claim-filed-dot,
+        body.genz-ui .claim-received-dot,
+        body.genz-ui .tracking-dot-mark { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 3px 8px -2px rgba(29, 27, 58, 0.35); }
+        body.genz-ui .qc-row-history-btn { transition: transform .15s ease; }
+        body.genz-ui .qc-row-history-btn:hover { transform: scale(1.25) rotate(-8deg); }
+
+        /* modals */
+        body.genz-ui .modal-backdrop.show { opacity: 1; background: rgba(29, 27, 58, 0.38); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+        body.genz-ui .modal-content {
+            border: 1px solid rgba(255, 255, 255, 0.9) !important;
+            border-radius: 28px !important;
+            background: rgba(255, 255, 255, 0.94) !important;
+            -webkit-backdrop-filter: blur(18px);
+            backdrop-filter: blur(18px);
+            box-shadow: 0 30px 70px -25px rgba(124, 92, 255, 0.55) !important;
+            overflow: hidden;
+        }
+        body.genz-ui #ordersOnHoldIssueModal .modal-content { background: rgba(255, 255, 255, 0.96) !important; }
+        body.genz-ui .modal-header {
+            border-bottom: 0;
+            padding: 1.1rem 1.4rem;
+            background: linear-gradient(135deg, #f1ecff, #ffeaf4);
+        }
+        body.genz-ui .modal-title { font-weight: 800; letter-spacing: -0.01em; color: var(--gz-ink); }
+        body.genz-ui .modal-header .btn-close { background-color: #fff; border-radius: 999px; opacity: 1; padding: .55rem; box-shadow: 0 4px 10px -4px rgba(29, 27, 58, .35); }
+        body.genz-ui .modal-body { padding: 1.25rem 1.4rem; }
+        body.genz-ui .modal-footer { border-top: 1px dashed var(--gz-line); background: rgba(247, 244, 255, 0.7); }
+        body.genz-ui #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb { background-color: var(--gz-violet-2); border-radius: 999px; }
+        body.genz-ui #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-track { background: #f3efff; border-radius: 999px; }
+        body.genz-ui #ordersOnHoldIssueModal .modal-body { scrollbar-color: var(--gz-violet-2) #f3efff; }
+        body.genz-ui #rowHistoryModal .ai-history-table-wrap { border-radius: 18px; border-color: var(--gz-line); }
+        body.genz-ui #rowHistoryModal table.ai-history-table thead th { background: #f1ecff; color: var(--gz-violet); }
+        body.genz-ui #rowHistoryModal .ai-history-badge { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .04); }
+
+        /* soft scrollbars on the table */
+        body.genz-ui .table-responsive { scrollbar-color: var(--gz-violet-2) transparent; }
+        body.genz-ui .table-responsive::-webkit-scrollbar { height: 10px; }
+        body.genz-ui .table-responsive::-webkit-scrollbar-thumb { background: var(--gz-violet-2); border-radius: 999px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            body.genz-ui *, body.genz-ui *::before, body.genz-ui *::after { transition: none !important; animation: none !important; }
+        }
+        @endif        @if (!empty($showMonthlyReport))
             @include('partials.issue-board-report', ['ibrPart' => 'css', 'ibrDepts' => $monthlyReportDepts ?? []])
         @endif
     </style>
 @endsection
 
 @section('content')
+    @if ($genzUi ?? false)
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <script>document.body.classList.add('genz-ui');</script>
+    @endif
     @if (!empty($sopUrl ?? null))
         @push('page-title-after')
             <a href="{{ $sopUrl }}" target="_blank" rel="noopener noreferrer" title="Open SOP" aria-label="Open SOP"
@@ -3662,6 +3947,18 @@
                     '</td>';
             }
 
+            // MKT column: logo only (name in the tooltip); falls back to the name when no logo is known.
+            const marketplaceLogoOnly = @json((bool) ($marketplaceLogoOnly ?? false));
+            const MARKETPLACE_LOGOS = @json($marketplaceLogoMap);
+
+            function marketplaceLogoCellHtml(row) {
+                const name = String(row.marketplace_1 ?? '').trim();
+                if (!name) return '<td><span class="text-muted">—</span></td>';
+                const logo = MARKETPLACE_LOGOS[name.toLowerCase().replace(/[^a-z0-9]+/g, '')];
+                if (!logo) return '<td title="' + escAttr(name) + '">' + escapeHtml(name) + '</td>';
+                return '<td class="text-center" title="' + escAttr(name) + '">' +
+                    '<img src="' + escAttr(logo) + '" alt="' + escAttr(name) + '" class="mkt-logo-img"></td>';
+            }
             // Carrier logos are saved locally in public/images/carriers (fetched once from the internet).
             const CARRIER_LOGOS = {
                 USPS: @json(asset('images/carriers/usps.png')),
@@ -3677,8 +3974,9 @@
                 const logo = CARRIER_LOGOS[v.toUpperCase()];
                 return '<td class="orders-hold-col-carrier text-center" title="' + escAttr(v) + '">' +
                     '<span class="carrier-logo-cell">' +
-                    (logo ? '<img src="' + escAttr(logo) + '" alt="' + escAttr(v) + '" class="carrier-logo-img">' : '') +
-                    '<span class="carrier-logo-name">' + escapeHtml(v) + '</span></span></td>';
+                    (logo ? '<img src="' + escAttr(logo) + '" alt="' + escAttr(v) + '" class="carrier-logo-img">' :
+                        '<span class="carrier-logo-name">' + escapeHtml(v) + '</span>') +
+                    '</span></td>';
             }
 
             function carrierSelectCellHtml(row) {
@@ -3986,6 +4284,8 @@
                 return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
             }
 
+            const NOT_FILED_VALUE_PER_CLAIM = 90;
+
             function claimsSummaryFromRows(rows) {
                 let filedC = 0;
                 let filedA = 0;
@@ -3994,13 +4294,11 @@
                 let receivedC = 0;
                 let receivedA = 0;
                 let notFiledC = 0;
-                let notFiledA = 0;
                 (rows || []).forEach((r) => {
                     const amt = parseAmpUsdAmount(r.amp_usd);
                     // Not Filed: claim not filed yet AND the case is claimable (non-claimable cases are not counted).
                     if (!r.claim_filed && rowIsClaimable(r)) {
                         notFiledC += 1;
-                        notFiledA += amt;
                     }
                     if (r.claim_filed) {
                         filedC += 1;
@@ -4016,7 +4314,8 @@
                     }
                 });
                 return {
-                    notFiled: { count: notFiledC, amount: notFiledA },
+                    // Not Filed is valued at a flat $90 per claim, not at the AMT $ column.
+                    notFiled: { count: notFiledC, amount: notFiledC * NOT_FILED_VALUE_PER_CLAIM },
                     filed: { count: filedC, amount: filedA },
                     pending: { count: pendingC, amount: pendingA },
                     received: { count: receivedC, amount: receivedA },
@@ -5367,7 +5666,7 @@
                         @endif
                     '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') +
                     '</td>' +
-                    '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
+                    (marketplaceLogoOnly ? marketplaceLogoCellHtml(row) : '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>') +
                         @if ($showDispatchExtras ?? false)
                             '<td class="dispatch-what-cell"><span class="what-cell-wrap">' + whatHappenedDotHtml
                                 (row.what_happened) + '</span></td>' +

@@ -1,5 +1,7 @@
 {!! view('customer-care.qc_and_packing', [
     'pageTitle' => 'Carrier Claims',
+    // Modern Gen-Z look (gradients, glass cards, pill buttons) for the page and its modals.
+    'genzUi' => true,
     // SOP icon beside the page title, opens the Google Doc in a new tab.
     'sopUrl' => 'https://docs.google.com/document/d/1w1cE0w5QDZzMeV2-p1Tj2A3EfloB418Pvxh0HUdr_Vs/edit?tab=t.0',
     'addIssueButtonText' => 'Carrier Claims',
@@ -43,17 +45,20 @@
     'claimAmountsInModal' => true,
     'showClaimReceivedColumn' => true,
     'showCarrierColumn' => true,
+    // MKT column shows the marketplace logo (name in the tooltip).
+    'marketplaceLogoOnly' => true,
     // Carrier column shows logo + name only (read-only); change it from the edit modal.
     'carrierLogoReadOnly' => true,
     // Show Carrier immediately after Action so it is visible on the homepage
     // without scrolling past Details / History.
     'carrierColumnAfterAction' => true,
-    // Read-only "Details" magnifier column (after Action) that opens a
-    // modal listing every relevant field for the row.
-    'showDetailsColumn' => true,
+    // No Details magnifier column on this board (edit modal has every field).
+    'showDetailsColumn' => false,
     // Per-row edit history button (clock icon) opens audit trail modal.
     'showRowHistoryColumn' => true,
     'hideCloseColumn' => true,
+    // Columns hug their content; SKU and Issue absorb the leftover width.
+    'autofitTableColumns' => true,
     // History (clock) column sits right before Created By; both are frozen at the right edge.
     'historyBeforeCreatedBy' => true,
     // Oldest issue first (Created By date ascending).
