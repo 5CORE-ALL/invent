@@ -337,6 +337,78 @@
         </div>
     </div>
 
+    {{-- Temu 1/2/3: join Temu promotion activities (bg.promotion.activity.*) --}}
+    <div class="modal fade" id="promo-temu-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6">
+                        <i class="fas fa-bolt me-1"></i> Temu promotion
+                        <span class="badge bg-light text-dark ms-1" id="promo-temu-channel"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Temu has no &ldquo;create promotion&rdquo; API. You join an activity Temu already runs.
+                        Price and quantity are <strong>Temu&rsquo;s recommended activity price/quantity</strong> for each eligible SKU
+                        (quantity capped to our INV). Nothing is sent until you press <strong>Enroll selected</strong> and confirm.
+                    </p>
+                    <div class="row g-2 align-items-end mb-2">
+                        <div class="col-md-3">
+                            <label class="form-label small mb-0" for="promo-temu-type">Activity type</label>
+                            <select id="promo-temu-type" class="form-select form-select-sm">
+                                <option value="2">Lightning deals</option>
+                                <option value="27">Clearance deals</option>
+                                <option value="100">Official big sale</option>
+                                <option value="13">Advanced big sale</option>
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small mb-0" for="promo-temu-activity">Open activity</label>
+                            <select id="promo-temu-activity" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-md-4 d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="promo-temu-reload" title="Reload open activities">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-primary" id="promo-temu-load">
+                                <i class="fas fa-search me-1"></i>Show eligible goods
+                            </button>
+                        </div>
+                    </div>
+                    <div class="small text-muted mb-1" id="promo-temu-summary"></div>
+                    <div class="table-responsive" style="max-height:48vh;">
+                        <table class="table table-sm table-bordered align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:34px;"><input type="checkbox" id="promo-temu-all" title="Select all ready"></th>
+                                    <th>SKU</th>
+                                    <th>Goods ID</th>
+                                    <th class="text-center">SKUs</th>
+                                    <th class="text-end">INV</th>
+                                    <th class="text-end">Temu qty</th>
+                                    <th class="text-end">Enroll qty</th>
+                                    <th class="text-end">Activity price</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="promo-temu-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small mt-2" id="promo-temu-status"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <span class="small text-muted me-auto" id="promo-temu-picked">0 selected</span>
+                    <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-success" id="promo-temu-enroll" disabled>
+                        <i class="fas fa-bolt me-1"></i>Enroll selected
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Add Column modal --}}
     <div class="modal fade" id="promo-add-column-modal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -627,10 +699,30 @@
             },
         };
 
+        // "Temu Promo": join Temu's own promotion activities (Lightning Deal, ...) for Temu 1/2/3.
+        const temuPromo = {
+            title: 'Temu Promo',
+            field: 'temu_promo',
+            width: 120,
+            hozAlign: 'center',
+            headerHozAlign: 'center',
+            headerSort: false,
+            formatter: function (cell) {
+                if (!cell.getValue()) {
+                    return '<span class="promo-prmt-btn is-disabled" title="No promotion API for this channel"><i class="fas fa-bolt"></i> Promo</span>';
+                }
+                return '<button type="button" class="promo-prmt-btn" title="Join Temu promotion activities (Lightning Deal, Clearance, ...)"><i class="fas fa-bolt"></i> Promo</button>';
+            },
+            cellClick: function (e, cell) {
+                e.stopPropagation();
+                if (cell.getValue()) openTemuPromoModal(cell.getRow().getData());
+            },
+        };
+
         // Prmt% sits right after Status; Rule sits right after the Coupons column (or after Prmt% if none yet).
         const couponIdx = dynamicColumns.findIndex(isCouponColumn);
         const cols = startColumns.slice();
-        cols.push(prmt);
+        cols.push(prmt, temuPromo);
         if (couponIdx === -1) {
             cols.push(rule);
         }
@@ -1186,6 +1278,158 @@
                     + ((xhr.responseJSON && xhr.responseJSON.message) || 'error'));
             }).always(function () { setPrmtBusy(false); });
         }).fail(function () { setPrmtBusy(false); });
+    });
+
+    // ---------- Temu 1/2/3: join Temu promotion activities ----------
+    let temuPromoModal = null;
+    let temuPromoChannel = null;
+    let temuPromoRows = [];
+    const TEMU_ENROLL_MAX = 50;
+
+    function temuPromoStatus(html, cls) {
+        $('#promo-temu-status').attr('class', 'small mt-2 ' + (cls || '')).html(html || '');
+    }
+
+    function temuPromoPicked() {
+        const n = $('#promo-temu-tbody .promo-temu-pick:checked').length;
+        $('#promo-temu-picked').text(n + ' selected' + (n > TEMU_ENROLL_MAX ? ' (max ' + TEMU_ENROLL_MAX + ' per click)' : ''));
+        $('#promo-temu-enroll').prop('disabled', n < 1 || n > TEMU_ENROLL_MAX);
+    }
+
+    function temuErr(xhr) {
+        return (xhr.responseJSON && xhr.responseJSON.message) || 'request failed';
+    }
+
+    function loadTemuActivities() {
+        $('#promo-temu-activity').empty().append('<option value="">Loading…</option>');
+        $('#promo-temu-tbody').empty();
+        $('#promo-temu-summary').text('');
+        temuPromoRows = [];
+        temuPromoPicked();
+        $.getJSON('{{ route("promotions.temu.activities") }}', {
+            channel: temuPromoChannel,
+            activity_type: $('#promo-temu-type').val(),
+        }).done(function (res) {
+            const $sel = $('#promo-temu-activity').empty();
+            const list = (res && res.activities) || [];
+            if (!list.length) {
+                $sel.append('<option value="">No open activity of this type</option>');
+                return;
+            }
+            list.forEach(function (a) {
+                const end = a.activityEndTime ? new Date(Number(a.activityEndTime) * (String(a.activityEndTime).length > 11 ? 1 : 1000)).toLocaleDateString() : '';
+                const label = (a.activityName || ('Activity ' + a.activityId)) + ' · ' + (a._status || '') + (end ? ' · ends ' + end : '') + ' · #' + a.activityId;
+                $sel.append($('<option>').val(a.activityId).text(label));
+            });
+        }).fail(function (xhr) {
+            $('#promo-temu-activity').empty().append('<option value="">—</option>');
+            temuPromoStatus('Could not load activities: ' + escapeHtml(temuErr(xhr)), 'text-danger');
+        });
+    }
+
+    function openTemuPromoModal(row) {
+        if (!temuPromoModal) temuPromoModal = new bootstrap.Modal(document.getElementById('promo-temu-modal'));
+        temuPromoChannel = row.temu_promo;
+        $('#promo-temu-channel').text(row.channel || temuPromoChannel);
+        temuPromoStatus('');
+        temuPromoModal.show();
+        loadTemuActivities();
+    }
+
+    $('#promo-temu-type').on('change', function () {
+        temuPromoStatus('');
+        loadTemuActivities();
+    });
+    $('#promo-temu-reload').on('click', function () {
+        temuPromoStatus('');
+        loadTemuActivities();
+    });
+
+    function renderTemuRows() {
+        const $b = $('#promo-temu-tbody').empty();
+        temuPromoRows.forEach(function (r) {
+            const ready = r.status === 'ready';
+            const prices = r.skus.map(function (s) { return Number(s.price).toFixed(2); });
+            const priceTxt = prices.length > 3 ? (prices.slice(0, 3).join(', ') + ' …') : prices.join(', ');
+            const $tr = $('<tr>').toggleClass('table-light text-muted', !ready);
+            $tr.append($('<td>').html(ready
+                ? '<input type="checkbox" class="promo-temu-pick" value="' + escapeHtml(r.goods_id) + '">'
+                : ''));
+            $tr.append($('<td>').text(r.sku || '—'));
+            $tr.append($('<td>').text(r.goods_id));
+            $tr.append($('<td class="text-center">').text(r.skus.length));
+            $tr.append($('<td class="text-end">').text(r.inv));
+            $tr.append($('<td class="text-end">').text(r.rec_qty));
+            $tr.append($('<td class="text-end">').text(ready ? r.qty : '—'));
+            $tr.append($('<td class="text-end">').text(priceTxt));
+            $tr.append($('<td>').html(ready
+                ? '<span class="badge bg-success">Ready</span>'
+                : '<span class="badge bg-secondary" title="' + escapeHtml(r.reason || '') + '">Skip</span> <span class="small">' + escapeHtml(r.reason || '') + '</span>'));
+            $b.append($tr);
+        });
+        $('#promo-temu-all').prop('checked', false);
+        temuPromoPicked();
+    }
+
+    $('#promo-temu-load').on('click', function () {
+        const activityId = $('#promo-temu-activity').val();
+        if (!activityId) { temuPromoStatus('Pick an open activity first.', 'text-danger'); return; }
+        const $btn = $(this).prop('disabled', true);
+        temuPromoStatus('Loading eligible goods from Temu…', 'text-muted');
+        $.getJSON('{{ route("promotions.temu.preview") }}', {
+            channel: temuPromoChannel, activity_id: activityId, refresh: 1,
+        }).done(function (res) {
+            temuPromoRows = (res && res.rows) || [];
+            $('#promo-temu-summary').text(
+                res.eligible + ' eligible goods: ' + res.ready + ' ready to enroll, ' + res.skipped + ' skipped'
+            );
+            renderTemuRows();
+            temuPromoStatus('');
+        }).fail(function (xhr) {
+            temuPromoStatus('Preview failed: ' + escapeHtml(temuErr(xhr)), 'text-danger');
+        }).always(function () { $btn.prop('disabled', false); });
+    });
+
+    $('#promo-temu-all').on('change', function () {
+        $('#promo-temu-tbody .promo-temu-pick').prop('checked', this.checked);
+        temuPromoPicked();
+    });
+    $('#promo-temu-tbody').on('change', '.promo-temu-pick', temuPromoPicked);
+
+    $('#promo-temu-enroll').on('click', function () {
+        const ids = $('#promo-temu-tbody .promo-temu-pick:checked').map(function () { return this.value; }).get();
+        const activityId = $('#promo-temu-activity').val();
+        if (!ids.length || !activityId) return;
+        const label = $('#promo-temu-activity option:selected').text();
+        if (!window.confirm('Enroll ' + ids.length + ' goods on ' + $('#promo-temu-channel').text()
+            + ' in:\n' + label + '\n\nThis sends real promotion enrollments to Temu at Temu\'s recommended price.')) {
+            return;
+        }
+        const $btn = $(this).prop('disabled', true);
+        temuPromoStatus('Enrolling on Temu…', 'text-muted');
+        $.ajax({
+            url: '{{ route("promotions.temu.enroll") }}',
+            method: 'POST',
+            dataType: 'json',
+            data: { channel: temuPromoChannel, activity_id: activityId, goods_ids: ids, confirm: 1, _token: csrf },
+        }).done(function (res) {
+            const bad = (res.results || []).filter(function (r) { return r.status !== 'ok'; });
+            let html = escapeHtml(res.message || 'Done.');
+            if (bad.length) {
+                html += '<ul class="mb-0">' + bad.slice(0, 10).map(function (r) {
+                    return '<li>' + escapeHtml((r.sku || r.goods_id) + ': ' + (r.message || r.status)) + '</li>';
+                }).join('') + (bad.length > 10 ? '<li>…and ' + (bad.length - 10) + ' more</li>' : '') + '</ul>';
+            }
+            temuPromoStatus(html, res.failed ? 'text-warning' : 'text-success');
+            $.getJSON('{{ route("promotions.temu.preview") }}', { channel: temuPromoChannel, activity_id: activityId, refresh: 1 })
+                .done(function (p) {
+                    temuPromoRows = (p && p.rows) || [];
+                    $('#promo-temu-summary').text(p.eligible + ' eligible goods: ' + p.ready + ' ready to enroll, ' + p.skipped + ' skipped');
+                    renderTemuRows();
+                });
+        }).fail(function (xhr) {
+            temuPromoStatus('Enroll failed: ' + escapeHtml(temuErr(xhr)), 'text-danger');
+        }).always(function () { $btn.prop('disabled', false); temuPromoPicked(); });
     });
 
     $('#promo-search').on('keyup', applyFilters);

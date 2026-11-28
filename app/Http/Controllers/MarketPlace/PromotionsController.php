@@ -136,6 +136,24 @@ class PromotionsController extends Controller
     }
 
     /**
+     * Channels that can join Temu's promotion activities (TemuPromotionsController).
+     * Exact match on the normalized channel name; value = the controller's channel key.
+     */
+    private const TEMU_PROMO_CHANNEL = [
+        'temu' => 'temu',
+        'temu1' => 'temu',
+        'temu2' => 'temu2',
+        'temu3' => 'temu3',
+    ];
+
+    private function temuPromoChannel(string $channel): ?string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', strtolower($channel));
+
+        return self::TEMU_PROMO_CHANNEL[$key] ?? null;
+    }
+
+    /**
      * "Save & Apply" on the Prmt% modal. The rules themselves are saved by
      * POST /channel-promo-pricing/{channel}/dil-prmt; this starts the same headless job the eBay pages use
      * (ebay:dil-prmt-auto-apply): listing Dil → shared PRMT% slab → saved PRMT% on every SKU → markdown-sale push.
@@ -369,6 +387,7 @@ class PromotionsController extends Controller
                     'coupon_allowed' => $this->couponSupport((string) $row->channel),
                     'coupon_rule' => $this->couponRuleModal((string) $row->channel),
                     'prmt_rule' => $this->prmtRuleChannel((string) $row->channel),
+                    'temu_promo' => $this->temuPromoChannel((string) $row->channel),
                     'notes_remarks' => $stored->notes_remarks ?? '',
                     'values' => (object) $values,
                 ];

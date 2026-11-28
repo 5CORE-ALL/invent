@@ -4727,6 +4727,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/promotions/amazon-coupon/push/status', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponPushStatus'])->name('promotions.amazon.coupon.push.status');
     Route::post('/promotions/amazon-coupon/push/cancel', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponPushCancel'])->name('promotions.amazon.coupon.push.cancel');
     Route::post('/promotions/save-row', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'saveRow'])->name('promotions.save.row');
+    // Temu 1/2/3: join Temu's promotion activities (Lightning Deal etc.) through bg.promotion.activity.*
+    Route::get('/promotions/temu/activities', [\App\Http\Controllers\MarketPlace\TemuPromotionsController::class, 'activities'])->name('promotions.temu.activities');
+    Route::get('/promotions/temu/preview', [\App\Http\Controllers\MarketPlace\TemuPromotionsController::class, 'preview'])->name('promotions.temu.preview');
+    Route::post('/promotions/temu/enroll', [\App\Http\Controllers\MarketPlace\TemuPromotionsController::class, 'enroll'])->name('promotions.temu.enroll');
 
     // Payments Verification — active channels with PMT RECD, bank account and link
     Route::get('/payments-verification', [\App\Http\Controllers\MarketPlace\PaymentsVerificationController::class, 'index'])->name('payments.verification');
