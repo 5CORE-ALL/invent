@@ -139,7 +139,11 @@ class TikTokPromotionApiService
             ];
         }
 
-        $res = $this->call('PUT', '/promotion/'.self::VERSION.'/activities/'.rawurlencode($activityId).'/products', [], ['products' => $products]);
+        $res = $this->call('PUT', '/promotion/'.self::VERSION.'/activities/'.rawurlencode($activityId).'/products', [], [
+            // TikTok rejects the call ("ActivityId is a required field") unless the id is also in the body.
+            'activity_id' => $activityId,
+            'products' => $products,
+        ]);
         if (! $res['success']) {
             return ['success' => false, 'message' => $res['message']];
         }
@@ -157,6 +161,7 @@ class TikTokPromotionApiService
     public function removeSkus(string $activityId, array $productIds, array $skuIds): array
     {
         $res = $this->call('DELETE', '/promotion/'.self::VERSION.'/activities/'.rawurlencode($activityId).'/products', [], [
+            'activity_id' => $activityId,
             'product_ids' => array_values($productIds),
             'sku_ids' => array_values($skuIds),
         ]);
@@ -171,7 +176,7 @@ class TikTokPromotionApiService
      */
     public function deactivate(string $activityId): array
     {
-        $res = $this->call('POST', '/promotion/'.self::VERSION.'/activities/'.rawurlencode($activityId).'/deactivate', [], null);
+        $res = $this->call('POST', '/promotion/'.self::VERSION.'/activities/'.rawurlencode($activityId).'/deactivate', [], ['activity_id' => $activityId]);
 
         return ['success' => $res['success'], 'message' => $res['success'] ? 'Activity deactivated.' : $res['message']];
     }
