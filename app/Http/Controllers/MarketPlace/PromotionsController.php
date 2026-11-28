@@ -168,6 +168,14 @@ class PromotionsController extends Controller
         return self::TIKTOK_PROMO_CHANNEL[$key] ?? null;
     }
 
+    /** Shopify B2C (main store): real Shopify automatic discount (ShopifyB2cPromotionsController). */
+    private function b2cPromoChannel(string $channel): bool
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', strtolower($channel));
+
+        return in_array($key, ['shopify', 'shopifyb2c'], true);
+    }
+
     /** Shopify B2B (business5core.com): % off as a lower special price (ShopifyB2bPromotionsController). */
     private function b2bPromoChannel(string $channel): bool
     {
@@ -413,6 +421,7 @@ class PromotionsController extends Controller
                     'temu_promo' => $this->temuPromoChannel((string) $row->channel),
                     'tiktok_promo' => $this->tiktokPromoChannel((string) $row->channel),
                     'b2b_promo' => $this->b2bPromoChannel((string) $row->channel),
+                    'b2c_promo' => $this->b2cPromoChannel((string) $row->channel),
                     'notes_remarks' => $stored->notes_remarks ?? '',
                     'values' => (object) $values,
                 ];
