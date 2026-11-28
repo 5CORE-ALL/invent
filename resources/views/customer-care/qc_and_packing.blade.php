@@ -1490,6 +1490,21 @@
             border-color: #ffd98a;
             --bs-badge-color: #7a4d00;
         }
+        .missing-count {
+            display: block;
+            width: fit-content;
+            min-width: 20px;
+            margin: 3px auto 0;
+            padding: 0 7px;
+            border-radius: 999px;
+            background: #dc3545;
+            color: #fff;
+            font-size: 0.66rem;
+            font-weight: 800;
+            line-height: 1.5;
+            letter-spacing: 0;
+            text-transform: none;
+        }
         .missing-mark {
             display: inline-block;
             min-width: 22px;
@@ -2212,6 +2227,9 @@
                                     @endif
                                     @if ($showClaimTrackingColumn ?? false)
                                         <th class="orders-hold-col-action">Tracking</th>
+                                    @endif
+                                    @if ($showLabelDateColumn ?? false)
+                                        <th class="orders-hold-col-action text-center" title="When the shipping label was created">Label<br>Date</th>
                                     @endif
                                     {{-- Read-only "view all column data" magnifier; opens a modal
                                          showing every relevant field for the row. --}}
@@ -3148,6 +3166,7 @@
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
             const showCarrierColumn = @json((bool) ($showCarrierColumn ?? false));
             const showClaimTrackingColumn = @json((bool) ($showClaimTrackingColumn ?? false));
+            const showLabelDateColumn = @json((bool) ($showLabelDateColumn ?? false));
             const hideReplacementTrackingOnBoard = @json((bool) ($hideReplacementTrackingOnBoard ?? false));
             const claimsStatsUrl = @json($claimsStatsUrl ?? null);
             const showClaimsSummaryBadges = @json((bool) ($showClaimsSummaryBadges ?? false));
@@ -4483,9 +4502,53 @@
                 };
             }
 
+            // Red count under each column title = how many of the rows currently shown have that data missing.
+            const MISSING_RULES = {
+                'sku': (r) => !String(r.sku ?? '').trim(),
+                'ord': (r) => !String(r.order_number ?? '').trim(),
+                'loss$': (r) => lossCellDisplay(r) === '\u2014',
+                'qty': (r) => r.order_qty == null || r.order_qty === '',
+                'mkt': (r) => !String(r.marketplace_1 ?? '').trim(),
+                'issue?': (r) => !String(r.what_happened ?? '').trim(),
+                'carrier': (r) => !String(r.issue_carrier ?? '').trim(),
+                'tracking': (r) => !String(r.tracking_number ?? '').trim(),
+                'labeldate': (r) => !String(r.label_date_display ?? '').trim(),
+                'amt$': (r) => !String(r.amp_usd ?? '').trim(),
+                'amtrec': (r) => !!r.claim_received && !String(r.amt_rec ?? '').trim(),
+                'createdby': (r) => !String(r.created_by ?? '').trim(),
+            };
+            let missingHeaderCells = null;
+
+            function updateMissingCounts(rows) {
+                if (!highlightMissing) return;
+                const table = tableBody ? tableBody.closest('table') : null;
+                if (!table) return;
+                if (missingHeaderCells === null) {
+                    missingHeaderCells = [];
+                    table.querySelectorAll('thead th').forEach((th) => {
+                        const key = (th.textContent || '').replace(/\s+/g, '').toLowerCase();
+                        if (!MISSING_RULES[key]) return;
+                        const badge = document.createElement('span');
+                        badge.className = 'missing-count d-none';
+                        th.appendChild(badge);
+                        missingHeaderCells.push({ key, badge });
+                    });
+                }
+                const list = rows || [];
+                missingHeaderCells.forEach(({ key, badge }) => {
+                    let n = 0;
+                    for (let i = 0; i < list.length; i++) {
+                        if (MISSING_RULES[key](list[i])) n++;
+                    }
+                    badge.textContent = String(n);
+                    badge.title = n + ' row' + (n === 1 ? '' : 's') + ' with missing data';
+                    badge.classList.toggle('d-none', n === 0);
+                });
+            }
             function refreshDateFilteredClaimsSummary(rows) {
                 // The Filed / Pending / Recd boxes always total exactly the rows left after every filter
                 // (period, carrier, claimable / filed / recd, search) — same rows as the table and the count.
+                updateMissingCounts(rows);
                 if (!showClaimsSummaryBadges || !holdIssueRows.length) return;
                 const summary = claimsSummaryFromRows(rows);
                 applyClaimsSummaryNumbers(summary.filed, summary.pending, summary.received, summary.notFiled);
@@ -5101,6 +5164,15 @@
             }
 
             // Carrier Claims Tracking column: green dot = tracking on file (hover shows it, clipboard copies it), red dot = no tracking.
+            // Label Date: when the shipping label was created (looked up server-side from the Veeqo shipment).
+            function labelDateCellHtml(row) {
+                const short = String(row?.label_date_display ?? '').trim();
+                if (!short) {
+                    return '<td class="text-center" title="No label found for this tracking / order">' + missingMark() + '</td>';
+                }
+                return '<td class="text-center text-nowrap" title="Label created ' + escAttr(row.label_date_full || short) + '">' +
+                    escapeHtml(short) + '</td>';
+            }
             function trackingDotCellHtml(value) {
                 const text = String(value || '').trim();
                 if (!text) {
@@ -5849,6 +5921,9 @@
                     @if ($showClaimTrackingColumn ?? false)
                         '<td class="text-center">' + trackingDotCellHtml(row.tracking_number) + '</td>' +
                     @endif
+                    @if ($showLabelDateColumn ?? false)
+                        labelDateCellHtml(row) +
+                    @endif
                     @if ($showDetailsColumn ?? false)
                         qcDetailsCellHtml(row) +
                     @endif
@@ -6103,6 +6178,9 @@
                     claim_received_at_display: row?.claim_received_at_display ?? null,
                     issue_carrier: row?.issue_carrier != null && row?.issue_carrier !== '' ? String(row.issue_carrier)
                         .trim() : '',
+                    label_date: row?.label_date ?? null,
+                    label_date_display: row?.label_date_display ?? null,
+                    label_date_full: row?.label_date_full ?? null,
                 };
             }
 
@@ -6161,6 +6239,9 @@
                     if (lockedDepartment) {
                         listUrl += (listUrl.indexOf('?') >= 0 ? '&' : '?') +
                             'department=' + encodeURIComponent(lockedDepartment);
+                    }
+                    if (showLabelDateColumn) {
+                        listUrl += (listUrl.indexOf('?') >= 0 ? '&' : '?') + 'label_date=1';
                     }
                     const response = await fetch(listUrl, {
                         headers: {

@@ -77,6 +77,8 @@
     'hideCarrierTrackingMediaColumns' => true,
     // Tracking ID from All Issues (tracking_number). Replacement tracking stays off this board.
     'showClaimTrackingColumn' => true,
+    // Label Date column: when the shipping label was created (Veeqo shipment).
+    'showLabelDateColumn' => true,
     'hideReplacementTrackingOnBoard' => true,
     // Merge the standalone "Created At" date column into the "Created By"
     // cell (name on top, short "21 JUN" date underneath, full timestamp

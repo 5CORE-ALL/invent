@@ -1367,9 +1367,97 @@ class DispatchIssuesController extends IssueBoardControllerBase
             $data = collect($this->attachAllIssuesLinkFields($data->all()))->values();
         }
 
+        // Carrier Claims board: label created date (Veeqo shipment created) per tracking / order number.
+        if (request()->boolean('label_date')) {
+            $data = collect($this->attachLabelDates($data->all()))->values();
+        }
+
         return response()->json(['data' => $data]);
     }
 
+    /**
+     * Adds `label_date` (raw) and `label_date_display` to each row: when the shipping label was created.
+     * Source: Veeqo billing shipments (`shipment_created_at`), matched by tracking number first, then by order number;
+     * the earliest non-cancelled shipment wins so a later replacement label does not overwrite the original.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function attachLabelDates(array $rows): array
+    {
+        if ($rows === [] || ! Schema::hasTable('veeqo_billing_shipments')) {
+            return $rows;
+        }
+
+        $normTn = static fn ($v): string => strtoupper(preg_replace('/\s+/', '', trim((string) $v)) ?? '');
+        $normOrder = static fn ($v): string => mb_strtolower(trim((string) $v));
+
+        $tracks = [];
+        $orders = [];
+        foreach ($rows as $row) {
+            $tn = $normTn($row['tracking_number'] ?? '');
+            if ($tn !== '') {
+                $tracks[$tn] = $tn;
+            }
+            $on = $normOrder($row['order_number'] ?? '');
+            if ($on !== '') {
+                $orders[$on] = trim((string) $row['order_number']);
+            }
+        }
+
+        $byTracking = [];
+        $byOrder = [];
+        $collect = function ($found) use (&$byTracking, &$byOrder, $normTn, $normOrder): void {
+            if (empty($found->shipment_created_at)) {
+                return;
+            }
+            $at = (string) $found->shipment_created_at;
+            $tk = $normTn($found->tracking_number ?? '');
+            if ($tk !== '' && (! isset($byTracking[$tk]) || $at < $byTracking[$tk])) {
+                $byTracking[$tk] = $at;
+            }
+            $ok = $normOrder($found->order_number ?? '');
+            if ($ok !== '' && (! isset($byOrder[$ok]) || $at < $byOrder[$ok])) {
+                $byOrder[$ok] = $at;
+            }
+        };
+        $base = fn () => DB::table('veeqo_billing_shipments')
+            ->select(['tracking_number', 'order_number', 'shipment_created_at'])
+            ->whereNotNull('shipment_created_at')
+            ->where(function ($q) {
+                $q->whereNull('tracking_cancelled')->orWhere('tracking_cancelled', false);
+            });
+        foreach (array_chunk(array_values($tracks), 500) as $chunk) {
+            foreach ($base()->whereIn('tracking_number', $chunk)->get() as $found) {
+                $collect($found);
+            }
+        }
+        foreach (array_chunk(array_values($orders), 500) as $chunk) {
+            foreach ($base()->whereIn('order_number', $chunk)->get() as $found) {
+                $collect($found);
+            }
+        }
+
+        $tz = config('app.timezone');
+        foreach ($rows as $i => $row) {
+            $at = $byTracking[$normTn($row['tracking_number'] ?? '')]
+                ?? $byOrder[$normOrder($row['order_number'] ?? '')]
+                ?? null;
+            if ($at === null) {
+                $rows[$i]['label_date'] = null;
+                $rows[$i]['label_date_display'] = null;
+                $rows[$i]['label_date_full'] = null;
+
+                continue;
+            }
+            $dt = \Carbon\Carbon::parse($at)->timezone($tz);
+            $rows[$i]['label_date'] = $dt->format('Y-m-d H:i:s');
+            $rows[$i]['label_date_display'] = $dt->format($dt->year === now($tz)->year ? 'j M' : 'j M Y');
+            $rows[$i]['label_date_full'] = $dt->format('d-m-Y H:i');
+        }
+
+        return $rows;
+    }
     /**
      * Per-row history endpoint backing the "History" button rendered in each
      * row of the All Issues table. Returns every history entry for the given
