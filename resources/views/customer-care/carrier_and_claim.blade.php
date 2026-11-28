@@ -46,6 +46,8 @@
     // Per-row edit history button (clock icon) opens audit trail modal.
     'showRowHistoryColumn' => true,
     'hideCloseColumn' => true,
+    // Oldest issue first (Created By date ascending).
+    'oldestFirst' => true,
     'rowHistoryBaseUrl' => url('/customer-care/all-issues/issues'),
     // Hide Tracking / Track R / Img / Link from the table — carrier column
     // stays visible; other fields are available via the Details modal.
@@ -64,6 +66,24 @@
     'searchBarPlaceholder' => 'Search SKU, order, tracking, carrier…',
     // From / Till date range on the toolbar. Filters rows by created date.
     'showDateRangeFilter' => true,
+    // L30 / L60 / L90 / All time picker beside the dates; L30 is the default.
+    'showPeriodFilter' => true,
+    'hideDateInputs' => true,
+    // History / Export CSV / Import CSV show as icon-only buttons (name in the tooltip).
+    'iconOnlyToolbarButtons' => true,
+    // No order-History button on this board (each row has its own history icon).
+    'hideHistoryButton' => true,
+    // Row count badge sits at the far left of the toolbar.
+    'rowCountLeft' => true,
+    // Whole toolbar on one row (desktop).
+    'toolbarOneLine' => true,
+    // No yellow "G" (grouped entry) pill on this board.
+    'hideGroupBadge' => true,
+    // No "#" (issue id) column on this board.
+    'hideIdColumn' => true,
+    // Loss $ is autofilled (Amazon price x qty): read-only text, not an input.
+    'lossReadOnly' => true,
+    'defaultPeriodDays' => '30',
     // Ord column: clipboard icon only (order # via button title); no hover expand.
     'orderNumberIconOnly' => true,
 ])->render() !!}

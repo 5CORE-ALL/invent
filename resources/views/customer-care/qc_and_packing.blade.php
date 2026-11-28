@@ -696,12 +696,13 @@
         .orders-hold-table th.orders-hold-col-carrier,
         .orders-hold-table td.orders-hold-col-carrier {
             width: 1%;
-            min-width: 5.5rem;
-            max-width: 7rem;
+            min-width: 8.25rem;
+            max-width: 10.5rem;
             vertical-align: middle;
         }
 
         .orders-hold-table .carrier-issue-carrier-select {
+            width: 100%;
             font-size: 0.8125rem;
             padding-top: 0.15rem;
             padding-bottom: 0.15rem;
@@ -900,6 +901,23 @@
 
         .copy-tracking-btn.copied {
             color: #198754;
+        }
+
+        .tracking-dot-mark {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            line-height: 0;
+            vertical-align: middle;
+        }
+
+        .tracking-dot-mark--green {
+            background: #198754;
+        }
+
+        .tracking-dot-mark--red {
+            background: #dc3545;
         }
 
         .tracking-cell:hover .tracking-dot {
@@ -1389,6 +1407,88 @@
             padding: 0.42rem 0.65rem;
         }
 
+        /* toolbarOneLine: every toolbar control (buttons, badges, filters, search, claim totals, count) on a single row on desktop. */
+        @media (min-width: 992px) {
+            .issues-toolbar--oneline .row,
+            .issues-toolbar--oneline .issues-toolbar-actions,
+            .issues-toolbar--oneline .issues-toolbar-actions-primary,
+            .issues-toolbar--oneline .issues-toolbar-actions-secondary,
+            .issues-toolbar--oneline .issues-toolbar-dates {
+                flex-wrap: nowrap !important;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions {
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: 0.4rem !important;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions-primary,
+            .issues-toolbar--oneline .issues-toolbar-actions-secondary {
+                gap: 0.35rem !important;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions-primary {
+                flex: 0 0 auto;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions-secondary {
+                flex: 1 1 0;
+                min-width: 0;
+                justify-content: flex-start;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-actions .form-select,
+            .issues-toolbar--oneline .issues-toolbar-actions #carrier-filter-select,
+            .issues-toolbar--oneline .issues-toolbar-actions #claimable-filter-select,
+            .issues-toolbar--oneline .issues-toolbar-actions #claim-filed-filter-select,
+            .issues-toolbar--oneline .issues-toolbar-actions #claim-received-filter-select {
+                min-width: 0;
+                width: auto;
+                max-width: 130px;
+                font-size: 0.75rem;
+                padding-left: 0.4rem;
+                padding-right: 1.5rem;
+            }
+
+            .issues-toolbar--oneline .issues-toolbar-search {
+                flex: 0 1 150px;
+                min-width: 110px;
+                max-width: 170px;
+            }
+
+            .issues-toolbar--oneline .l30-badge,
+            .issues-toolbar--oneline .l30-issues-badge {
+                font-size: 0.75rem;
+                padding: 0.25rem 0.45rem;
+                white-space: nowrap;
+            }
+
+            .issues-toolbar--oneline .carrier-claims-summary-wrap.carrier-claims-summary--fill {
+                flex: 1 1 0;
+                gap: 0.35rem !important;
+            }
+
+            .issues-toolbar--oneline .carrier-claims-summary-badge {
+                padding: 0.2rem 0.4rem;
+                white-space: nowrap;
+                line-height: 1.2;
+            }
+
+            .issues-toolbar--oneline .carrier-claims-summary-badge .fw-semibold.small {
+                font-size: 0.72rem;
+            }
+
+            .issues-toolbar--oneline .carrier-claims-summary-line {
+                font-size: 0.78rem;
+            }
+
+            .issues-toolbar--oneline #hold_issue_total_count {
+                font-size: 0.85rem !important;
+                padding: 0.3rem 0.5rem !important;
+            }
+        }
+
         /* Remove black backdrop completely */
         .modal-backdrop {
             display: none !important;
@@ -1447,7 +1547,7 @@
             @endif
 
             <div class="card mt-3">
-                <div class="card-header issues-toolbar-header py-2 py-md-3 border-bottom">
+                <div class="card-header issues-toolbar-header @if ($toolbarOneLine ?? false) issues-toolbar--oneline @endif py-2 py-md-3 border-bottom">
                     <div class="row g-2 g-md-3 align-items-center">
                         @if (($recordsTitle ?? null) !== '')
                             <div class="col-12 col-xl-auto">
@@ -1458,25 +1558,32 @@
                             <div
                                 class="issues-toolbar-actions d-flex flex-column flex-xl-row flex-wrap align-items-stretch align-items-xl-center gap-2 gap-xl-3">
                                 <div class="issues-toolbar-actions-primary d-flex flex-wrap align-items-center gap-2">
-                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal"
+                                    @if ($rowCountLeft ?? false)
+                                        {{-- Row count at the far left of the toolbar (rowCountLeft). --}}
+                                        <span class="badge bg-light text-dark align-self-center flex-shrink-0"
+                                            id="hold_issue_total_count" title="Rows" style="font-size:1.05rem;padding:.42rem .65rem;">0</span>
+                                    @endif
+                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" @if ($iconOnlyToolbarButtons ?? false) title="{{ $addIssueButtonText ?? 'Add issue' }}" aria-label="{{ $addIssueButtonText ?? 'Add issue' }}" @endif
                                         data-bs-target="#ordersOnHoldIssueModal">
-                                        <i class="bi bi-plus-lg me-1"></i>
-                                        {{ $addIssueButtonText ?? 'Add QC & Packing Issue' }}
+                                        <i class="bi bi-plus-lg @if (!($iconOnlyToolbarButtons ?? false)) me-1 @endif"></i>
+                                        @if (!($iconOnlyToolbarButtons ?? false)){{ $addIssueButtonText ?? 'Add QC & Packing Issue' }}@endif
                                     </button>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnShowHistory">
-                                        <i class="bi bi-clock-history me-1"></i> History
+                                    @if (!($hideHistoryButton ?? false))
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnShowHistory" @if ($iconOnlyToolbarButtons ?? false) title="History" aria-label="History" @endif>
+                                        <i class="bi bi-clock-history @if (!($iconOnlyToolbarButtons ?? false)) me-1 @endif"></i>@if (!($iconOnlyToolbarButtons ?? false)) History @endif
                                     </button>
+                                    @endif
                                     @if (!empty($showMonthlyReport))
                                         <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-month">
                                             <i class="bi bi-graph-up me-1"></i> Monthly Report &amp; Graph
                                         </button>
                                     @endif
-                                    <button type="button" class="btn btn-success btn-sm" id="btnExportCsv">
-                                        <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
+                                    <button type="button" class="btn btn-success btn-sm" id="btnExportCsv" @if ($iconOnlyToolbarButtons ?? false) title="Export CSV" aria-label="Export CSV" @endif>
+                                        <i class="bi bi-file-earmark-spreadsheet @if (!($iconOnlyToolbarButtons ?? false)) me-1 @endif"></i>@if (!($iconOnlyToolbarButtons ?? false)) Export CSV @endif
                                     </button>
                                     @if (empty($hideImportCsv))
-                                        <button type="button" class="btn btn-outline-info btn-sm" id="btnImportCsv">
-                                            <i class="bi bi-upload me-1"></i> Import CSV
+                                        <button type="button" class="btn btn-outline-info btn-sm" id="btnImportCsv" @if ($iconOnlyToolbarButtons ?? false) title="Import CSV" aria-label="Import CSV" @endif>
+                                            <i class="bi bi-upload @if (!($iconOnlyToolbarButtons ?? false)) me-1 @endif"></i>@if (!($iconOnlyToolbarButtons ?? false)) Import CSV @endif
                                         </button>
                                     @endif
                                     @if ($showDispatchExtras ?? false)
@@ -1544,6 +1651,18 @@
                                     @if ($showDateRangeFilter ?? false)
                                         <div class="issues-toolbar-dates d-flex flex-wrap align-items-center gap-1"
                                             title="Filter by created date">
+                                            @if ($showPeriodFilter ?? false)
+                                                <select id="issues-period-select" class="form-select form-select-sm"
+                                                    style="width:auto" aria-label="Period" title="Period">
+                                                    <option value="30">L30</option>
+                                                    <option value="60">L60</option>
+                                                    <option value="90">L90</option>
+                                                    <option value="all">All time</option>
+                                                    <option value="custom" hidden>Custom</option>
+                                                </select>
+                                            @endif
+                                            {{-- hideDateInputs: the L30/L60/L90 picker drives the dates; the inputs stay in the DOM (hidden) for the filter code. --}}
+                                            <div class="d-flex align-items-center gap-1 @if ($hideDateInputs ?? false) d-none @endif">
                                             <label class="small text-muted mb-0 text-nowrap"
                                                 for="issues-date-from">From</label>
                                             <input type="date" id="issues-date-from"
@@ -1557,6 +1676,7 @@
                                                 aria-label="Clear date filter">
                                                 <i class="bi bi-x-lg"></i>
                                             </button>
+                                            </div>
                                         </div>
                                     @endif
                                 </div>
@@ -1589,7 +1709,7 @@
                                                 <span class="d-block fw-semibold small">Claims Filed</span>
                                                 <span class="d-block carrier-claims-summary-line"><span
                                                         id="carrierClaimsFiledCount">0</span> · $<span
-                                                        id="carrierClaimsFiledAmount">0.00</span></span>
+                                                        id="carrierClaimsFiledAmount">0</span></span>
                                             </span>
                                             <span
                                                 class="badge carrier-claims-summary-badge carrier-claims-summary--pending text-wrap text-start"
@@ -1597,7 +1717,7 @@
                                                 <span class="d-block fw-semibold small">Pending Claims</span>
                                                 <span class="d-block carrier-claims-summary-line"><span
                                                         id="carrierClaimsPendingCount">0</span> · $<span
-                                                        id="carrierClaimsPendingAmount">0.00</span></span>
+                                                        id="carrierClaimsPendingAmount">0</span></span>
                                             </span>
                                             <span
                                                 class="badge carrier-claims-summary-badge carrier-claims-summary--received text-wrap text-start"
@@ -1605,12 +1725,14 @@
                                                 <span class="d-block fw-semibold small">Claims Recd</span>
                                                 <span class="d-block carrier-claims-summary-line"><span
                                                         id="carrierClaimsReceivedCount">0</span> · $<span
-                                                        id="carrierClaimsReceivedAmount">0.00</span></span>
+                                                        id="carrierClaimsReceivedAmount">0</span></span>
                                             </span>
                                         </div>
                                     @endif
-                                    <span class="badge bg-light text-dark align-self-center flex-shrink-0"
-                                        id="hold_issue_total_count">0</span>
+                                    @if (!($rowCountLeft ?? false))
+                                        <span class="badge bg-light text-dark align-self-center flex-shrink-0"
+                                            id="hold_issue_total_count">0</span>
+                                    @endif
                                 </div>
                             </div>
                         </div>
@@ -1624,7 +1746,7 @@
                         <table class="table table-striped table-hover table-sm mb-0 orders-hold-table{{ ($autofitTableColumns ?? false) ? ' orders-hold-table--autofit' : '' }}">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="orders-hold-col-idx">#</th>
+                                    @if (!($hideIdColumn ?? false)) <th class="orders-hold-col-idx">#</th> @endif
                                     <th class="orders-hold-col-img"></th>
                                     <th class="orders-hold-col-sku">SKU</th>
                                     @if ($showDispatchExtras ?? false)
@@ -1764,7 +1886,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) + $lossColspanExtra - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showClaimTrackingColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) + $lossColspanExtra - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showClaimTrackingColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) - ($hideIdColumn ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -2479,6 +2601,9 @@
             const requireRootCauseFound = @json((bool) ($requireRootCauseFound ?? true));
             const showRowHistoryColumn = @json((bool) ($showRowHistoryColumn ?? false));
             const hideCloseColumn = @json((bool) ($hideCloseColumn ?? false));
+            const oldestFirstOrder = @json((bool) ($oldestFirst ?? false));
+            const hideGroupBadge = @json((bool) ($hideGroupBadge ?? false));
+            const lossReadOnly = @json((bool) ($lossReadOnly ?? false));
             const showClaimDatesInHistory = @json((bool) (($showClaimFiledColumn ?? false) || ($showClaimReceivedColumn ?? false)));
             const rowHistoryBaseUrl = @json($rowHistoryBaseUrl ?? url('/customer-care/all-issues/issues'));
             const singleEntryIssueBoard = @json((bool) ($singleEntryIssueBoard ?? false));
@@ -3089,18 +3214,51 @@
                     activeDateTo = toEl.value || '';
                     syncBounds();
                     renderRows();
-                    if (!dateRangeIsActive()) {
-                        loadClaimsStats();
-                    }
                 }
 
-                fromEl.addEventListener('change', applyDateInputs);
-                toEl.addEventListener('change', applyDateInputs);
+                const periodEl = document.getElementById('issues-period-select');
+
+                function ymdDaysAgo(days) {
+                    const d = new Date();
+                    d.setDate(d.getDate() - days);
+                    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0');
+                }
+
+                // L30 / L60 / L90 = created in the last N days up to today; All time = no date limit.
+                function applyPeriod(value) {
+                    fromEl.value = value === 'all' || value === 'custom' ? '' : ymdDaysAgo(parseInt(value, 10));
+                    toEl.value = '';
+                    if (periodEl) periodEl.value = value;
+                    applyDateInputs();
+                }
+
+                fromEl.addEventListener('change', () => {
+                    if (periodEl) periodEl.value = 'custom';
+                    applyDateInputs();
+                });
+                toEl.addEventListener('change', () => {
+                    if (periodEl) periodEl.value = 'custom';
+                    applyDateInputs();
+                });
                 clearBtn?.addEventListener('click', () => {
+                    if (periodEl) {
+                        applyPeriod('all');
+                        return;
+                    }
                     fromEl.value = '';
                     toEl.value = '';
                     applyDateInputs();
                 });
+                if (periodEl) {
+                    periodEl.addEventListener('change', () => applyPeriod(periodEl.value));
+                    // Default period (L30) is in force before the first rows load.
+                    const initial = @json((string) ($defaultPeriodDays ?? '30'));
+                    fromEl.value = initial === 'all' ? '' : ymdDaysAgo(parseInt(initial, 10) || 30);
+                    periodEl.value = initial === 'all' ? 'all' : String(parseInt(initial, 10) || 30);
+                    activeDateFrom = fromEl.value || '';
+                    syncBounds();
+                }
             })();
 
             function escAttr(value) {
@@ -3216,6 +3374,13 @@
             }
 
             function lossCellHtml(row) {
+                if (lossReadOnly) {
+                    // Autofilled from the Amazon price: shown as plain text, not an input.
+                    const shown = lossCellDisplay(row);
+                    return '<td class="orders-hold-loss-cell text-center" title="' +
+                        escAttr(lossCellTooltip(row).replace('Click to enter Loss $', 'No Amazon price on file')) + '">' +
+                        escapeHtml(shown) + '</td>';
+                }
                 const v = lossInputDisplayValue(row);
                 return '<td class="orders-hold-loss-cell" title="' + escAttr(lossCellTooltip(row)) + '">' +
                     '<input type="number" step="0.01" class="form-control form-control-sm issue-loss-input" ' +
@@ -3652,11 +3817,11 @@
             function formatClaimsMoney(n) {
                 const num = Number(n);
                 if (Number.isNaN(num)) {
-                    return '0.00';
+                    return '0';
                 }
                 return num.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
                 });
             }
 
@@ -3713,7 +3878,9 @@
             }
 
             function refreshDateFilteredClaimsSummary(rows) {
-                if (!showClaimsSummaryBadges || !dateRangeIsActive()) return;
+                // The Filed / Pending / Recd boxes always total exactly the rows left after every filter
+                // (period, carrier, claimable / filed / recd, search) — same rows as the table and the count.
+                if (!showClaimsSummaryBadges || !holdIssueRows.length) return;
                 const summary = claimsSummaryFromRows(rows);
                 applyClaimsSummaryNumbers(summary.filed, summary.pending, summary.received);
             }
@@ -3722,7 +3889,7 @@
                 if (!showClaimsSummaryBadges || !claimsStatsUrl) {
                     return;
                 }
-                if (dateRangeIsActive()) {
+                if (holdIssueRows.length) {
                     refreshDateFilteredClaimsSummary(getFilteredRows());
                     return;
                 }
@@ -4220,6 +4387,20 @@
                 if (!text) return '—';
                 return '<span class="tracking-cell">' +
                     '<span class="tracking-dot">•</span>' +
+                    '<span class="tracking-full">' + escapeHtml(text) + '</span>' +
+                    '<button class="copy-tracking-btn" data-copy="' + escAttr(text) +
+                    '" title="Copy tracking"><i class="bi bi-clipboard"></i></button>' +
+                    '</span>';
+            }
+
+            // Carrier Claims Tracking column: green dot = tracking on file (hover shows it, clipboard copies it), red dot = no tracking.
+            function trackingDotCellHtml(value) {
+                const text = String(value || '').trim();
+                if (!text) {
+                    return '<span class="tracking-dot-mark tracking-dot-mark--red" title="No tracking"></span>';
+                }
+                return '<span class="tracking-cell" title="' + escAttr(text) + '">' +
+                    '<span class="tracking-dot tracking-dot-mark tracking-dot-mark--green"></span>' +
                     '<span class="tracking-full">' + escapeHtml(text) + '</span>' +
                     '<button class="copy-tracking-btn" data-copy="' + escAttr(text) +
                     '" title="Copy tracking"><i class="bi bi-clipboard"></i></button>' +
@@ -4885,11 +5066,11 @@
                 const dataRowsHtml = filtered.map((row, index) => {
                     const buttonsHtml = qcRowActionButtonsHtml(row);
                     // Group badge: show small colored pill for multi-SKU groups
-                    const groupBadge = row.group_id ?
+                    const groupBadge = (row.group_id && !hideGroupBadge) ?
                         '<span class="badge bg-warning text-dark ms-1" style="font-size:0.7rem;" title="Grouped entry (1 error)">G</span>' :
                         '';
                     return '<tr>' +
-                        '<td>' + escapeHtml(row.id) + '</td>' +
+                        @if (!($hideIdColumn ?? false)) '<td>' + escapeHtml(row.id) + '</td>' + @endif
                         '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row
                                 .image_url) + '" class="sku-thumb" alt="">' :
                             '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') +
@@ -4947,7 +5128,7 @@
                         carrierSelectCellHtml(row) +
                     @endif
                     @if ($showClaimTrackingColumn ?? false)
-                        '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
+                        '<td class="text-center">' + trackingDotCellHtml(row.tracking_number) + '</td>' +
                     @endif
                     @if ($showDetailsColumn ?? false)
                         qcDetailsCellHtml(row) +
@@ -5088,7 +5269,7 @@
                     '<td class="orders-hold-col-action">' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
                         '</td>' +
                         @if ($showClaimTrackingColumn ?? false)
-                            '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
+                            '<td class="text-center">' + trackingDotCellHtml(row.tracking_number) + '</td>' +
                         @endif
                         @if ($showDetailsColumn ?? false)
                             qcDetailsCellHtml(row) +
@@ -5272,8 +5453,11 @@
                         const db = Date.parse(String(b.created_at_raw || '').replace(' ', 'T'));
                         const ta = isNaN(da) ? 0 : da;
                         const tb = isNaN(db) ? 0 : db;
-                        if (tb !== ta) return tb - ta;
-                        return (Number(b.id) || 0) - (Number(a.id) || 0);
+                        // Boards with $oldestFirst (Carrier Claims) list the oldest issue on top.
+                        if (tb !== ta) return oldestFirstOrder ? ta - tb : tb - ta;
+                        return oldestFirstOrder ?
+                            (Number(a.id) || 0) - (Number(b.id) || 0) :
+                            (Number(b.id) || 0) - (Number(a.id) || 0);
                     });
                     buildDeptFilters();
                     buildCarrierFilters();
@@ -6175,7 +6359,7 @@
                 }
             });
 
-            btnShowHistory.addEventListener('click', () => {
+            btnShowHistory?.addEventListener('click', () => {
                 historyCard.classList.remove('d-none');
                 loadHoldIssueHistoryRows();
                 historyCard.scrollIntoView({
