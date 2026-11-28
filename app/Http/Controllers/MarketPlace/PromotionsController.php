@@ -168,6 +168,14 @@ class PromotionsController extends Controller
         return self::TIKTOK_PROMO_CHANNEL[$key] ?? null;
     }
 
+    /** Shopify B2B (business5core.com): % off as a lower special price (ShopifyB2bPromotionsController). */
+    private function b2bPromoChannel(string $channel): bool
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', strtolower($channel));
+
+        return in_array($key, ['shopifyb2b', 'business5coreb2b', 'business5core', 'b5cb2b'], true);
+    }
+
     /**
      * "Save & Apply" on the Prmt% modal. The rules themselves are saved by
      * POST /channel-promo-pricing/{channel}/dil-prmt; this starts the same headless job the eBay pages use
@@ -404,6 +412,7 @@ class PromotionsController extends Controller
                     'prmt_rule' => $this->prmtRuleChannel((string) $row->channel),
                     'temu_promo' => $this->temuPromoChannel((string) $row->channel),
                     'tiktok_promo' => $this->tiktokPromoChannel((string) $row->channel),
+                    'b2b_promo' => $this->b2bPromoChannel((string) $row->channel),
                     'notes_remarks' => $stored->notes_remarks ?? '',
                     'values' => (object) $values,
                 ];

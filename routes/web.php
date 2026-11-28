@@ -4735,6 +4735,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/promotions/tiktok/preview', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'preview'])->name('promotions.tiktok.preview');
     Route::post('/promotions/tiktok/apply', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'apply'])->name('promotions.tiktok.apply');
     Route::post('/promotions/tiktok/update', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'update'])->name('promotions.tiktok.update');
+    Route::get('/promotions/b2b/active', [\App\Http\Controllers\MarketPlace\ShopifyB2bPromotionsController::class, 'active'])->name('promotions.b2b.active');
+    Route::post('/promotions/b2b/preview', [\App\Http\Controllers\MarketPlace\ShopifyB2bPromotionsController::class, 'preview'])->name('promotions.b2b.preview');
+    Route::post('/promotions/b2b/apply', [\App\Http\Controllers\MarketPlace\ShopifyB2bPromotionsController::class, 'apply'])->name('promotions.b2b.apply');
+    Route::post('/promotions/b2b/remove', [\App\Http\Controllers\MarketPlace\ShopifyB2bPromotionsController::class, 'remove'])->name('promotions.b2b.remove');
     Route::post('/promotions/tiktok/deactivate', [\App\Http\Controllers\MarketPlace\TikTokPromotionsController::class, 'deactivate'])->name('promotions.tiktok.deactivate');
 
     // Payments Verification — active channels with PMT RECD, bank account and link

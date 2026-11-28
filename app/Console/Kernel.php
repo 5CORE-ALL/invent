@@ -1632,6 +1632,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Shopify B2B percentage-off promotions from /promotions: put the original price back once the end time has passed.
+        $schedule->command('shopify-b2b:promo-expire')
+            ->cron('4-59/15 * * * *')
+            ->name('shopify-b2b-promo-expire')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Headless "Push on reload" for /shopify-b2b-pricing (same as shopify-b2c:push-blue-prices): prices every listed SKU with the
         // page's Sprc Dil formula (clearance SKUs included), saves S PRC and pushes SKUs whose live Price differs, page closed.
         // Every 10 min, 24/7 (no $ist()), starts at :08. --respect-switch: the page Push on reload switch decides.

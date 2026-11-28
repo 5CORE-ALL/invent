@@ -337,6 +337,99 @@
         </div>
     </div>
 
+    {{-- Shopify B2B (business5core.com): % off as a lower special price --}}
+    <div class="modal fade" id="promo-b2b-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6"><i class="fas fa-tag me-1"></i> Shopify B2B percentage-off
+                        <span class="badge bg-light text-dark ms-1">business5core.com</span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        The B2B store has no coupon API, so the discount is a <strong>lower special price</strong>: customers see the new price in red
+                        with the old price crossed out (no &ldquo;% off&rdquo; label). The % is taken from the price before the promo, so you can change
+                        it any time. Promo SKUs are held as hand-set S PRC, so the Sprc Dil auto-push does not overwrite them.
+                        SKUs that are out of stock, have no LP, or would sell below cost are skipped. Max 30 SKUs per click.
+                    </p>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-5">
+                            <label class="form-label small mb-0" for="promo-b2b-skus">SKUs (one per line)</label>
+                            <textarea id="promo-b2b-skus" class="form-control form-control-sm" rows="5" placeholder="e.g.&#10;NW 05 2PCS"></textarea>
+                        </div>
+                        <div class="col-md-7">
+                            <div class="row g-2">
+                                <div class="col-4">
+                                    <label class="form-label small mb-0" for="promo-b2b-pct">Discount %</label>
+                                    <input type="number" id="promo-b2b-pct" class="form-control form-control-sm" min="1" max="90" step="0.5" value="10">
+                                </div>
+                                <div class="col-8">
+                                    <label class="form-label small mb-0" for="promo-b2b-end">End (optional, your local time)</label>
+                                    <input type="datetime-local" id="promo-b2b-end" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-12 form-check ms-2">
+                                    <input class="form-check-input" type="checkbox" id="promo-b2b-below">
+                                    <label class="form-check-label small" for="promo-b2b-below">Allow below cost</label>
+                                </div>
+                                <div class="col-12 d-flex flex-wrap gap-2">
+                                    <button type="button" class="btn btn-sm btn-primary" id="promo-b2b-preview"><i class="fas fa-search me-1"></i>Preview</button>
+                                    <button type="button" class="btn btn-sm btn-success" id="promo-b2b-apply" disabled><i class="fas fa-check me-1"></i>Apply to store</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small text-muted mb-1" id="promo-b2b-summary"></div>
+                    <div class="table-responsive mb-2" style="max-height:26vh;">
+                        <table class="table table-sm table-bordered align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>SKU</th>
+                                    <th class="text-end">Live price</th>
+                                    <th class="text-end">Original</th>
+                                    <th class="text-end">New price</th>
+                                    <th class="text-end">Cost (LP)</th>
+                                    <th class="text-end">Margin $</th>
+                                    <th class="text-end">INV</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="promo-b2b-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small mb-2" id="promo-b2b-status"></div>
+                    <div class="border rounded p-2 bg-light">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <strong class="small me-auto">Promotions running now</strong>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="promo-b2b-reload" title="Reload"><i class="fas fa-sync-alt"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="promo-b2b-edit" disabled title="Copy selected SKUs into the form to change their %">Edit % of selected</button>
+                            <button type="button" class="btn btn-sm btn-danger" id="promo-b2b-remove" disabled>Remove selected (restore price)</button>
+                        </div>
+                        <div class="table-responsive" style="max-height:24vh;">
+                            <table class="table table-sm table-bordered align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:34px;"><input type="checkbox" id="promo-b2b-all"></th>
+                                        <th>SKU</th>
+                                        <th class="text-end">%</th>
+                                        <th class="text-end">Original</th>
+                                        <th class="text-end">Promo price</th>
+                                        <th class="text-end">Live now</th>
+                                        <th>Ends</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="promo-b2b-active"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- TikTok 1/2: percentage-off (DIRECT_DISCOUNT) activities, editable % --}}
     <div class="modal fade" id="promo-tt-modal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
@@ -830,10 +923,30 @@
             },
         };
 
+        // "B2B Promo": % off as a lower special price on business5core.com (Shopify B2B), editable, optional end.
+        const b2bPromo = {
+            title: 'B2B Promo',
+            field: 'b2b_promo',
+            width: 120,
+            hozAlign: 'center',
+            headerHozAlign: 'center',
+            headerSort: false,
+            formatter: function (cell) {
+                if (!cell.getValue()) {
+                    return '<span class="promo-prmt-btn is-disabled" title="Only for Shopify B2B"><i class="fas fa-tag"></i> Promo</span>';
+                }
+                return '<button type="button" class="promo-prmt-btn" title="Percentage-off special price on business5core.com"><i class="fas fa-tag"></i> Promo</button>';
+            },
+            cellClick: function (e, cell) {
+                e.stopPropagation();
+                if (cell.getValue()) openB2bPromoModal(cell.getRow().getData());
+            },
+        };
+
         // Prmt% sits right after Status; Rule sits right after the Coupons column (or after Prmt% if none yet).
         const couponIdx = dynamicColumns.findIndex(isCouponColumn);
         const cols = startColumns.slice();
-        cols.push(prmt, temuPromo, tiktokPromo);
+        cols.push(prmt, temuPromo, tiktokPromo, b2bPromo);
         if (couponIdx === -1) {
             cols.push(rule);
         }
@@ -1541,6 +1654,166 @@
         }).fail(function (xhr) {
             temuPromoStatus('Enroll failed: ' + escapeHtml(temuErr(xhr)), 'text-danger');
         }).always(function () { $btn.prop('disabled', false); temuPromoPicked(); });
+    });
+
+    // ---- Shopify B2B percentage-off (lower special price) ------------------------------------------
+    let b2bModal = null;
+    let b2bReady = 0;
+
+    function b2bStatus(html, cls) {
+        $('#promo-b2b-status').attr('class', 'small mb-2 ' + (cls || '')).html(html || '');
+    }
+    function b2bMoney(v) {
+        return (v === null || v === undefined) ? '—' : Number(v).toFixed(2);
+    }
+    function b2bLocalInput(d) {
+        const p = function (n) { return String(n).padStart(2, '0'); };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function b2bPayload(extra) {
+        const end = $('#promo-b2b-end').val();
+        return Object.assign({
+            skus: $('#promo-b2b-skus').val(),
+            pct: $('#promo-b2b-pct').val(),
+            end_time: end ? Math.floor(new Date(end).getTime() / 1000) : 0,
+            allow_below_cost: $('#promo-b2b-below').is(':checked') ? 1 : 0,
+            _token: csrf,
+        }, extra || {});
+    }
+    function b2bButtons() {
+        $('#promo-b2b-apply').prop('disabled', b2bReady < 1);
+        const n = $('#promo-b2b-active .promo-b2b-pick:checked').length;
+        $('#promo-b2b-remove, #promo-b2b-edit').prop('disabled', n < 1);
+    }
+    function b2bInvalidate() { b2bReady = 0; b2bButtons(); }
+
+    function renderB2bRows(rows) {
+        const $b = $('#promo-b2b-tbody').empty();
+        (rows || []).forEach(function (r) {
+            const ok = r.status === 'ready';
+            const loss = r.margin !== null && r.margin < 0;
+            const $tr = $('<tr>').toggleClass('table-light text-muted', !ok);
+            $tr.append($('<td>').text(r.sku));
+            $tr.append($('<td class="text-end">').text(b2bMoney(r.live)));
+            $tr.append($('<td class="text-end">').text(b2bMoney(r.base)));
+            $tr.append($('<td class="text-end fw-bold">').text(b2bMoney(r.new_price)));
+            $tr.append($('<td class="text-end">').text(b2bMoney(r.cost)));
+            $tr.append($('<td class="text-end">').toggleClass('text-danger', loss).text(b2bMoney(r.margin)));
+            $tr.append($('<td class="text-end">').text(r.inv === null ? '—' : r.inv));
+            $tr.append($('<td>').html(ok
+                ? '<span class="badge bg-success">Ready</span>' + (r.in_promo ? ' <span class="small text-muted">already ' + r.promo_pct + '% – will change</span>' : '') + (loss ? ' <span class="small text-danger">below cost</span>' : '')
+                : '<span class="badge bg-secondary">Skip</span> <span class="small">' + escapeHtml(r.reason || '') + '</span>'));
+            $b.append($tr);
+        });
+    }
+
+    function loadB2bActive() {
+        $.getJSON('{{ route("promotions.b2b.active") }}').done(function (res) {
+            const $b = $('#promo-b2b-active').empty();
+            const list = (res && res.promotions) || [];
+            if (!list.length) {
+                $b.append('<tr><td colspan="7" class="text-muted text-center">No promotion running</td></tr>');
+            }
+            list.forEach(function (a) {
+                const $tr = $('<tr>');
+                $tr.append($('<td>').html('<input type="checkbox" class="promo-b2b-pick" value="' + escapeHtml(a.sku) + '">'));
+                $tr.append($('<td>').text(a.sku));
+                $tr.append($('<td class="text-end">').text(a.pct));
+                $tr.append($('<td class="text-end">').text(b2bMoney(a.base)));
+                $tr.append($('<td class="text-end">').text(b2bMoney(a.promo_price)));
+                $tr.append($('<td class="text-end">').html(b2bMoney(a.live) + (a.changed_outside ? ' <span class="badge bg-warning text-dark" title="Price was changed after the promo">changed</span>' : '')));
+                $tr.append($('<td>').text(a.end ? new Date(a.end * 1000).toLocaleString() : 'no end'));
+                $b.append($tr);
+            });
+            $('#promo-b2b-all').prop('checked', false);
+            b2bButtons();
+        }).fail(function (xhr) {
+            b2bStatus('Could not load promotions: ' + escapeHtml(temuErr(xhr)), 'text-danger');
+        });
+    }
+
+    function openB2bPromoModal() {
+        if (!b2bModal) b2bModal = new bootstrap.Modal(document.getElementById('promo-b2b-modal'));
+        $('#promo-b2b-tbody').empty();
+        $('#promo-b2b-summary').text('');
+        b2bStatus('');
+        b2bInvalidate();
+        b2bModal.show();
+        loadB2bActive();
+    }
+
+    $('#promo-b2b-skus, #promo-b2b-pct, #promo-b2b-end, #promo-b2b-below').on('input change', b2bInvalidate);
+    $('#promo-b2b-reload').on('click', function () { b2bStatus(''); loadB2bActive(); });
+    $('#promo-b2b-all').on('change', function () {
+        $('#promo-b2b-active .promo-b2b-pick').prop('checked', this.checked);
+        b2bButtons();
+    });
+    $('#promo-b2b-active').on('change', '.promo-b2b-pick', b2bButtons);
+
+    $('#promo-b2b-edit').on('click', function () {
+        const skus = $('#promo-b2b-active .promo-b2b-pick:checked').map(function () { return this.value; }).get();
+        $('#promo-b2b-skus').val(skus.join('\n'));
+        b2bInvalidate();
+        b2bStatus('Set the new % and press Preview, then Apply.', 'text-muted');
+    });
+
+    $('#promo-b2b-preview').on('click', function () {
+        const $btn = $(this).prop('disabled', true);
+        b2bStatus('Checking SKUs…', 'text-muted');
+        $.ajax({ url: '{{ route("promotions.b2b.preview") }}', method: 'POST', dataType: 'json', data: b2bPayload() })
+            .done(function (res) {
+                renderB2bRows(res.rows);
+                b2bReady = res.ready || 0;
+                $('#promo-b2b-summary').text(res.ready + ' ready at ' + res.pct + '% off, ' + res.skipped + ' skipped');
+                b2bStatus('');
+                b2bButtons();
+            })
+            .fail(function (xhr) { b2bStatus('Preview failed: ' + escapeHtml(temuErr(xhr)), 'text-danger'); })
+            .always(function () { $btn.prop('disabled', false); });
+    });
+
+    function b2bResultHtml(res) {
+        let html = escapeHtml(res.message || 'Done.');
+        const bad = (res.results || []).filter(function (r) { return r.status !== 'ok'; });
+        if (bad.length) {
+            html += '<ul class="mb-0">' + bad.slice(0, 10).map(function (r) {
+                return '<li>' + escapeHtml(r.sku + ': ' + r.message) + '</li>';
+            }).join('') + (bad.length > 10 ? '<li>…and ' + (bad.length - 10) + ' more</li>' : '') + '</ul>';
+        }
+        return html;
+    }
+
+    function b2bSend(url, data, confirmText, verb) {
+        if (!window.confirm(confirmText)) return;
+        $('#promo-b2b-apply, #promo-b2b-remove, #promo-b2b-edit').prop('disabled', true);
+        b2bStatus(verb + '…', 'text-muted');
+        $.ajax({ url: url, method: 'POST', dataType: 'json', data: data })
+            .done(function (res) {
+                b2bStatus(b2bResultHtml(res), (res.failed ? 'text-warning' : 'text-success'));
+                loadB2bActive();
+            })
+            .fail(function (xhr) {
+                const j = xhr.responseJSON || {};
+                b2bStatus(j.results ? b2bResultHtml(j) : escapeHtml(temuErr(xhr)), 'text-danger');
+                loadB2bActive();
+            })
+            .always(b2bButtons);
+    }
+
+    $('#promo-b2b-apply').on('click', function () {
+        const end = $('#promo-b2b-end').val();
+        b2bSend('{{ route("promotions.b2b.apply") }}', b2bPayload({ confirm: 1 }),
+            'Change the LIVE price of ' + b2bReady + ' SKU(s) on business5core.com to ' + $('#promo-b2b-pct').val() + '% off?\n\n'
+            + (end ? 'Ends ' + end.replace('T', ' ') + ' (original price is restored automatically).' : 'No end date: it stays until you remove it.'),
+            'Pushing prices to business5core.com');
+    });
+
+    $('#promo-b2b-remove').on('click', function () {
+        const skus = $('#promo-b2b-active .promo-b2b-pick:checked').map(function () { return this.value; }).get();
+        if (!skus.length) return;
+        b2bSend('{{ route("promotions.b2b.remove") }}', { skus: skus, confirm: 1, _token: csrf },
+            'End the promotion on ' + skus.length + ' SKU(s) and push the original price back to business5core.com?',
+            'Restoring prices');
     });
 
     // ---- TikTok percentage-off (DIRECT_DISCOUNT) -------------------------------------------------
